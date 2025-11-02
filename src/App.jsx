@@ -1,8 +1,10 @@
 
 import React, { useMemo, useState } from 'react'
-import { Home, Users, DollarSign, BarChart2, Settings, Wifi, FileText, Bell, Eye, Plus, ClipboardList } from 'lucide-react'
+import { Home, Users, DollarSign, BarChart2, Settings, Wifi, FileText, Bell, Eye, EyeOff, Plus, ClipboardList } from 'lucide-react'
 import Button from './components/ui/Button.jsx'
 import { Card, CardContent } from './components/ui/Card.jsx'
+import StatCard from './components/dashboard/StatCard.jsx'
+import EarningsCard from './components/dashboard/EarningsCard.jsx'
 import { peso, today } from './utils/formatters.js'
 
 export default function App(){
@@ -198,30 +200,45 @@ export default function App(){
     }
     return (<>
       <h1 className="text-2xl font-bold mb-6">Panel Principal</h1>
-      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-6">
-        <Card onClick={()=>setDashFilter('paid')} className="cursor-pointer hover:shadow-md"><CardContent>
-          <p className="text-gray-600">Clientes al día</p>
-          <p className="text-3xl font-semibold">{paidClients.length}</p>
-          <p className="text-sm text-gray-500">Total clientes: {totalClients}</p>
-        </CardContent></Card>
-        <Card onClick={()=>setDashFilter('pending')} className="cursor-pointer hover:shadow-md"><CardContent>
-          <p className="text-gray-600">Pendientes de pago</p>
-          <p className="text-3xl font-semibold">{pendingClients.length}</p>
-          <p className="text-sm text-gray-500">Periodo: {periodLabel}</p>
-        </CardContent></Card>
-        <Card onClick={()=>setRoute('revendedores')} className="cursor-pointer hover:shadow-md"><CardContent>
-          <p className="text-gray-600">Revendedores (entregas abiertas)</p>
-          <p className="text-3xl font-semibold">{resellers.reduce((a,r)=>a+r.deliveries.filter(d=>!d.settled).length,0)}</p>
-          <p className="text-sm text-gray-500">Liquidaciones pendientes</p>
-        </CardContent></Card>
-        <Card onClick={()=>setRoute('reportes')} className="cursor-pointer hover:shadow-md"><CardContent>
-          <div className="flex justify-between items-center">
-            <p className="text-gray-600">Ganancia estimada</p>
-            <Eye className="h-5 w-5 cursor-pointer" onClick={(e)=>{ e.stopPropagation(); setShowEarnings(!showEarnings) }} />
-          </div>
-          <p className="text-3xl font-semibold mt-2">{showEarnings ? peso(earningsDemo) : '••••••'}</p>
-          <p className="text-sm text-gray-500">Periodo: {periodLabel}</p>
-        </CardContent></Card>
+      <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3 lg:grid-cols-4">
+        <StatCard
+          title="Clientes al día"
+          value={paidClients.length}
+          icon={Users}
+          trend={`Total clientes: ${totalClients}`}
+          onClick={()=>setDashFilter('paid')}
+        />
+        <StatCard
+          title="Pendientes de pago"
+          value={pendingClients.length}
+          icon={Bell}
+          trend={`Periodo: ${periodLabel}`}
+          onClick={()=>setDashFilter('pending')}
+        />
+        <StatCard
+          title="Entregas abiertas"
+          value={resellers.reduce((a,r)=>a+r.deliveries.filter(d=>!d.settled).length,0)}
+          icon={ClipboardList}
+          trend="Liquidaciones pendientes"
+          onClick={()=>setRoute('revendedores')}
+        />
+        <div className="relative">
+          <StatCard
+            title="Ganancia estimada"
+            value={showEarnings ? peso(earningsDemo) : '••••••'}
+            icon={BarChart2}
+            trend={`Periodo: ${periodLabel}`}
+            onClick={()=>setRoute('reportes')}
+          />
+          <button
+            type="button"
+            className="absolute right-5 top-5 inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 shadow-sm transition hover:border-gray-300 hover:text-gray-700"
+            onClick={(e)=>{ e.stopPropagation(); setShowEarnings(!showEarnings) }}
+            aria-label={showEarnings ? 'Ocultar ganancias' : 'Mostrar ganancias'}
+          >
+            {showEarnings ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-2 mb-6">
@@ -229,6 +246,16 @@ export default function App(){
         <Button onClick={()=>openFullPay()}><DollarSign className="h-4 w-4 mr-2" />Registrar pago</Button>
         <Button onClick={()=>openNewDelivery()}><ClipboardList className="h-4 w-4 mr-2" />Entregar fichas</Button>
         <Button onClick={()=>setRoute('reportes')}>Ver reportes</Button>
+      </div>
+
+      <div className="mb-6">
+        <EarningsCard
+          earningsDemo={earningsDemo}
+          clientIncomeDemo={clientIncomeDemo}
+          resellerIncomeDemo={resellerIncomeDemo}
+          baseCosts={baseCosts}
+          expenses={expenses}
+        />
       </div>
 
       {renderDashTable()}
