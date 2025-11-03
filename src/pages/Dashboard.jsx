@@ -6,7 +6,7 @@ import StatCard from '../components/dashboard/StatCard.jsx'
 import EarningsCard from '../components/dashboard/EarningsCard.jsx'
 import { peso } from '../utils/formatters.js'
 import { useDashboardMetrics } from '../hooks/useDashboardMetrics.js'
-import { useBackofficeStore } from '../store/useBackofficeStore.js'
+import { CLIENT_PRICE, useBackofficeStore } from '../store/useBackofficeStore.js'
 
 const STATUS_FILTERS = [
   { value: 'pending', label: 'Pendientes' },
@@ -90,7 +90,11 @@ export default function DashboardPage() {
             title="Pendientes de pago"
             value={metrics.pendingClients}
             icon={DollarSign}
-            trend={metrics.pendingClients > 0 ? `-${metrics.pendingClients} por cobrar` : 'Todo al día'}
+            trend={
+              metrics.pendingClients > 0
+                ? `Pendiente: ${peso(metrics.totalDebtAmount)}`
+                : 'Todo al día'
+            }
             className={metrics.pendingClients > 0 ? 'ring-2 ring-amber-200' : ''}
           />
           <StatCard
@@ -188,41 +192,46 @@ export default function DashboardPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredClients.map((client) => (
-                  <tr key={client.id}>
-                    <td className="px-3 py-2 font-medium text-slate-900">{client.name}</td>
-                    <td className="px-3 py-2 text-slate-600">{client.location}</td>
-                    <td className="px-3 py-2">
-                      <span
-                        className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
-                          client.debtMonths > 0
-                            ? 'bg-red-50 text-red-700'
-                            : 'bg-emerald-50 text-emerald-700'
-                        }`}
-                      >
-                        {client.debtMonths > 0
-                          ? `Debe ${client.debtMonths} ${client.debtMonths === 1 ? 'periodo' : 'periodos'}`
-                          : 'Al día'}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 text-right">
-                      <Button
-                        size="sm"
-                        onClick={() =>
-                          setPaymentForm({
-                            open: true,
-                            clientId: client.id,
-                            months: Math.max(1, client.debtMonths || 1),
-                            method: 'Efectivo',
-                            note: '',
-                          })
-                        }
-                      >
-                        Registrar pago
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
+                {filteredClients.map((client) => {
+                  const hasDebt = client.debtMonths > 0
+                  const debtLabel = hasDebt
+                    ? `Debe ${client.debtMonths} ${
+                        client.debtMonths === 1 ? 'periodo' : 'periodos'
+                      } (${peso(client.debtMonths * CLIENT_PRICE)})`
+                    : 'Al día'
+
+                  return (
+                    <tr key={client.id}>
+                      <td className="px-3 py-2 font-medium text-slate-900">{client.name}</td>
+                      <td className="px-3 py-2 text-slate-600">{client.location}</td>
+                      <td className="px-3 py-2">
+                        <span
+                          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
+                            hasDebt ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'
+                          }`}
+                        >
+                          {debtLabel}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <Button
+                          size="sm"
+                          onClick={() =>
+                            setPaymentForm({
+                              open: true,
+                              clientId: client.id,
+                              months: Math.max(1, client.debtMonths || 1),
+                              method: 'Efectivo',
+                              note: '',
+                            })
+                          }
+                        >
+                          Registrar pago
+                        </Button>
+                      </td>
+                    </tr>
+                  )
+                })}
                 {filteredClients.length === 0 && (
                   <tr>
                     <td colSpan={4} className="px-3 py-6 text-center text-sm text-slate-500">

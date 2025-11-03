@@ -33,6 +33,10 @@ export const useDashboardMetrics = ({ statusFilter, searchTerm }) => {
     const paidClients = clients.filter((client) => client.debtMonths === 0).length
     const pendingClients = clients.filter((client) => client.debtMonths > 0).length
     const clientIncome = paidClients * CLIENT_PRICE
+    const totalDebtAmount = clients.reduce(
+      (total, client) => total + (client.debtMonths > 0 ? client.debtMonths * CLIENT_PRICE : 0),
+      0,
+    )
 
     const resellerIncome = resellers.reduce((acc, reseller) => {
       const settlementsGain = reseller.settlements.reduce(
@@ -51,6 +55,7 @@ export const useDashboardMetrics = ({ statusFilter, searchTerm }) => {
       paidClients,
       pendingClients,
       clientIncome,
+      totalDebtAmount,
       resellerIncome,
       totalExpenses,
       internetCosts,
