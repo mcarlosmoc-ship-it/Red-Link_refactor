@@ -173,7 +173,7 @@ export default function ExpensesPage() {
                 onChange={(event) => setCategoryFilter(event.target.value)}
                 className="rounded-md border border-slate-300 px-3 py-2 text-sm"
               >
-                <option value="Todos">Todas</option>
+                <option value="Todos">Todos</option>
                 {categories.map((category) => (
                   <option key={category} value={category}>
                     {category}
