@@ -1,6 +1,23 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
-import { today } from '../utils/formatters.js'
+import {
+  today,
+  getCurrentPeriodKey,
+  addMonthsToPeriod,
+  diffPeriods,
+} from '../utils/formatters.js'
+
+const PERIOD_HISTORY_MONTHS = 12
+
+const createInitialPeriods = () => {
+  const current = getCurrentPeriodKey()
+  return {
+    current,
+    selected: current,
+    lastUpdate: current,
+    historyStart: addMonthsToPeriod(current, -(PERIOD_HISTORY_MONTHS - 1)),
+  }
+}
 
 export const CLIENT_PRICE = 300
 
@@ -144,6 +161,7 @@ const createInitialState = () => ({
   ],
   baseCosts: { base1: 2900, base2: 3750 },
   voucherPrices: { h1: 5, h3: 8, d1: 15, w1: 45, d15: 70, m1: 140 },
+  periods: createInitialPeriods(),
 })
 
 const computeDeliveryValue = (qty, prices) =>
@@ -156,6 +174,128 @@ export const useBackofficeStore = create(
   persist(
     (set, get) => ({
       ...createInitialState(),
+      syncCurrentPeriod: () =>
+        set((state) => {
+          const actualCurrent = getCurrentPeriodKey()
+          const existingPeriods = state.periods ?? createInitialPeriods()
+          const lastUpdate = existingPeriods.lastUpdate ?? existingPeriods.current ?? actualCurrent
+          const monthsSinceUpdate = diffPeriods(lastUpdate, actualCurrent)
+
+          const desiredHistoryStart = addMonthsToPeriod(actualCurrent, -(PERIOD_HISTORY_MONTHS - 1))
+          const previousHistoryStart = existingPeriods.historyStart ?? desiredHistoryStart
+          const normalizedHistoryStart =
+            diffPeriods(desiredHistoryStart, previousHistoryStart) > 0
+              ? desiredHistoryStart
+              : previousHistoryStart
+
+          if (monthsSinceUpdate <= 0) {
+            const selected = existingPeriods.selected ?? actualCurrent
+            const shouldClampSelected = diffPeriods(actualCurrent, selected) > 0
+
+            return {
+              periods: {
+                ...existingPeriods,
+                current: actualCurrent,
+                lastUpdate,
+                historyStart: normalizedHistoryStart,
+                selected: shouldClampSelected ? actualCurrent : selected,
+              },
+            }
+          }
+
+          const updatedClients = state.clients.map((client) => {
+            const currentDebt = Number(client.debtMonths ?? 0)
+            const currentAhead = Number(client.paidMonthsAhead ?? 0)
+
+            const safeDebt = Number.isFinite(currentDebt) ? Math.max(currentDebt, 0) : 0
+            const safeAhead = Number.isFinite(currentAhead) ? Math.max(currentAhead, 0) : 0
+
+            const consumedAhead = Math.min(safeAhead, monthsSinceUpdate)
+            const remainingAhead = safeAhead - consumedAhead
+            const additionalDebt = monthsSinceUpdate - consumedAhead
+            const projectedDebt = safeDebt + additionalDebt
+
+            const normalizedDebt = projectedDebt < 0.0001 ? 0 : Number(projectedDebt.toFixed(4))
+            const normalizedAhead = remainingAhead < 0.0001 ? 0 : Number(remainingAhead.toFixed(4))
+
+            return {
+              ...client,
+              debtMonths: normalizedDebt,
+              paidMonthsAhead: normalizedAhead,
+              service: normalizedDebt === 0 ? 'Activo' : 'Suspendido',
+            }
+          })
+
+          return {
+            clients: updatedClients,
+            periods: {
+              current: actualCurrent,
+              selected: actualCurrent,
+              lastUpdate: actualCurrent,
+              historyStart: normalizedHistoryStart,
+            },
+          }
+        }),
+      setSelectedPeriod: (periodKey) =>
+        set((state) => {
+          const periods = state.periods ?? createInitialPeriods()
+          const start = periods.historyStart
+          const end = periods.current
+
+          let next = periodKey ?? periods.selected ?? end
+
+          if (diffPeriods(start, next) < 0) {
+            next = start
+          }
+
+          if (diffPeriods(next, end) < 0) {
+            next = end
+          }
+
+          return {
+            periods: {
+              ...periods,
+              selected: next,
+            },
+          }
+        }),
+      goToPreviousPeriod: () =>
+        set((state) => {
+          const periods = state.periods ?? createInitialPeriods()
+
+          if (diffPeriods(periods.historyStart, periods.selected) <= 0) {
+            return { periods }
+          }
+
+          const previous = addMonthsToPeriod(periods.selected, -1)
+          const normalizedPrevious =
+            diffPeriods(periods.historyStart, previous) > 0 ? previous : periods.historyStart
+
+          return {
+            periods: {
+              ...periods,
+              selected: normalizedPrevious,
+            },
+          }
+        }),
+      goToNextPeriod: () =>
+        set((state) => {
+          const periods = state.periods ?? createInitialPeriods()
+
+          if (diffPeriods(periods.selected, periods.current) <= 0) {
+            return { periods }
+          }
+
+          const next = addMonthsToPeriod(periods.selected, 1)
+          const normalizedNext = diffPeriods(next, periods.current) < 0 ? periods.current : next
+
+          return {
+            periods: {
+              ...periods,
+              selected: normalizedNext,
+            },
+          }
+        }),
       addClient: (payload) =>
         set((state) => ({
           clients: [
@@ -181,43 +321,58 @@ export const useBackofficeStore = create(
               : client,
           ),
         })),
-      recordPayment: ({ clientId, months, method, note }) =>
+      recordPayment: ({ clientId, months, amount, method, note }) =>
         set((state) => {
-          const amountMonths = Math.max(0, Number(months) || 0)
-          const updatedClients = state.clients.map((client) => {
-            if (client.id !== clientId) return client
+          const client = state.clients.find((item) => item.id === clientId)
+          if (!client) {
+            return state
+          }
 
-            let remainingMonths = amountMonths
-            let debt = client.debtMonths
-            let ahead = client.paidMonthsAhead
+          const clientMonthlyFee = client?.monthlyFee ?? CLIENT_PRICE
+          const normalizedMonthlyFee = clientMonthlyFee > 0 ? clientMonthlyFee : CLIENT_PRICE
 
-            if (remainingMonths >= debt) {
-              remainingMonths -= debt
-              debt = 0
-              ahead = ahead + remainingMonths
-            } else {
-              debt = Math.max(0, debt - remainingMonths)
-            }
+          const safeMonths = Number.isFinite(Number(months)) ? Math.max(0, Number(months)) : 0
+          const providedAmount = Number.isFinite(Number(amount)) ? Math.max(0, Number(amount)) : 0
+          const computedAmount =
+            providedAmount > 0 ? providedAmount : safeMonths * normalizedMonthlyFee
+          const effectiveMonths =
+            normalizedMonthlyFee > 0 ? computedAmount / normalizedMonthlyFee : safeMonths
+
+          if (!Number.isFinite(effectiveMonths) || effectiveMonths <= 0) {
+            return state
+          }
+
+          const updatedClients = state.clients.map((candidate) => {
+            if (candidate.id !== clientId) return candidate
+
+            const currentDebt = Number(candidate.debtMonths ?? 0)
+            const currentAhead = Number(candidate.paidMonthsAhead ?? 0)
+
+            const remainingAfterDebt = Math.max(0, effectiveMonths - Math.max(0, currentDebt))
+
+            const newDebt = Math.max(0, currentDebt - effectiveMonths)
+            const normalizedDebt = newDebt < 0.0001 ? 0 : Number(newDebt.toFixed(4))
+            const newAhead =
+              remainingAfterDebt > 0 ? currentAhead + remainingAfterDebt : currentAhead
+            const normalizedAhead = newAhead < 0.0001 ? 0 : Number(newAhead.toFixed(4))
 
             return {
-              ...client,
-              debtMonths: debt,
-              paidMonthsAhead: ahead,
-              service: debt === 0 ? 'Activo' : client.service,
+              ...candidate,
+              debtMonths: normalizedDebt,
+              paidMonthsAhead: normalizedAhead,
+              service: normalizedDebt === 0 ? 'Activo' : candidate.service,
             }
           })
-
-          const client = state.clients.find((item) => item.id === clientId)
 
           const paymentEntry = {
             id: createId('PAY'),
             date: today(),
             clientId,
             clientName: client?.name ?? 'Cliente desconocido',
-            months: amountMonths,
+            months: Number(effectiveMonths.toFixed(4)),
             method: method || 'Efectivo',
             note: note?.trim() ?? '',
-            amount: amountMonths * (client?.monthlyFee ?? CLIENT_PRICE),
+            amount: Number(computedAmount.toFixed(2)),
           }
 
           return {
@@ -346,7 +501,19 @@ export const useBackofficeStore = create(
       storage: createJSONStorage(() =>
         typeof window !== 'undefined' ? window.localStorage : fallbackStorage,
       ),
-      version: 1,
+      version: 2,
+      migrate: (persistedState, version) => {
+        if (!persistedState) return persistedState
+
+        if (version < 2) {
+          return {
+            ...persistedState,
+            periods: createInitialPeriods(),
+          }
+        }
+
+        return persistedState
+      },
       partialize: (state) => ({
         clients: state.clients,
         payments: state.payments,
@@ -354,6 +521,7 @@ export const useBackofficeStore = create(
         expenses: state.expenses,
         baseCosts: state.baseCosts,
         voucherPrices: state.voucherPrices,
+        periods: state.periods,
       }),
     },
   ),

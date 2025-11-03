@@ -4,6 +4,15 @@ import { Card, CardContent } from '../components/ui/Card.jsx'
 import { CLIENT_PRICE, useBackofficeStore } from '../store/useBackofficeStore.js'
 import { peso } from '../utils/formatters.js'
 
+const periodsFormatter = new Intl.NumberFormat('es-MX', { maximumFractionDigits: 2 })
+
+const formatPeriods = (value) => {
+  const numericValue = Number(value) || 0
+  return periodsFormatter.format(numericValue)
+}
+
+const isApproximatelyOne = (value) => Math.abs(Number(value) - 1) < 0.01
+
 const LOCATIONS = ['Nuevo Amatenango', 'Zapotal', 'Naranjal', 'Belén', 'Lagunita']
 
 const CLIENT_TYPE_LABELS = {
@@ -256,6 +265,18 @@ export default function ClientsPage() {
         errors.modemModel = 'Describe el módem instalado en el cliente.'
       }
     }
+    const debtValue = Number(formState.debtMonths)
+    if (!Number.isFinite(debtValue) || debtValue < 0) {
+      errors.debtMonths = 'Los periodos pendientes no pueden ser negativos.'
+    }
+    const aheadValue = Number(formState.paidMonthsAhead)
+    if (!Number.isFinite(aheadValue) || aheadValue < 0) {
+      errors.paidMonthsAhead = 'Los periodos adelantados no pueden ser negativos.'
+    }
+    const monthlyFeeValue = Number(formState.monthlyFee)
+    if (!Number.isFinite(monthlyFeeValue) || monthlyFeeValue <= 0) {
+      errors.monthlyFee = 'Ingresa un monto mensual mayor a cero.'
+    }
     setFormErrors(errors)
     return Object.keys(errors).length === 0
   }
@@ -504,24 +525,52 @@ export default function ClientsPage() {
                           <dt>IPs de antena disponibles</dt>
                           <dd>{info.antennaIpsAvailable}</dd>
                         </div>
-                        <div className="flex justify-between gap-2">
-                          <dt>Próxima IP de antena</dt>
-                          <dd>{info.nextAntennaIp ?? 'Sin disponibles'}</dd>
-                        </div>
-                        <div className="flex justify-between gap-2">
-                          <dt>IPs de módem en uso</dt>
-                          <dd>{info.modemIpsInUse}</dd>
-                        </div>
-                        <div className="flex justify-between gap-2">
-                          <dt>IPs de módem disponibles</dt>
-                          <dd>{info.modemIpsAvailable}</dd>
-                        </div>
-                        <div className="flex justify-between gap-2">
-                          <dt>Próxima IP de módem</dt>
-                          <dd>{info.nextModemIp ?? 'Sin disponibles'}</dd>
-                        </div>
-                      </dl>
-                    </div>
+                      </td>
+                      <td className="px-3 py-2 text-slate-600">{client.location}</td>
+                      <td className="px-3 py-2 text-slate-600">Base {client.base}</td>
+                      <td className="px-3 py-2">
+                        <span
+                          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
+                            client.service === 'Activo'
+                              ? 'bg-emerald-50 text-emerald-700'
+                              : 'bg-red-50 text-red-700'
+                          }`}
+                        >
+                          {client.service}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-slate-600">{peso(client.monthlyFee ?? CLIENT_PRICE)}</td>
+                      <td className="px-3 py-2 text-slate-600">
+                        {(() => {
+                          const debtMonths = Number(client.debtMonths ?? 0)
+                          const hasDebt = debtMonths > 0.0001
+                          if (!hasDebt) return 'Sin deuda'
+
+                          const totalDue = debtMonths * (client.monthlyFee ?? CLIENT_PRICE)
+                          return (
+                            <div className="flex flex-col gap-1">
+                              <span>
+                                Debe {formatPeriods(debtMonths)}{' '}
+                                {isApproximatelyOne(debtMonths) ? 'periodo' : 'periodos'}
+                              </span>
+                              <span className="text-xs font-medium text-red-600">
+                                Total: {peso(totalDue)}
+                              </span>
+                            </div>
+                          )
+                        })()}
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="border border-slate-200 bg-white text-slate-700 hover:border-blue-200"
+                          onClick={() => toggleClientService(client.id)}
+                        >
+                          {client.service === 'Activo' ? 'Suspender' : 'Activar'}
+                        </Button>
+                      </td>
+                    </tr>
                   ))}
                 </div>
 
@@ -766,107 +815,56 @@ export default function ClientsPage() {
                 <option value={2}>Base 2</option>
               </select>
             </label>
-            {formState.type === 'token' && (
-              <>
-                <label className="grid gap-1 text-xs font-medium text-slate-600">
-                  Modelo de antena
-                  <select
-                    value={formState.antennaModel}
-                    onChange={(event) =>
-                      setFormState((prev) => ({ ...prev, antennaModel: event.target.value }))
-                    }
-                    className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-                  >
-                    {ANTENNA_MODELS.map((model) => (
-                      <option key={model} value={model}>
-                        {model}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="grid gap-1 text-xs font-medium text-slate-600">
-                  Módem / Router instalado
-                  <input
-                    value={formState.modemModel}
-                    onChange={(event) =>
-                      setFormState((prev) => ({ ...prev, modemModel: event.target.value }))
-                    }
-                    className={`rounded-md border px-3 py-2 text-sm ${
-                      formErrors.modemModel
-                        ? 'border-red-400 focus:border-red-400 focus:ring-red-200'
-                        : 'border-slate-300'
-                    }`}
-                    placeholder="Ej. Router TP-Link"
-                    required
-                  />
-                  {formErrors.modemModel && (
-                    <span className="text-xs text-red-600">{formErrors.modemModel}</span>
-                  )}
-                </label>
-              </>
-            )}
-            {formState.type === 'residential' && (
-              <>
-                <label className="grid gap-1 text-xs font-medium text-slate-600">
-                  Pago mensual
-                  <input
-                    type="number"
-                    min={1}
-                    step="0.01"
-                    value={formState.monthlyFee}
-                    onChange={(event) =>
-                      setFormState((prev) => ({ ...prev, monthlyFee: event.target.value }))
-                    }
-                    className={`rounded-md border px-3 py-2 text-sm ${
-                      formErrors.monthlyFee
-                        ? 'border-red-400 focus:border-red-400 focus:ring-red-200'
-                        : 'border-slate-300'
-                    }`}
-                  />
-                  {formErrors.monthlyFee && (
-                    <span className="text-xs text-red-600">{formErrors.monthlyFee}</span>
-                  )}
-                </label>
-                <label className="grid gap-1 text-xs font-medium text-slate-600">
-                  Periodos pendientes
-                  <input
-                    type="number"
-                    min={0}
-                    value={formState.debtMonths}
-                    onChange={(event) =>
-                      setFormState((prev) => ({ ...prev, debtMonths: event.target.value }))
-                    }
-                    className={`rounded-md border px-3 py-2 text-sm ${
-                      formErrors.debtMonths
-                        ? 'border-red-400 focus:border-red-400 focus:ring-red-200'
-                        : 'border-slate-300'
-                    }`}
-                  />
-                  {formErrors.debtMonths && (
-                    <span className="text-xs text-red-600">{formErrors.debtMonths}</span>
-                  )}
-                </label>
-                <label className="grid gap-1 text-xs font-medium text-slate-600">
-                  Periodos adelantados
-                  <input
-                    type="number"
-                    min={0}
-                    value={formState.paidMonthsAhead}
-                    onChange={(event) =>
-                      setFormState((prev) => ({ ...prev, paidMonthsAhead: event.target.value }))
-                    }
-                    className={`rounded-md border px-3 py-2 text-sm ${
-                      formErrors.paidMonthsAhead
-                        ? 'border-red-400 focus:border-red-400 focus:ring-red-200'
-                        : 'border-slate-300'
-                    }`}
-                  />
-                  {formErrors.paidMonthsAhead && (
-                    <span className="text-xs text-red-600">{formErrors.paidMonthsAhead}</span>
-                  )}
-                </label>
-              </>
-            )}
+            <label className="grid gap-1 text-xs font-medium text-slate-600">
+              Pago mensual
+              <input
+                type="number"
+                min={1}
+                step="0.01"
+                value={formState.monthlyFee}
+                onChange={(event) => setFormState((prev) => ({ ...prev, monthlyFee: event.target.value }))}
+                className={`rounded-md border px-3 py-2 text-sm ${
+                  formErrors.monthlyFee
+                    ? 'border-red-400 focus:border-red-400 focus:ring-red-200'
+                    : 'border-slate-300'
+                }`}
+              />
+              {formErrors.monthlyFee && <span className="text-xs text-red-600">{formErrors.monthlyFee}</span>}
+            </label>
+              <label className="grid gap-1 text-xs font-medium text-slate-600">
+                Periodos pendientes
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={formState.debtMonths}
+                  onChange={(event) => setFormState((prev) => ({ ...prev, debtMonths: event.target.value }))}
+                  className={`rounded-md border px-3 py-2 text-sm ${
+                    formErrors.debtMonths ? 'border-red-400 focus:border-red-400 focus:ring-red-200' : 'border-slate-300'
+                  }`}
+                />
+              {formErrors.debtMonths && (
+                <span className="text-xs text-red-600">{formErrors.debtMonths}</span>
+              )}
+            </label>
+              <label className="grid gap-1 text-xs font-medium text-slate-600">
+                Periodos adelantados
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={formState.paidMonthsAhead}
+                  onChange={(event) => setFormState((prev) => ({ ...prev, paidMonthsAhead: event.target.value }))}
+                  className={`rounded-md border px-3 py-2 text-sm ${
+                    formErrors.paidMonthsAhead
+                      ? 'border-red-400 focus:border-red-400 focus:ring-red-200'
+                    : 'border-slate-300'
+                }`}
+              />
+              {formErrors.paidMonthsAhead && (
+                <span className="text-xs text-red-600">{formErrors.paidMonthsAhead}</span>
+              )}
+            </label>
           </div>
 
           <div className="flex justify-end gap-2">

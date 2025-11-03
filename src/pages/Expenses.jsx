@@ -4,20 +4,20 @@ import Button from '../components/ui/Button.jsx'
 import { Card, CardContent } from '../components/ui/Card.jsx'
 import { useBackofficeStore } from '../store/useBackofficeStore.js'
 
-const defaultExpense = {
+const createDefaultExpense = () => ({
   date: today(),
   desc: '',
   cat: 'Operativo',
   amount: '',
   base: 1,
-}
+})
 
 export default function ExpensesPage() {
   const { expenses, addExpense } = useBackofficeStore((state) => ({
     expenses: state.expenses,
     addExpense: state.addExpense,
   }))
-  const [form, setForm] = useState(defaultExpense)
+  const [form, setForm] = useState(() => createDefaultExpense())
   const [formErrors, setFormErrors] = useState({})
   const [categoryFilter, setCategoryFilter] = useState('Todos')
 
@@ -52,7 +52,7 @@ export default function ExpensesPage() {
       amount: Number(form.amount),
       base: Number(form.base) || 0,
     })
-    setForm(defaultExpense)
+    setForm(createDefaultExpense())
     setFormErrors({})
   }
 
@@ -140,7 +140,7 @@ export default function ExpensesPage() {
               variant="ghost"
               className="border border-slate-200 bg-white text-slate-700 hover:border-blue-200"
               onClick={() => {
-                setForm(defaultExpense)
+                setForm(createDefaultExpense())
                 setFormErrors({})
               }}
             >
@@ -173,7 +173,7 @@ export default function ExpensesPage() {
                 onChange={(event) => setCategoryFilter(event.target.value)}
                 className="rounded-md border border-slate-300 px-3 py-2 text-sm"
               >
-                <option value="Todos">Todas</option>
+                <option value="Todos">Todos</option>
                 {categories.map((category) => (
                   <option key={category} value={category}>
                     {category}
