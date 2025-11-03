@@ -22,8 +22,28 @@ export const today = () => {
 export const formatDate = (value) => {
   if (!value) return ''
 
-  const candidate = value instanceof Date ? value : new Date(value)
-  if (Number.isNaN(candidate.getTime())) return ''
+  let candidate
+
+  if (value instanceof Date) {
+    candidate = value
+  } else if (typeof value === 'string') {
+    const isoDateMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+
+    if (isoDateMatch) {
+      const [, year, month, day] = isoDateMatch
+      candidate = new Date(
+        Number.parseInt(year, 10),
+        Number.parseInt(month, 10) - 1,
+        Number.parseInt(day, 10),
+      )
+    } else {
+      candidate = new Date(value)
+    }
+  } else {
+    candidate = new Date(value)
+  }
+
+  if (!candidate || Number.isNaN(candidate.getTime())) return ''
 
   return dateFormatter.format(candidate)
 }
