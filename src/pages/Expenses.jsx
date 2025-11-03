@@ -4,20 +4,20 @@ import Button from '../components/ui/Button.jsx'
 import { Card, CardContent } from '../components/ui/Card.jsx'
 import { useBackofficeStore } from '../store/useBackofficeStore.js'
 
-const defaultExpense = {
+const createDefaultExpense = () => ({
   date: today(),
   desc: '',
   cat: 'Operativo',
   amount: '',
   base: 1,
-}
+})
 
 export default function ExpensesPage() {
   const { expenses, addExpense } = useBackofficeStore((state) => ({
     expenses: state.expenses,
     addExpense: state.addExpense,
   }))
-  const [form, setForm] = useState(defaultExpense)
+  const [form, setForm] = useState(() => createDefaultExpense())
   const [formErrors, setFormErrors] = useState({})
   const [categoryFilter, setCategoryFilter] = useState('Todos')
 
@@ -52,88 +52,12 @@ export default function ExpensesPage() {
       amount: Number(form.amount),
       base: Number(form.base) || 0,
     })
-    setForm(defaultExpense)
+    setForm(createDefaultExpense())
     setFormErrors({})
   }
 
   return (
     <div className="space-y-8">
-      <section aria-labelledby="gastos" className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <h2 id="gastos" className="text-lg font-semibold text-slate-900">
-              Gastos operativos
-            </h2>
-            <p className="text-sm text-slate-500">
-              Mantén un registro claro de combustibles, materiales y costos adicionales por base.
-            </p>
-          </div>
-          <div className="text-sm font-medium text-slate-600">Total filtrado: {peso(totalExpenses)}</div>
-        </div>
-
-        <Card>
-          <CardContent className="space-y-4">
-            <label className="grid w-full gap-1 text-xs font-medium text-slate-600 sm:max-w-xs">
-              Categoría
-              <select
-                value={categoryFilter}
-                onChange={(event) => setCategoryFilter(event.target.value)}
-                className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-              >
-                <option value="Todos">Todas</option>
-                {categories.map((category) => (
-                  <option key={category} value={category}>
-                    {category}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
-                <thead className="bg-slate-50 text-slate-600">
-                  <tr>
-                    <th scope="col" className="px-3 py-2 font-medium">
-                      Fecha
-                    </th>
-                    <th scope="col" className="px-3 py-2 font-medium">
-                      Descripción
-                    </th>
-                    <th scope="col" className="px-3 py-2 font-medium">
-                      Categoría
-                    </th>
-                    <th scope="col" className="px-3 py-2 font-medium">
-                      Base
-                    </th>
-                    <th scope="col" className="px-3 py-2 font-medium">
-                      Monto
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {filteredExpenses.map((expense) => (
-                    <tr key={expense.id}>
-                      <td className="px-3 py-2 text-slate-600">{expense.date}</td>
-                      <td className="px-3 py-2 text-slate-700">{expense.desc}</td>
-                      <td className="px-3 py-2 text-slate-600">{expense.cat}</td>
-                      <td className="px-3 py-2 text-slate-600">Base {expense.base}</td>
-                      <td className="px-3 py-2 text-slate-600">{peso(expense.amount)}</td>
-                    </tr>
-                  ))}
-                  {filteredExpenses.length === 0 && (
-                    <tr>
-                      <td colSpan={5} className="px-3 py-6 text-center text-sm text-slate-500">
-                        No hay gastos registrados para la categoría seleccionada.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
-      </section>
-
       <section aria-labelledby="nuevo-gasto" className="space-y-4">
         <div>
           <h2 id="nuevo-gasto" className="text-lg font-semibold text-slate-900">
@@ -216,7 +140,7 @@ export default function ExpensesPage() {
               variant="ghost"
               className="border border-slate-200 bg-white text-slate-700 hover:border-blue-200"
               onClick={() => {
-                setForm(defaultExpense)
+                setForm(createDefaultExpense())
                 setFormErrors({})
               }}
             >
@@ -225,6 +149,82 @@ export default function ExpensesPage() {
             <Button type="submit">Registrar gasto</Button>
           </div>
         </form>
+      </section>
+
+      <section aria-labelledby="gastos" className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h2 id="gastos" className="text-lg font-semibold text-slate-900">
+              Gastos operativos
+            </h2>
+            <p className="text-sm text-slate-500">
+              Mantén un registro claro de combustibles, materiales y costos adicionales por base.
+            </p>
+          </div>
+          <div className="text-sm font-medium text-slate-600">Total filtrado: {peso(totalExpenses)}</div>
+        </div>
+
+        <Card>
+          <CardContent className="space-y-4">
+            <label className="grid w-full gap-1 text-xs font-medium text-slate-600 sm:max-w-xs">
+              Categoría
+              <select
+                value={categoryFilter}
+                onChange={(event) => setCategoryFilter(event.target.value)}
+                className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+              >
+                <option value="Todos">Todos</option>
+                {categories.map((category) => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
+                <thead className="bg-slate-50 text-slate-600">
+                  <tr>
+                    <th scope="col" className="px-3 py-2 font-medium">
+                      Fecha
+                    </th>
+                    <th scope="col" className="px-3 py-2 font-medium">
+                      Descripción
+                    </th>
+                    <th scope="col" className="px-3 py-2 font-medium">
+                      Categoría
+                    </th>
+                    <th scope="col" className="px-3 py-2 font-medium">
+                      Base
+                    </th>
+                    <th scope="col" className="px-3 py-2 font-medium">
+                      Monto
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredExpenses.map((expense) => (
+                    <tr key={expense.id}>
+                      <td className="px-3 py-2 text-slate-600">{expense.date}</td>
+                      <td className="px-3 py-2 text-slate-700">{expense.desc}</td>
+                      <td className="px-3 py-2 text-slate-600">{expense.cat}</td>
+                      <td className="px-3 py-2 text-slate-600">Base {expense.base}</td>
+                      <td className="px-3 py-2 text-slate-600">{peso(expense.amount)}</td>
+                    </tr>
+                  ))}
+                  {filteredExpenses.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="px-3 py-6 text-center text-sm text-slate-500">
+                        No hay gastos registrados para la categoría seleccionada.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
       </section>
     </div>
   )

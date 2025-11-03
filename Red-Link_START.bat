@@ -2,6 +2,7 @@
 setlocal enabledelayedexpansion
 title Red-Link - Sistema ISP (DEV)
 cd /d "%~dp0"
+set "PROJECT_DIR=%cd%"
 
 echo ==========================================
 echo   Red-Link — Iniciando servidor local
@@ -14,7 +15,7 @@ if errorlevel 1 (
 )
 
 if not exist package.json (
-  echo [ERROR] No se encontro package.json en %cd%
+  echo [ERROR] No se encontro package.json en "!PROJECT_DIR!"
   goto :error
 )
 

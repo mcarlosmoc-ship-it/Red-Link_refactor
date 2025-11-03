@@ -1,8 +1,19 @@
 import React from 'react'
 import { Card, CardContent } from '../ui/Card.jsx'
 
-export default function StatCard({ title, value, icon, trend, className = '', ...cardProps }) {
-  const clickable = typeof cardProps.onClick === 'function'
+export default function StatCard({
+  title,
+  value,
+  icon,
+  trend,
+  className = '',
+  valueClassName = '',
+  titleClassName = '',
+  trendClassName: trendClassNameProp = '',
+  ...cardProps
+}) {
+  const { onClick, onKeyDown, role, tabIndex, ...restCardProps } = cardProps
+  const clickable = typeof onClick === 'function'
   const IconComponent = icon
 
   const renderIcon = () => {
@@ -14,26 +25,47 @@ export default function StatCard({ title, value, icon, trend, className = '', ..
     return null
   }
 
-  const trendClass = trend && typeof trend === 'string'
-    ? trend.trim().startsWith('-')
-      ? 'text-red-600'
-      : trend.trim().startsWith('+')
-        ? 'text-emerald-600'
-        : 'text-gray-500'
-    : 'text-gray-500'
+  const trendColorClass =
+    trend && typeof trend === 'string'
+      ? trend.trim().startsWith('-')
+        ? 'text-red-600'
+        : trend.trim().startsWith('+')
+          ? 'text-emerald-600'
+          : 'text-gray-500'
+      : 'text-gray-500'
+
+  const combinedTrendClassName = `${trendColorClass} ${trendClassNameProp}`.trim()
+
+  const handleKeyDown = (event) => {
+    if (!clickable) {
+      onKeyDown?.(event)
+      return
+    }
+
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      onClick(event)
+    }
+
+    onKeyDown?.(event)
+  }
 
   return (
     <Card
-      {...cardProps}
+      {...restCardProps}
+      onClick={onClick}
+      onKeyDown={clickable ? handleKeyDown : onKeyDown}
+      role={clickable ? role ?? 'button' : role}
+      tabIndex={clickable ? tabIndex ?? 0 : tabIndex}
       className={`transition-shadow duration-200 ${clickable ? 'cursor-pointer hover:shadow-lg' : ''} ${className}`.trim()}
     >
       <CardContent className="p-5">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-sm font-medium text-gray-500">{title}</p>
-            <p className="mt-2 text-3xl font-semibold text-gray-900">{value}</p>
+            <p className={`text-sm font-medium text-gray-500 ${titleClassName}`.trim()}>{title}</p>
+            <p className={`mt-2 text-3xl font-semibold text-gray-900 ${valueClassName}`.trim()}>{value}</p>
             {trend && (
-              <p className={`mt-2 text-sm font-medium ${trendClass}`}>
+              <p className={`mt-2 text-sm font-medium ${combinedTrendClassName}`}>
                 {trend}
               </p>
             )}
