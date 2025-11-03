@@ -1,3 +1,5 @@
+const PERIOD_KEY_PATTERN = /^\d{4}-\d{2}$/
+
 const currencyFormatter = new Intl.NumberFormat('es-MX', {
   style: 'currency',
   currency: 'MXN',
@@ -71,6 +73,15 @@ export const diffPeriods = (fromPeriod, toPeriod) => {
 export const periodToIndex = (periodKey) => {
   const date = parsePeriodKey(periodKey)
   return date.getFullYear() * 12 + date.getMonth()
+}
+
+const isValidPeriodKey = (value) => {
+  if (typeof value !== 'string' || !PERIOD_KEY_PATTERN.test(value)) {
+    return false
+  }
+
+  const month = Number.parseInt(value.slice(5), 10)
+  return month >= 1 && month <= 12
 }
 
 const addMonthCandidate = (container, year, month) => {
@@ -163,12 +174,31 @@ export const formatPeriodLabel = (periodKey) => {
 }
 
 export const periodRange = (startPeriod, endPeriod) => {
+  if (!isValidPeriodKey(startPeriod) || !isValidPeriodKey(endPeriod)) {
+    return []
+  }
+
+  if (diffPeriods(startPeriod, endPeriod) < 0) {
+    return []
+  }
+
   const range = []
   let current = startPeriod
 
-  while (diffPeriods(current, endPeriod) >= 0) {
+  while (true) {
     range.push(current)
-    current = addMonthsToPeriod(current, 1)
+
+    if (current === endPeriod) {
+      break
+    }
+
+    const next = addMonthsToPeriod(current, 1)
+
+    if (next === current) {
+      break
+    }
+
+    current = next
   }
 
   return range
