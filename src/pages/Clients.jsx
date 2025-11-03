@@ -5,6 +5,18 @@ import { useBackofficeStore } from '../store/useBackofficeStore.js'
 
 const LOCATIONS = ['Nuevo Amatenango', 'Zapotal', 'Naranjal', 'Belén', 'Lagunita']
 
+const IP_RANGES = {
+  1: { prefix: '192.168.3.', start: 1, end: 254 },
+  2: { prefix: '192.168.200.', start: 1, end: 254 },
+}
+
+const IP_OPTIONS = Object.fromEntries(
+  Object.entries(IP_RANGES).map(([base, { prefix, start, end }]) => [
+    base,
+    Array.from({ length: end - start + 1 }, (_, index) => `${prefix}${start + index}`),
+  ]),
+)
+
 const defaultForm = {
   name: '',
   location: LOCATIONS[0],
@@ -33,6 +45,27 @@ export default function ClientsPage() {
     return Array.from(unique)
   }, [clients])
 
+  const assignedIpsByBase = useMemo(() => {
+    const result = {}
+    clients.forEach(({ base, ip }) => {
+      const key = String(base)
+      if (!result[key]) result[key] = new Set()
+      result[key].add(ip)
+    })
+    return result
+  }, [clients])
+
+  const availableIpsByBase = useMemo(() => {
+    return Object.fromEntries(
+      Object.entries(IP_OPTIONS).map(([base, options]) => {
+        const used = assignedIpsByBase[base] ?? new Set()
+        return [base, options.filter((ip) => !used.has(ip))]
+      }),
+    )
+  }, [assignedIpsByBase])
+
+  const availableIpsForSelectedBase = availableIpsByBase[String(formState.base)] ?? []
+
   const filteredClients = useMemo(() => {
     const term = searchTerm.trim().toLowerCase()
     return clients.filter((client) => {
@@ -54,7 +87,25 @@ export default function ClientsPage() {
   const validateForm = () => {
     const errors = {}
     if (!formState.name.trim()) errors.name = 'El nombre es obligatorio.'
-    if (!formState.ip.trim()) errors.ip = 'Ingresa la dirección IP asignada.'
+    const trimmedIp = formState.ip.trim()
+    if (!trimmedIp) {
+      errors.ip = 'Ingresa la dirección IP asignada.'
+    } else {
+      const baseRange = IP_RANGES[formState.base]
+      if (baseRange) {
+        if (!trimmedIp.startsWith(baseRange.prefix)) {
+          errors.ip = `La IP debe iniciar con ${baseRange.prefix}`
+        } else {
+          const suffix = Number(trimmedIp.split('.').pop())
+          const isValidSuffix = Number.isInteger(suffix) && suffix >= baseRange.start && suffix <= baseRange.end
+          if (!isValidSuffix) {
+            errors.ip = `La IP debe estar entre ${baseRange.prefix}${baseRange.start} y ${baseRange.prefix}${baseRange.end}.`
+          } else if (!availableIpsForSelectedBase.includes(trimmedIp)) {
+            errors.ip = 'La IP seleccionada ya está en uso.'
+          }
+        }
+      }
+    }
     if (!Number.isInteger(Number(formState.debtMonths)) || Number(formState.debtMonths) < 0) {
       errors.debtMonths = 'Los periodos pendientes no pueden ser negativos.'
     }
@@ -276,8 +327,19 @@ export default function ClientsPage() {
                   formErrors.ip ? 'border-red-400 focus:border-red-400 focus:ring-red-200' : 'border-slate-300'
                 }`}
                 placeholder="192.168.0.1"
+                list="ip-options"
                 required
               />
+              <datalist id="ip-options">
+                {availableIpsForSelectedBase.map((ip) => (
+                  <option key={ip} value={ip} />
+                ))}
+              </datalist>
+              <span className="text-[11px] text-slate-500">
+                {availableIpsForSelectedBase.length > 0
+                  ? 'Selecciona una IP disponible del listado.'
+                  : 'No hay direcciones IP disponibles en esta base.'}
+              </span>
               {formErrors.ip && <span className="text-xs text-red-600">{formErrors.ip}</span>}
             </label>
             <label className="grid gap-1 text-xs font-medium text-slate-600">
@@ -298,7 +360,15 @@ export default function ClientsPage() {
               Base
               <select
                 value={formState.base}
-                onChange={(event) => setFormState((prev) => ({ ...prev, base: Number(event.target.value) }))}
+                onChange={(event) => {
+                  const newBase = Number(event.target.value)
+                  setFormState((prev) => {
+                    const baseKey = String(newBase)
+                    const validOptions = availableIpsByBase[baseKey] ?? []
+                    const nextIp = validOptions.includes(prev.ip) ? prev.ip : ''
+                    return { ...prev, base: newBase, ip: nextIp }
+                  })
+                }}
                 className="rounded-md border border-slate-300 px-3 py-2 text-sm"
               >
                 <option value={1}>Base 1</option>
