@@ -76,12 +76,14 @@ class Client(Base):
         nullable=False,
     )
 
+    base = relationship("BaseStation", back_populates="clients")
     payments = relationship(
         "Payment",
         back_populates="client",
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    inventory_items = relationship("InventoryItem", back_populates="client")
 
 
 Index("clients_full_name_idx", Client.full_name)

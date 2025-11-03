@@ -61,6 +61,7 @@ class Payment(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     client = relationship("Client", back_populates="payments")
+    billing_period = relationship("BillingPeriod", back_populates="payments")
 
 
 Index("payments_client_idx", Payment.client_id)

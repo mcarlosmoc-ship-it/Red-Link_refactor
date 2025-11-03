@@ -20,7 +20,7 @@ def list_clients(db: Session = Depends(get_db)) -> List[schemas.ClientRead]:
 
 
 @router.get("/{client_id}", response_model=schemas.ClientRead)
-def get_client(client_id: int, db: Session = Depends(get_db)) -> schemas.ClientRead:
+def get_client(client_id: str, db: Session = Depends(get_db)) -> schemas.ClientRead:
     """Retrieve a single client by its identifier."""
     client = db.query(models.Client).filter(models.Client.id == client_id).first()
     if client is None:
@@ -42,7 +42,7 @@ def create_client(
 
 
 @router.delete("/{client_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_client(client_id: int, db: Session = Depends(get_db)) -> None:
+def delete_client(client_id: str, db: Session = Depends(get_db)) -> None:
     """Delete a client if it exists."""
     client = db.query(models.Client).filter(models.Client.id == client_id).first()
     if client is None:
@@ -53,8 +53,8 @@ def delete_client(client_id: int, db: Session = Depends(get_db)) -> None:
 
 @router.put("/{client_id}", response_model=schemas.ClientRead)
 def update_client(
-    client_id: int,
-    client_in: schemas.ClientCreate,
+    client_id: str,
+    client_in: schemas.ClientUpdate,
     db: Session = Depends(get_db),
 ) -> schemas.ClientRead:
     """Update a client's information."""
@@ -62,7 +62,8 @@ def update_client(
     if client is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client not found")
 
-    for key, value in client_in.dict().items():
+    update_data = client_in.dict(exclude_unset=True)
+    for key, value in update_data.items():
         setattr(client, key, value)
 
     db.commit()
