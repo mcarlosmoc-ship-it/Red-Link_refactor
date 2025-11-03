@@ -21,6 +21,11 @@ const createInitialPeriods = () => {
 
 export const CLIENT_PRICE = 300
 
+export const INVENTORY_IP_RANGES = {
+  1: { label: 'Base 1', prefix: '192.168.4.', start: 1, end: 254 },
+  2: { label: 'Base 2', prefix: '192.168.91.', start: 1, end: 254 },
+}
+
 const fallbackStorage = {
   getItem: () => null,
   setItem: () => {},
@@ -28,6 +33,75 @@ const fallbackStorage = {
 }
 
 const createId = (prefix) => `${prefix}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`
+
+const INVENTORY_STATUSES = ['assigned', 'available', 'maintenance']
+
+const normalizeInventoryStatus = (status, client) => {
+  const normalized = typeof status === 'string' ? status.toLowerCase().trim() : ''
+  if (INVENTORY_STATUSES.includes(normalized)) {
+    return normalized
+  }
+  return client ? 'assigned' : 'available'
+}
+
+const createInventoryItem = (item) => {
+  const base = Number.isFinite(Number(item.base)) ? Number(item.base) : 1
+  const ip = item.ip?.trim() ?? ''
+
+  return {
+    id: createId('EQP'),
+    brand: item.brand?.trim() || 'Equipo',
+    model: item.model?.trim() || '',
+    serial: item.serial?.trim() || '',
+    base,
+    ip: ip || null,
+    client: item.client?.trim() || null,
+    location: item.location?.trim() || 'Almacén',
+    status: normalizeInventoryStatus(item.status, item.client),
+    notes: item.notes?.trim() || '',
+    installedAt: item.installedAt ?? null,
+  }
+}
+
+const sanitizeInventoryUpdate = (current, changes) => {
+  const nextClient =
+    changes.client !== undefined ? changes.client?.trim() || null : current.client
+  const nextBase =
+    changes.base !== undefined && Number.isFinite(Number(changes.base))
+      ? Number(changes.base)
+      : current.base
+  const nextIp = changes.ip !== undefined ? changes.ip?.trim() || null : current.ip
+  const nextLocation =
+    changes.location !== undefined
+      ? changes.location?.trim() || 'Almacén'
+      : current.location
+  const nextNotes = changes.notes !== undefined ? changes.notes?.trim() || '' : current.notes
+  const nextStatus =
+    changes.status !== undefined
+      ? normalizeInventoryStatus(changes.status, nextClient)
+      : normalizeInventoryStatus(current.status, nextClient)
+  const nextBrand =
+    changes.brand !== undefined ? changes.brand?.trim() || 'Equipo' : current.brand
+  const nextModel = changes.model !== undefined ? changes.model?.trim() || '' : current.model
+  const nextSerial =
+    changes.serial !== undefined ? changes.serial?.trim() || '' : current.serial
+  const nextInstalledAt =
+    changes.installedAt !== undefined ? changes.installedAt : current.installedAt
+
+  return {
+    ...current,
+    brand: nextBrand,
+    model: nextModel,
+    serial: nextSerial,
+    base: nextBase,
+    ip: nextIp,
+    client: nextClient,
+    location: nextLocation,
+    status: nextStatus,
+    notes: nextNotes,
+    installedAt: nextInstalledAt,
+  }
+}
 
 const createInitialState = () => ({
   clients: [
@@ -162,6 +236,51 @@ const createInitialState = () => ({
   baseCosts: { base1: 2900, base2: 3750 },
   voucherPrices: { h1: 5, h3: 8, d1: 15, w1: 45, d15: 70, m1: 140 },
   periods: createInitialPeriods(),
+  inventory: [
+    createInventoryItem({
+      brand: 'Ubiquiti',
+      model: 'LiteBeam M5',
+      ip: '192.168.91.10',
+      base: 2,
+      client: 'Lexis',
+      location: 'Naranjal',
+      notes: 'Antena pública en servicio.',
+    }),
+    createInventoryItem({
+      brand: 'Ubiquiti',
+      model: 'LiteBeam M5',
+      ip: '192.168.91.11',
+      base: 2,
+      client: 'Alexis',
+      location: 'Naranjal',
+      notes: 'Con enlace dedicado en Base 2.',
+    }),
+    createInventoryItem({
+      brand: 'Ubiquiti',
+      model: 'LiteBeam M5',
+      ip: '192.168.4.12',
+      base: 1,
+      client: 'Punto comunitario escuela',
+      location: 'Nuevo Amatenango',
+      notes: 'Cobertura principal para la escuela.',
+    }),
+    createInventoryItem({
+      brand: 'TP-Link',
+      model: 'CPE610',
+      base: 1,
+      status: 'maintenance',
+      location: 'Taller',
+      notes: 'En revisión y ajuste de alineación.',
+    }),
+    createInventoryItem({
+      brand: 'MikroTik',
+      model: 'LHG 5',
+      base: 2,
+      status: 'available',
+      location: 'Almacén',
+      notes: 'Disponible para próxima instalación.',
+    }),
+  ],
 })
 
 const computeDeliveryValue = (qty, prices) =>
@@ -494,6 +613,20 @@ export const useBackofficeStore = create(
         set((state) => ({
           voucherPrices: { ...state.voucherPrices, ...partial },
         })),
+      addInventoryItem: (payload) =>
+        set((state) => ({
+          inventory: [...state.inventory, createInventoryItem(payload)],
+        })),
+      updateInventoryItem: ({ id, ...changes }) =>
+        set((state) => ({
+          inventory: state.inventory.map((item) =>
+            item.id === id ? sanitizeInventoryUpdate(item, changes) : item,
+          ),
+        })),
+      removeInventoryItem: (itemId) =>
+        set((state) => ({
+          inventory: state.inventory.filter((item) => item.id !== itemId),
+        })),
       resetDemoData: () => set(() => createInitialState()),
     }),
     {
@@ -501,18 +634,27 @@ export const useBackofficeStore = create(
       storage: createJSONStorage(() =>
         typeof window !== 'undefined' ? window.localStorage : fallbackStorage,
       ),
-      version: 2,
+      version: 3,
       migrate: (persistedState, version) => {
         if (!persistedState) return persistedState
 
+        let nextState = { ...persistedState }
+
         if (version < 2) {
-          return {
-            ...persistedState,
+          nextState = {
+            ...nextState,
             periods: createInitialPeriods(),
           }
         }
 
-        return persistedState
+        if (version < 3 || !nextState.inventory) {
+          nextState = {
+            ...nextState,
+            inventory: createInitialState().inventory,
+          }
+        }
+
+        return nextState
       },
       partialize: (state) => ({
         clients: state.clients,
@@ -522,6 +664,7 @@ export const useBackofficeStore = create(
         baseCosts: state.baseCosts,
         voucherPrices: state.voucherPrices,
         periods: state.periods,
+        inventory: state.inventory,
       }),
     },
   ),
