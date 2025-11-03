@@ -5,6 +5,9 @@ import StatCard from '../components/dashboard/StatCard.jsx'
 import Button from '../components/ui/Button.jsx'
 import { peso, formatPeriodLabel, diffPeriods } from '../utils/formatters.js'
 import { useDashboardMetrics } from '../hooks/useDashboardMetrics.js'
+import { useClients } from '../hooks/useClients.js'
+import { useDashboardData } from '../hooks/useDashboardData.js'
+import { useToast } from '../hooks/useToast.js'
 import { CLIENT_PRICE, useBackofficeStore } from '../store/useBackofficeStore.js'
 
 const periodsFormatter = new Intl.NumberFormat('es-MX', { maximumFractionDigits: 2 })
@@ -34,33 +37,85 @@ const createEmptyPaymentForm = () => ({
 export default function DashboardPage() {
   const [statusFilter, setStatusFilter] = useState('pending')
   const [searchTerm, setSearchTerm] = useState('')
-  const [feedback, setFeedback] = useState(null)
   const [paymentForm, setPaymentForm] = useState(createEmptyPaymentForm)
+  const [isRetryingSync, setIsRetryingSync] = useState(false)
 
-  const { metrics, filteredClients } = useDashboardMetrics({ statusFilter, searchTerm })
+  const { showToast } = useToast()
+
   const {
-    clients,
     recordPayment,
     selectedPeriod,
     currentPeriod,
     historyStart,
     goToPreviousPeriod,
     goToNextPeriod,
+    paymentsStatus,
   } = useBackofficeStore((state) => ({
-    clients: state.clients,
     recordPayment: state.recordPayment,
     selectedPeriod: state.periods?.selected ?? state.periods?.current,
     currentPeriod: state.periods?.current ?? state.periods?.selected,
     historyStart: state.periods?.historyStart ?? state.periods?.current,
     goToPreviousPeriod: state.goToPreviousPeriod,
     goToNextPeriod: state.goToNextPeriod,
+    paymentsStatus: state.status.payments,
   }))
+
+  const {
+    clients,
+    status: clientsStatus,
+    reload: reloadClients,
+  } = useClients()
+
+  const {
+    status: dashboardStatus,
+    reloadMetrics,
+    reloadResellers,
+    reloadExpenses,
+  } = useDashboardData({ periodKey: selectedPeriod })
+
+  const { metrics, filteredClients } = useDashboardMetrics({ statusFilter, searchTerm })
 
   const periodLabel = formatPeriodLabel(selectedPeriod ?? currentPeriod)
   const currentPeriodLabel = formatPeriodLabel(currentPeriod ?? selectedPeriod)
   const canGoPrevious = diffPeriods(historyStart ?? selectedPeriod, selectedPeriod ?? currentPeriod) > 0
   const canGoNext = diffPeriods(selectedPeriod ?? currentPeriod, currentPeriod ?? selectedPeriod) > 0
   const isCurrentPeriod = (selectedPeriod ?? currentPeriod) === (currentPeriod ?? selectedPeriod)
+  const isSubmittingPayment = Boolean(paymentsStatus?.isMutating)
+  const isDataLoading =
+    Boolean(clientsStatus?.isLoading) ||
+    Boolean(dashboardStatus.metrics?.isLoading) ||
+    Boolean(dashboardStatus.resellers?.isLoading) ||
+    Boolean(dashboardStatus.expenses?.isLoading)
+  const hasDataError =
+    Boolean(clientsStatus?.error) ||
+    Boolean(dashboardStatus.metrics?.error) ||
+    Boolean(dashboardStatus.resellers?.error) ||
+    Boolean(dashboardStatus.expenses?.error)
+
+  const handleRetrySync = async () => {
+    setIsRetryingSync(true)
+    try {
+      await Promise.all([
+        reloadClients(),
+        reloadMetrics(),
+        reloadResellers(),
+        reloadExpenses(),
+      ])
+      showToast({
+        type: 'success',
+        title: 'Datos sincronizados',
+        description: 'La información se recargó correctamente.',
+      })
+    } catch (error) {
+      showToast({
+        type: 'error',
+        title: 'No se pudieron recargar los datos',
+        description: error?.message ?? 'Intenta nuevamente.',
+      })
+    } finally {
+      setIsRetryingSync(false)
+    }
+  }
 
   useEffect(() => {
     if (!isCurrentPeriod) {
@@ -101,11 +156,19 @@ export default function DashboardPage() {
   const handleSubmitPayment = async (event) => {
     event.preventDefault()
     if (!paymentForm.clientId) {
-      setFeedback({ type: 'error', message: 'Selecciona un cliente para registrar el pago.' })
+      showToast({
+        type: 'error',
+        title: 'Selecciona un cliente',
+        description: 'Elige un cliente para registrar el pago.',
+      })
       return
     }
     if (!activeClient) {
-      setFeedback({ type: 'error', message: 'No se encontró información del cliente seleccionado.' })
+      showToast({
+        type: 'error',
+        title: 'Cliente no encontrado',
+        description: 'No se encontró información del cliente seleccionado.',
+      })
       return
     }
 
@@ -118,11 +181,19 @@ export default function DashboardPage() {
 
     if (isAmountMode) {
       if (!Number.isFinite(amountValue) || amountValue <= 0) {
-        setFeedback({ type: 'error', message: 'Ingresa un monto mayor a cero.' })
+        showToast({
+          type: 'error',
+          title: 'Monto inválido',
+          description: 'Ingresa un monto mayor a cero.',
+        })
         return
       }
     } else if (!Number.isFinite(monthsValue) || monthsValue <= 0) {
-      setFeedback({ type: 'error', message: 'Ingresa un número de periodos mayor a cero.' })
+      showToast({
+        type: 'error',
+        title: 'Periodo inválido',
+        description: 'Ingresa un número de periodos mayor a cero.',
+      })
       return
     }
 
@@ -140,19 +211,22 @@ export default function DashboardPage() {
         amount: amountToRegister,
         method: paymentForm.method,
         note: paymentForm.note,
+        periodKey: selectedPeriod,
       })
 
-      setFeedback({
+      showToast({
         type: 'success',
-        message: `Se registró el pago de ${peso(amountToRegister)} (${formatPeriods(monthsToRegister)} ${
+        title: 'Pago registrado',
+        description: `Se registró el pago de ${peso(amountToRegister)} (${formatPeriods(monthsToRegister)} ${
           isApproximatelyOne(monthsToRegister) ? 'periodo' : 'periodos'
         }) para ${activeClient?.name ?? 'el cliente'}.`,
       })
       setPaymentForm(createEmptyPaymentForm())
     } catch (error) {
-      setFeedback({
+      showToast({
         type: 'error',
-        message: error?.message ?? 'No se pudo registrar el pago. Intenta nuevamente.',
+        title: 'No se pudo registrar el pago',
+        description: error?.message ?? 'Intenta nuevamente.',
       })
     }
   }
@@ -239,6 +313,29 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-8">
+      {isDataLoading && (
+        <div
+          role="status"
+          className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700"
+        >
+          Sincronizando información del periodo {periodLabel}…
+        </div>
+      )}
+      {hasDataError && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
+          <span>Ocurrió un problema al sincronizar los datos. Intenta recargar.</span>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="border border-red-200 bg-white text-red-700 hover:border-red-300"
+            onClick={handleRetrySync}
+            disabled={isRetryingSync}
+          >
+            {isRetryingSync ? 'Reintentando…' : 'Reintentar'}
+          </Button>
+        </div>
+      )}
       <section aria-labelledby="resumen" className="space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="space-y-3">
@@ -368,19 +465,6 @@ export default function DashboardPage() {
             </p>
           </div>
 
-          {feedback && (
-            <div
-              role="alert"
-              className={`rounded-md border px-3 py-2 text-sm ${
-                feedback.type === 'error'
-                  ? 'border-red-200 bg-red-50 text-red-700'
-                  : 'border-emerald-200 bg-emerald-50 text-emerald-700'
-              }`}
-            >
-              {feedback.message}
-            </div>
-          )}
-
           {!isCurrentPeriod && (
             <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
               Estás consultando el periodo de {periodLabel}. Para registrar pagos, vuelve al periodo actual
@@ -448,8 +532,8 @@ export default function DashboardPage() {
                       <Button
                         type="button"
                         size="sm"
-                        disabled={!isCurrentPeriod}
-                        className="disabled:opacity-50"
+                        disabled={!isCurrentPeriod || isSubmittingPayment}
+                        className="disabled:cursor-not-allowed disabled:opacity-50"
                         onClick={() => {
                           if (!isCurrentPeriod) return
 
@@ -596,7 +680,13 @@ export default function DashboardPage() {
                 >
                   Cancelar
                 </Button>
-                <Button type="submit">Confirmar pago</Button>
+                <Button
+                  type="submit"
+                  disabled={isSubmittingPayment}
+                  className="disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isSubmittingPayment ? 'Registrando…' : 'Confirmar pago'}
+                </Button>
               </div>
             </form>
           )}
