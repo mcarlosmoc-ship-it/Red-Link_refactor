@@ -525,52 +525,24 @@ export default function ClientsPage() {
                           <dt>IPs de antena disponibles</dt>
                           <dd>{info.antennaIpsAvailable}</dd>
                         </div>
-                      </td>
-                      <td className="px-3 py-2 text-slate-600">{client.location}</td>
-                      <td className="px-3 py-2 text-slate-600">Base {client.base}</td>
-                      <td className="px-3 py-2">
-                        <span
-                          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
-                            client.service === 'Activo'
-                              ? 'bg-emerald-50 text-emerald-700'
-                              : 'bg-red-50 text-red-700'
-                          }`}
-                        >
-                          {client.service}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2 text-slate-600">{peso(client.monthlyFee ?? CLIENT_PRICE)}</td>
-                      <td className="px-3 py-2 text-slate-600">
-                        {(() => {
-                          const debtMonths = Number(client.debtMonths ?? 0)
-                          const hasDebt = debtMonths > 0.0001
-                          if (!hasDebt) return 'Sin deuda'
-
-                          const totalDue = debtMonths * (client.monthlyFee ?? CLIENT_PRICE)
-                          return (
-                            <div className="flex flex-col gap-1">
-                              <span>
-                                Debe {formatPeriods(debtMonths)}{' '}
-                                {isApproximatelyOne(debtMonths) ? 'periodo' : 'periodos'}
-                              </span>
-                              <span className="text-xs font-medium text-red-600">
-                                Total: {peso(totalDue)}
-                              </span>
-                            </div>
-                          )
-                        })()}
-                      </td>
-                      <td className="px-3 py-2 text-right">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="border border-slate-200 bg-white text-slate-700 hover:border-blue-200"
-                          onClick={() => toggleClientService(client.id)}
-                        >
-                          {client.service === 'Activo' ? 'Suspender' : 'Activar'}
-                        </Button>
-                      </td>
-                    </tr>
+                        <div className="flex justify-between gap-2">
+                          <dt>Próxima IP de antena</dt>
+                          <dd>{info.nextAntennaIp ?? 'N/A'}</dd>
+                        </div>
+                        <div className="flex justify-between gap-2">
+                          <dt>IPs de módem en uso</dt>
+                          <dd>{info.modemIpsInUse}</dd>
+                        </div>
+                        <div className="flex justify-between gap-2">
+                          <dt>IPs de módem disponibles</dt>
+                          <dd>{info.modemIpsAvailable}</dd>
+                        </div>
+                        <div className="flex justify-between gap-2">
+                          <dt>Próxima IP de módem</dt>
+                          <dd>{info.nextModemIp ?? 'N/A'}</dd>
+                        </div>
+                      </dl>
+                    </div>
                   ))}
                 </div>
 
@@ -860,10 +832,10 @@ export default function ClientsPage() {
                       ? 'border-red-400 focus:border-red-400 focus:ring-red-200'
                     : 'border-slate-300'
                 }`}
-              />
-              {formErrors.paidMonthsAhead && (
-                <span className="text-xs text-red-600">{formErrors.paidMonthsAhead}</span>
-              )}
+                />
+                {formErrors.paidMonthsAhead && (
+                  <span className="text-xs text-red-600">{formErrors.paidMonthsAhead}</span>
+                )}
             </label>
           </div>
 
