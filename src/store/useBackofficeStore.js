@@ -215,7 +215,7 @@ export const useBackofficeStore = create(
                 },
           ),
         })),
-      settleResellerDelivery: ({ resellerId, deliveryId, paidPercent, received }) =>
+      settleResellerDelivery: ({ resellerId, deliveryId, paidPercent, received, leftovers = {} }) =>
         set((state) => {
           const prices = state.voucherPrices
           let settlementData = null
@@ -226,19 +226,51 @@ export const useBackofficeStore = create(
             const deliveries = reseller.deliveries.map((delivery) => {
               if (delivery.id !== deliveryId) return delivery
 
-              const total = computeDeliveryValue(delivery.qty, prices)
-              const resellerGain = Math.round((total * (paidPercent ?? 0)) / 100)
-              const myGain = total - resellerGain
+              const sanitizedLeftovers = {}
+              const soldQty = {}
+              const breakdown = {}
+
+              let expected = 0
+              let totalSold = 0
+
+              Object.entries(delivery.qty ?? {}).forEach(([key, deliveredQty]) => {
+                const price = prices?.[key] ?? 0
+                const rawLeftover = Number(leftovers?.[key]) || 0
+                const deliveredAmount = Number(deliveredQty) || 0
+                const safeLeftover = Math.min(Math.max(rawLeftover, 0), deliveredAmount)
+                const sold = deliveredAmount - safeLeftover
+
+                sanitizedLeftovers[key] = safeLeftover
+                soldQty[key] = sold
+                breakdown[key] = {
+                  delivered: deliveredAmount,
+                  leftover: safeLeftover,
+                  sold,
+                  expected: sold * price,
+                }
+
+                expected += sold * price
+                totalSold += sold
+              })
+
+              const resellerGain = Math.round((expected * (paidPercent ?? 0)) / 100)
+              const myGain = expected - resellerGain
+              const receivedAmount = Number(received) || 0
               settlementData = {
                 id: createId('SET'),
                 date: today(),
-                total,
+                total: expected,
                 resellerGain,
                 myGain,
-                expected: total,
-                diff: (Number(received) || 0) - total,
-                received: Number(received) || 0,
+                expected,
+                diff: receivedAmount - expected,
+                received: receivedAmount,
                 paidPercent,
+                deliveredQty: { ...delivery.qty },
+                leftoverQty: sanitizedLeftovers,
+                soldQty,
+                breakdown,
+                totalSold,
               }
               return { ...delivery, settled: true }
             })
