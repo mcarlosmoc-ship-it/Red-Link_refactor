@@ -95,6 +95,16 @@ export const useDashboardMetrics = ({ statusFilter, searchTerm }) => {
     })
   }, [projectedClients, statusFilter, searchTerm])
 
+  const totalDebtAmount = useMemo(
+    () =>
+      projectedClients.reduce(
+        (total, client) =>
+          total + (client.debtMonths ?? 0) * (client.monthlyFee ?? CLIENT_PRICE),
+        0,
+      ),
+    [projectedClients],
+  )
+
   const metrics = useMemo(() => {
     const totalClients = projectedClients.length
     const paidClients = projectedClients.filter((client) => client.debtMonths === 0).length
@@ -133,7 +143,7 @@ export const useDashboardMetrics = ({ statusFilter, searchTerm }) => {
       internetCosts,
       netEarnings,
     }
-  }, [projectedClients, resellers, expenses, baseCosts, selectedPeriod])
+  }, [projectedClients, resellers, expenses, baseCosts, selectedPeriod, totalDebtAmount])
 
   return { metrics, filteredClients, projectedClients }
 }
