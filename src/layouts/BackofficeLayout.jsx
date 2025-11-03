@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useEffect } from 'react'
 import { Outlet } from 'react-router-dom'
 import { Bell } from 'lucide-react'
 import Button from '../components/ui/Button.jsx'
@@ -8,6 +8,11 @@ import { useBackofficeStore } from '../store/useBackofficeStore.js'
 
 export default function BackofficeLayout() {
   const resetDemoData = useBackofficeStore((state) => state.resetDemoData)
+  const syncCurrentPeriod = useBackofficeStore((state) => state.syncCurrentPeriod)
+
+  useEffect(() => {
+    syncCurrentPeriod()
+  }, [syncCurrentPeriod])
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900">

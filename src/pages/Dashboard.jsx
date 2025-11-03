@@ -1,9 +1,9 @@
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { DollarSign, Users, Wifi } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import StatCard from '../components/dashboard/StatCard.jsx'
 import Button from '../components/ui/Button.jsx'
-import { peso } from '../utils/formatters.js'
+import { peso, formatPeriodLabel, diffPeriods } from '../utils/formatters.js'
 import { useDashboardMetrics } from '../hooks/useDashboardMetrics.js'
 import { CLIENT_PRICE, useBackofficeStore } from '../store/useBackofficeStore.js'
 
@@ -38,10 +38,45 @@ export default function DashboardPage() {
   const [paymentForm, setPaymentForm] = useState(createEmptyPaymentForm)
 
   const { metrics, filteredClients } = useDashboardMetrics({ statusFilter, searchTerm })
-  const { clients, recordPayment } = useBackofficeStore((state) => ({
+  const {
+    clients,
+    recordPayment,
+    selectedPeriod,
+    currentPeriod,
+    historyStart,
+    goToPreviousPeriod,
+    goToNextPeriod,
+  } = useBackofficeStore((state) => ({
     clients: state.clients,
     recordPayment: state.recordPayment,
+    selectedPeriod: state.periods?.selected ?? state.periods?.current,
+    currentPeriod: state.periods?.current ?? state.periods?.selected,
+    historyStart: state.periods?.historyStart ?? state.periods?.current,
+    goToPreviousPeriod: state.goToPreviousPeriod,
+    goToNextPeriod: state.goToNextPeriod,
   }))
+
+  const periodLabel = formatPeriodLabel(selectedPeriod ?? currentPeriod)
+  const currentPeriodLabel = formatPeriodLabel(currentPeriod ?? selectedPeriod)
+  const canGoPrevious = diffPeriods(historyStart ?? selectedPeriod, selectedPeriod ?? currentPeriod) > 0
+  const canGoNext = diffPeriods(selectedPeriod ?? currentPeriod, currentPeriod ?? selectedPeriod) > 0
+  const isCurrentPeriod = (selectedPeriod ?? currentPeriod) === (currentPeriod ?? selectedPeriod)
+
+  useEffect(() => {
+    if (!isCurrentPeriod) {
+      setPaymentForm(createEmptyPaymentForm())
+    }
+  }, [isCurrentPeriod, setPaymentForm])
+
+  const filterDescription = useMemo(() => {
+    if (statusFilter === 'paid') {
+      return `Mostrando clientes al día en ${periodLabel}`
+    }
+    if (statusFilter === 'pending') {
+      return `Mostrando clientes con pagos pendientes en ${periodLabel}`
+    }
+    return `Mostrando todos los clientes activos en ${periodLabel}`
+  }, [statusFilter, periodLabel])
 
   const activeClient = useMemo(
     () => clients.find((client) => client.id === paymentForm.clientId) ?? null,
@@ -198,21 +233,62 @@ export default function DashboardPage() {
   return (
     <div className="space-y-8">
       <section aria-labelledby="resumen" className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <h2 id="resumen" className="text-lg font-semibold text-slate-900">
-              Resumen del periodo
-            </h2>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <h2 id="resumen" className="text-lg font-semibold text-slate-900">
+                Resumen del periodo
+              </h2>
+              <span className="rounded-full bg-slate-200/70 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-600">
+                {periodLabel}
+              </span>
+            </div>
             <p className="text-sm text-slate-500">
               Controla las suscripciones activas, ingresos estimados y pendientes por cobrar.
             </p>
+            <div className="flex flex-wrap items-center gap-3 text-sm text-slate-500">
+              <span className="font-medium text-slate-600">Cambiar periodo:</span>
+              <div className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-2 py-1">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={goToPreviousPeriod}
+                  disabled={!canGoPrevious}
+                  className="text-slate-600 disabled:opacity-50"
+                >
+                  Anterior
+                </Button>
+                <span className="min-w-[140px] text-center text-sm font-semibold text-slate-700">
+                  {periodLabel}
+                </span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={goToNextPeriod}
+                  disabled={!canGoNext}
+                  className="text-slate-600 disabled:opacity-50"
+                >
+                  Siguiente
+                </Button>
+              </div>
+              {!isCurrentPeriod && (
+                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+                  Vista histórica
+                </span>
+              )}
+            </div>
           </div>
-          <Link
-            to="/clients"
-            className="text-sm font-medium text-blue-600 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40"
-          >
-            Administrar clientes →
-          </Link>
+          <div className="flex flex-col items-end gap-2">
+            <Link
+              to="/clients"
+              className="text-sm font-medium text-blue-600 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40"
+            >
+              Administrar clientes →
+            </Link>
+            <span className="text-xs text-slate-500">Periodo actual: {currentPeriodLabel}</span>
+          </div>
         </div>
 
         <div className="grid gap-4 md:grid-cols-3">
@@ -263,9 +339,7 @@ export default function DashboardPage() {
             <p className="text-sm text-slate-500">Filtra y registra pagos sin perder el contexto.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
-            {statusFilter === 'paid' && 'Mostrando clientes al día'}
-            {statusFilter === 'pending' && 'Mostrando clientes con pagos pendientes'}
-            {statusFilter === 'all' && 'Mostrando todos los clientes activos'}
+            <span>{filterDescription}</span>
           </div>
         </div>
 
@@ -283,7 +357,7 @@ export default function DashboardPage() {
               />
             </label>
             <p className="text-sm text-slate-500" role="status">
-              {filteredClients.length} cliente(s) coinciden con el filtro.
+              {filteredClients.length} cliente(s) coinciden con el filtro en {periodLabel}.
             </p>
           </div>
 
@@ -297,6 +371,13 @@ export default function DashboardPage() {
               }`}
             >
               {feedback.message}
+            </div>
+          )}
+
+          {!isCurrentPeriod && (
+            <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+              Estás consultando el periodo de {periodLabel}. Para registrar pagos, vuelve al periodo actual
+              ({currentPeriodLabel}).
             </div>
           )}
 
@@ -358,8 +439,13 @@ export default function DashboardPage() {
                     </td>
                     <td className="px-3 py-2 text-right">
                       <Button
+                        type="button"
                         size="sm"
+                        disabled={!isCurrentPeriod}
+                        className="disabled:opacity-50"
                         onClick={() => {
+                          if (!isCurrentPeriod) return
+
                           const debtMonths = Number(client.debtMonths ?? 0)
                           const monthlyFee = client.monthlyFee ?? CLIENT_PRICE
                           const baseMonths = debtMonths > 0 ? debtMonths : 1
