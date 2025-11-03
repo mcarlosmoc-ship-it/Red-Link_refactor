@@ -2,6 +2,7 @@
 setlocal enabledelayedexpansion
 title Red-Link - Build
 cd /d "%~dp0"
+set "PROJECT_DIR=%cd%"
 
 echo ==========================================
 echo   Red-Link — Compilando produccion
@@ -14,7 +15,7 @@ if errorlevel 1 (
 )
 
 if not exist package.json (
-  echo [ERROR] No se encontro package.json en %cd%
+  echo [ERROR] No se encontro package.json en "!PROJECT_DIR!"
   goto :error
 )
 
@@ -28,7 +29,7 @@ if errorlevel 1 goto :error
 
 if exist dist\index.html (
   echo [INFO] Abriendo dist\index.html ...
-  start "" "%cd%\dist\index.html"
+  start "" "!PROJECT_DIR!\dist\index.html"
 ) else (
   echo [ADVERTENCIA] No se encontro dist\index.html. Verifica el resultado del build.
 )
