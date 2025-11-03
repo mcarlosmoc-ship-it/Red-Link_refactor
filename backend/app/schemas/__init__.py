@@ -3,7 +3,15 @@
 from .client import ClientBase, ClientCreate, ClientRead, ClientUpdate
 from .expense import ExpenseBase, ExpenseCreate, ExpenseRead
 from .inventory import InventoryBase, InventoryCreate, InventoryRead, InventoryUpdate
-from .metrics import CommunityMetrics, MetricsOverview, MetricsResponse
+from .metrics import (
+    CommunityMetrics,
+    DashboardClient,
+    DashboardMetricsResponse,
+    DashboardMetricsSummary,
+    MetricsOverview,
+    MetricsResponse,
+    StatusFilter,
+)
 from .payment import PaymentBase, PaymentCreate, PaymentRead
 from .reseller import (
     ResellerBase,
@@ -42,4 +50,8 @@ __all__ = [
     "MetricsOverview",
     "CommunityMetrics",
     "MetricsResponse",
+    "StatusFilter",
+    "DashboardClient",
+    "DashboardMetricsSummary",
+    "DashboardMetricsResponse",
 ]

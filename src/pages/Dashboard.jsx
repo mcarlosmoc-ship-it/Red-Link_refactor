@@ -71,9 +71,12 @@ export default function DashboardPage() {
     reloadMetrics,
     reloadResellers,
     reloadExpenses,
-  } = useDashboardData({ periodKey: selectedPeriod })
+  } = useDashboardData({
+    periodKey: selectedPeriod,
+    filters: { statusFilter, searchTerm },
+  })
 
-  const { metrics, filteredClients } = useDashboardMetrics({ statusFilter, searchTerm })
+  const { metrics, filteredClients } = useDashboardMetrics()
 
   const periodLabel = formatPeriodLabel(selectedPeriod ?? currentPeriod)
   const currentPeriodLabel = formatPeriodLabel(currentPeriod ?? selectedPeriod)

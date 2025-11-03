@@ -25,3 +25,26 @@ def get_metrics_overview(
         communities=[schemas.CommunityMetrics(**item) for item in communities],
         base_costs=base_costs,
     )
+
+
+@router.get("/dashboard", response_model=schemas.DashboardMetricsResponse)
+def get_dashboard_metrics(
+    period_key: str | None = Query(default=None, description="Billing period key in YYYY-MM format"),
+    current_period: str | None = Query(
+        default=None,
+        description="Current billing period key in YYYY-MM format, used to project client status",
+    ),
+    status_filter: schemas.StatusFilter = Query(default=schemas.StatusFilter.ALL),
+    search: str | None = Query(default=None, description="Free text search applied to client name or location"),
+    db: Session = Depends(get_db),
+) -> schemas.DashboardMetricsResponse:
+    """Return the dashboard metrics and filtered client list."""
+
+    payload = MetricsService.dashboard(
+        db,
+        period_key=period_key,
+        current_period=current_period,
+        status_filter=status_filter,
+        search=search,
+    )
+    return schemas.DashboardMetricsResponse(**payload)

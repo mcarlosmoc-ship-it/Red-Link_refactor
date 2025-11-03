@@ -234,6 +234,8 @@ const createInitialState = () => ({
   periods: createInitialPeriods(),
   metrics: null,
   metricsPeriodKey: null,
+  metricsFilters: { statusFilter: 'all', searchTerm: '' },
+  dashboardClients: [],
   paymentsPeriodKey: null,
   status: createInitialStatus(),
 })
@@ -438,15 +440,35 @@ export const useBackofficeStore = create((set, get) => ({
       },
     })
   },
-  loadMetrics: async ({ force = false, retries = 1, periodKey } = {}) => {
+  loadMetrics: async ({
+    force = false,
+    retries = 1,
+    periodKey,
+    statusFilter,
+    searchTerm,
+    currentPeriod,
+  } = {}) => {
     const status = get().status.metrics
     const targetPeriod =
       periodKey ?? get().periods?.selected ?? get().periods?.current ?? getCurrentPeriodKey()
     const matchesPeriod = get().metricsPeriodKey === targetPeriod
 
-    if (shouldUseCache({ status, force, extraCondition: matchesPeriod })) {
-      return get().metrics
+    const previousFilters = get().metricsFilters ?? { statusFilter: 'all', searchTerm: '' }
+    const normalizedFilters = {
+      statusFilter: statusFilter ?? previousFilters.statusFilter ?? 'all',
+      searchTerm: (searchTerm ?? previousFilters.searchTerm ?? '').trim(),
     }
+
+    const matchesFilters =
+      (previousFilters.statusFilter ?? 'all') === normalizedFilters.statusFilter &&
+      (previousFilters.searchTerm ?? '') === normalizedFilters.searchTerm
+
+    if (shouldUseCache({ status, force, extraCondition: matchesPeriod && matchesFilters })) {
+      return { summary: get().metrics, clients: get().dashboardClients }
+    }
+
+    const effectiveCurrentPeriod =
+      currentPeriod ?? get().periods?.current ?? get().periods?.selected ?? targetPeriod
 
     return runWithStatus({
       set,
@@ -454,13 +476,20 @@ export const useBackofficeStore = create((set, get) => ({
       resource: 'metrics',
       retries,
       action: async () => {
-        const { data } = await apiClient.get('/metrics/overview', {
-          query: { period_key: targetPeriod },
+        const { data } = await apiClient.get('/metrics/dashboard', {
+          query: {
+            period_key: targetPeriod,
+            current_period: effectiveCurrentPeriod,
+            status_filter: normalizedFilters.statusFilter,
+            search: normalizedFilters.searchTerm || undefined,
+          },
         })
         set({
-          metrics: data,
+          metrics: data.summary,
+          dashboardClients: data.clients,
           baseCosts: convertBaseCosts(data.base_costs),
           metricsPeriodKey: targetPeriod,
+          metricsFilters: normalizedFilters,
         })
         return data
       },
