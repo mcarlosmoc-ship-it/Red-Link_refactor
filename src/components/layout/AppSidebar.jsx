@@ -1,6 +1,7 @@
 import React from 'react'
 import { NavLink } from 'react-router-dom'
 import { DollarSign, FileText, Home, Settings, Users, Wifi } from 'lucide-react'
+import { SidebarFinancialSummary } from './SidebarFinancialSummary.jsx'
 
 const navItems = [
   { to: '/dashboard', label: 'Dashboard', icon: Home },
@@ -30,25 +31,29 @@ export function AppSidebar() {
             <p className="text-xs text-slate-500">Operación diaria</p>
           </div>
         </div>
-        <nav className="flex-1 space-y-1 px-4 py-4" aria-label="Secciones">
-          {navItems.map(({ to, label, icon: Icon }) => (
-            <NavLink
-              key={to}
-              to={to}
-              className={({ isActive }) =>
-                [
-                  linkBaseClasses,
-                  isActive
-                    ? 'bg-blue-50 text-blue-700 shadow-sm'
-                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900',
-                ].join(' ')
-              }
-            >
-              <Icon aria-hidden className="h-5 w-5" />
-              <span>{label}</span>
-            </NavLink>
-          ))}
-        </nav>
+        <div className="flex-1 overflow-y-auto px-4 py-4">
+          <nav className="space-y-1" aria-label="Secciones">
+            {navItems.map(({ to, label, icon: Icon }) => (
+              <NavLink
+                key={to}
+                to={to}
+                className={({ isActive }) =>
+                  [
+                    linkBaseClasses,
+                    isActive
+                      ? 'bg-blue-50 text-blue-700 shadow-sm'
+                      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900',
+                  ].join(' ')
+                }
+              >
+                <Icon aria-hidden className="h-5 w-5" />
+                <span>{label}</span>
+              </NavLink>
+            ))}
+          </nav>
+
+          <SidebarFinancialSummary />
+        </div>
         <div className="border-t border-slate-200 px-6 py-4 text-xs text-slate-500">
           © {new Date().getFullYear()} Red-Link
         </div>

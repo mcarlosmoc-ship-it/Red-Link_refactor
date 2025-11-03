@@ -3,7 +3,6 @@ import { DollarSign, Users, Wifi } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import Button from '../components/ui/Button.jsx'
 import StatCard from '../components/dashboard/StatCard.jsx'
-import EarningsCard from '../components/dashboard/EarningsCard.jsx'
 import { peso } from '../utils/formatters.js'
 import { useDashboardMetrics } from '../hooks/useDashboardMetrics.js'
 import { useBackofficeStore } from '../store/useBackofficeStore.js'
@@ -21,11 +20,9 @@ export default function DashboardPage() {
   const [paymentForm, setPaymentForm] = useState({ open: false, clientId: '', months: 1, method: 'Efectivo', note: '' })
 
   const { metrics, filteredClients } = useDashboardMetrics({ statusFilter, searchTerm })
-  const { clients, recordPayment, expenses, baseCosts } = useBackofficeStore((state) => ({
+  const { clients, recordPayment } = useBackofficeStore((state) => ({
     clients: state.clients,
     recordPayment: state.recordPayment,
-    expenses: state.expenses,
-    baseCosts: state.baseCosts,
   }))
 
   const activeClient = useMemo(
@@ -100,19 +97,6 @@ export default function DashboardPage() {
             trend={`Gastos: ${peso(metrics.internetCosts + metrics.totalExpenses)}`}
           />
         </div>
-      </section>
-
-      <section aria-labelledby="ganancias" className="space-y-4">
-        <h2 id="ganancias" className="text-lg font-semibold text-slate-900">
-          Ganancias y costos
-        </h2>
-        <EarningsCard
-          earningsDemo={metrics.netEarnings}
-          clientIncomeDemo={metrics.clientIncome}
-          resellerIncomeDemo={metrics.resellerIncome}
-          baseCosts={baseCosts}
-          expenses={expenses}
-        />
       </section>
 
       <section aria-labelledby="clientes" className="space-y-4">
