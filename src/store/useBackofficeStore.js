@@ -20,6 +20,7 @@ const createInitialState = () => ({
       location: 'Nuevo Amatenango',
       base: 1,
       ip: '192.168.3.15',
+      monthlyFee: 300,
       paidMonthsAhead: 0,
       debtMonths: 0,
       service: 'Activo',
@@ -30,6 +31,7 @@ const createInitialState = () => ({
       location: 'Belén',
       base: 1,
       ip: '192.168.3.33',
+      monthlyFee: 300,
       paidMonthsAhead: 0,
       debtMonths: 0,
       service: 'Activo',
@@ -40,6 +42,7 @@ const createInitialState = () => ({
       location: 'Lagunita',
       base: 2,
       ip: '192.168.200.7',
+      monthlyFee: 250,
       paidMonthsAhead: 0,
       debtMonths: 1,
       service: 'Activo',
@@ -50,6 +53,7 @@ const createInitialState = () => ({
       location: 'Zapotal',
       base: 2,
       ip: '192.168.200.29',
+      monthlyFee: 200,
       paidMonthsAhead: 0,
       debtMonths: 2,
       service: 'Suspendido',
@@ -60,6 +64,7 @@ const createInitialState = () => ({
       location: 'Naranjal',
       base: 1,
       ip: '192.168.3.44',
+      monthlyFee: 300,
       paidMonthsAhead: 0,
       debtMonths: 1,
       service: 'Activo',
@@ -123,6 +128,7 @@ export const useBackofficeStore = create(
             {
               id: createId('CLI'),
               ...payload,
+              monthlyFee: Number(payload.monthlyFee) || CLIENT_PRICE,
               service: payload.debtMonths > 0 ? 'Suspendido' : 'Activo',
             },
           ],
@@ -174,7 +180,7 @@ export const useBackofficeStore = create(
             months: amountMonths,
             method: method || 'Efectivo',
             note: note?.trim() ?? '',
-            amount: amountMonths * CLIENT_PRICE,
+            amount: amountMonths * (client?.monthlyFee ?? CLIENT_PRICE),
           }
 
           return {

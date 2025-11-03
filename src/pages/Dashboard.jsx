@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 import StatCard from '../components/dashboard/StatCard.jsx'
 import { peso } from '../utils/formatters.js'
 import { useDashboardMetrics } from '../hooks/useDashboardMetrics.js'
-import { useBackofficeStore } from '../store/useBackofficeStore.js'
+import { CLIENT_PRICE, useBackofficeStore } from '../store/useBackofficeStore.js'
 
 export default function DashboardPage() {
   const [statusFilter, setStatusFilter] = useState('pending')
@@ -165,6 +165,9 @@ export default function DashboardPage() {
                     Localidad
                   </th>
                   <th scope="col" className="px-3 py-2 font-medium">
+                    Pago mensual
+                  </th>
+                  <th scope="col" className="px-3 py-2 font-medium">
                     Estado
                   </th>
                   <th scope="col" className="px-3 py-2 font-medium text-right">
@@ -177,6 +180,7 @@ export default function DashboardPage() {
                   <tr key={client.id}>
                     <td className="px-3 py-2 font-medium text-slate-900">{client.name}</td>
                     <td className="px-3 py-2 text-slate-600">{client.location}</td>
+                    <td className="px-3 py-2 text-slate-600">{peso(client.monthlyFee ?? CLIENT_PRICE)}</td>
                     <td className="px-3 py-2">
                       <span
                         className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
@@ -210,7 +214,7 @@ export default function DashboardPage() {
                 ))}
                 {filteredClients.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="px-3 py-6 text-center text-sm text-slate-500">
+                    <td colSpan={5} className="px-3 py-6 text-center text-sm text-slate-500">
                       No hay clientes que coincidan con la búsqueda.
                     </td>
                   </tr>
@@ -224,6 +228,9 @@ export default function DashboardPage() {
               <h3 className="text-sm font-semibold text-slate-800">Registrar pago rápido</h3>
               <p className="text-xs text-slate-500">
                 {activeClient.name} tiene {activeClient.debtMonths} periodo(s) pendientes y {activeClient.paidMonthsAhead} adelantados.
+              </p>
+              <p className="text-xs text-slate-500">
+                Pago mensual acordado: {peso(activeClient.monthlyFee ?? CLIENT_PRICE)}.
               </p>
               <div className="grid gap-2 sm:grid-cols-2">
                 <label className="grid gap-1 text-xs font-medium text-slate-600">

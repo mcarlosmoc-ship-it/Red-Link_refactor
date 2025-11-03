@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react'
 import Button from '../components/ui/Button.jsx'
 import { Card, CardContent } from '../components/ui/Card.jsx'
-import { useBackofficeStore } from '../store/useBackofficeStore.js'
+import { CLIENT_PRICE, useBackofficeStore } from '../store/useBackofficeStore.js'
+import { peso } from '../utils/formatters.js'
 
 const LOCATIONS = ['Nuevo Amatenango', 'Zapotal', 'Naranjal', 'Belén', 'Lagunita']
 
@@ -24,6 +25,7 @@ const defaultForm = {
   ip: '',
   debtMonths: 0,
   paidMonthsAhead: 0,
+  monthlyFee: CLIENT_PRICE,
 }
 
 export default function ClientsPage() {
@@ -35,7 +37,7 @@ export default function ClientsPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [locationFilter, setLocationFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
-  const [formState, setFormState] = useState(defaultForm)
+  const [formState, setFormState] = useState({ ...defaultForm })
   const [formErrors, setFormErrors] = useState({})
   const [feedback, setFeedback] = useState(null)
 
@@ -115,6 +117,10 @@ export default function ClientsPage() {
     ) {
       errors.paidMonthsAhead = 'Los periodos adelantados no pueden ser negativos.'
     }
+    const monthlyFeeValue = Number(formState.monthlyFee)
+    if (!Number.isFinite(monthlyFeeValue) || monthlyFeeValue <= 0) {
+      errors.monthlyFee = 'Ingresa un monto mensual mayor a cero.'
+    }
     setFormErrors(errors)
     return Object.keys(errors).length === 0
   }
@@ -130,10 +136,11 @@ export default function ClientsPage() {
       ip: formState.ip.trim(),
       debtMonths: Number(formState.debtMonths) || 0,
       paidMonthsAhead: Number(formState.paidMonthsAhead) || 0,
+      monthlyFee: Number(formState.monthlyFee) || CLIENT_PRICE,
     })
 
     setFeedback({ type: 'success', message: `Se agregó a ${formState.name.trim()} correctamente.` })
-    setFormState(defaultForm)
+    setFormState({ ...defaultForm })
     setFormErrors({})
   }
 
@@ -233,6 +240,9 @@ export default function ClientsPage() {
                       Servicio
                     </th>
                     <th scope="col" className="px-3 py-2 font-medium">
+                      Pago mensual
+                    </th>
+                    <th scope="col" className="px-3 py-2 font-medium">
                       Deuda
                     </th>
                     <th scope="col" className="px-3 py-2 font-medium text-right">
@@ -262,6 +272,7 @@ export default function ClientsPage() {
                           {client.service}
                         </span>
                       </td>
+                      <td className="px-3 py-2 text-slate-600">{peso(client.monthlyFee ?? CLIENT_PRICE)}</td>
                       <td className="px-3 py-2 text-slate-600">
                         {client.debtMonths > 0
                           ? `${client.debtMonths} ${client.debtMonths === 1 ? 'periodo' : 'periodos'}`
@@ -281,7 +292,7 @@ export default function ClientsPage() {
                   ))}
                   {filteredClients.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="px-3 py-6 text-center text-sm text-slate-500">
+                      <td colSpan={7} className="px-3 py-6 text-center text-sm text-slate-500">
                         No se encontraron clientes.
                       </td>
                     </tr>
@@ -376,6 +387,22 @@ export default function ClientsPage() {
               </select>
             </label>
             <label className="grid gap-1 text-xs font-medium text-slate-600">
+              Pago mensual
+              <input
+                type="number"
+                min={1}
+                step="0.01"
+                value={formState.monthlyFee}
+                onChange={(event) => setFormState((prev) => ({ ...prev, monthlyFee: event.target.value }))}
+                className={`rounded-md border px-3 py-2 text-sm ${
+                  formErrors.monthlyFee
+                    ? 'border-red-400 focus:border-red-400 focus:ring-red-200'
+                    : 'border-slate-300'
+                }`}
+              />
+              {formErrors.monthlyFee && <span className="text-xs text-red-600">{formErrors.monthlyFee}</span>}
+            </label>
+            <label className="grid gap-1 text-xs font-medium text-slate-600">
               Periodos pendientes
               <input
                 type="number"
@@ -415,7 +442,7 @@ export default function ClientsPage() {
               variant="ghost"
               className="border border-slate-200 bg-white text-slate-700 hover:border-blue-200"
               onClick={() => {
-                setFormState(defaultForm)
+                setFormState({ ...defaultForm })
                 setFormErrors({})
               }}
             >
