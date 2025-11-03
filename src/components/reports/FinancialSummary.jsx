@@ -3,7 +3,7 @@ import { peso } from '../../utils/formatters.js'
 import { useDashboardMetrics } from '../../hooks/useDashboardMetrics.js'
 import { useBackofficeStore } from '../../store/useBackofficeStore.js'
 
-export function SidebarFinancialSummary() {
+export default function FinancialSummary() {
   const { baseCosts, expenses } = useBackofficeStore((state) => ({
     baseCosts: state.baseCosts,
     expenses: state.expenses,
@@ -24,16 +24,16 @@ export function SidebarFinancialSummary() {
   const netPositive = metrics.netEarnings >= 0
 
   return (
-    <section
-      aria-labelledby="sidebar-financial-heading"
-      className="mt-6 space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm shadow-sm"
-    >
-      <div className="flex items-center justify-between gap-2">
+    <section aria-labelledby="financial-summary-heading" className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p id="sidebar-financial-heading" className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          <p
+            id="financial-summary-heading"
+            className="text-base font-semibold text-slate-900"
+          >
             Ganancias y costos
           </p>
-          <p className="mt-1 text-[11px] text-slate-500">Resumen rápido del periodo actual.</p>
+          <p className="text-sm text-slate-500">Resumen del balance financiero actual.</p>
         </div>
         <span
           className={`rounded-full px-2 py-1 text-xs font-semibold ${
@@ -44,18 +44,34 @@ export function SidebarFinancialSummary() {
         </span>
       </div>
 
-      <div className="rounded-xl bg-white/80 p-3">
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Saldo neto</p>
-        <p className={`mt-1 text-lg font-semibold ${netPositive ? 'text-emerald-600' : 'text-red-600'}`}>
-          {peso(metrics.netEarnings)}
-        </p>
-        <p className="mt-1 text-[11px] text-slate-500">Ingresos - (costos + gastos)</p>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Saldo neto</p>
+          <p className={`mt-2 text-3xl font-semibold ${netPositive ? 'text-emerald-600' : 'text-red-600'}`}>
+            {peso(metrics.netEarnings)}
+          </p>
+          <p className="mt-1 text-xs text-slate-500">Ingresos - (costos + gastos)</p>
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Totales</p>
+          <dl className="mt-3 space-y-2 text-sm text-slate-600">
+            <div className="flex items-center justify-between">
+              <dt>Total ingresos</dt>
+              <dd className="font-semibold text-emerald-600">{peso(totalIncome)}</dd>
+            </div>
+            <div className="flex items-center justify-between">
+              <dt>Total egresos</dt>
+              <dd className="font-semibold text-red-600">- {peso(totalCosts)}</dd>
+            </div>
+          </dl>
+        </div>
       </div>
 
-      <div className="space-y-3">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Ingresos</p>
-          <dl className="mt-2 space-y-2 text-xs text-slate-600">
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Ingresos</p>
+          <dl className="mt-3 space-y-3 text-sm text-slate-600">
             <div className="flex items-center justify-between">
               <dt>Clientes</dt>
               <dd className="font-semibold text-emerald-600">{peso(metrics.clientIncome)}</dd>
@@ -64,16 +80,12 @@ export function SidebarFinancialSummary() {
               <dt>Revendedores</dt>
               <dd className="font-semibold text-emerald-600">{peso(metrics.resellerIncome)}</dd>
             </div>
-            <div className="flex items-center justify-between border-t border-dashed border-slate-200 pt-2 text-slate-500">
-              <dt>Total ingresos</dt>
-              <dd className="font-semibold text-slate-900">{peso(totalIncome)}</dd>
-            </div>
           </dl>
         </div>
 
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Costos y gastos</p>
-          <dl className="mt-2 space-y-2 text-xs text-slate-600">
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Costos y gastos</p>
+          <dl className="mt-3 space-y-3 text-sm text-slate-600">
             <div className="flex items-center justify-between">
               <dt>Base 1</dt>
               <dd className="font-semibold text-red-600">- {peso(base1)}</dd>
@@ -86,14 +98,9 @@ export function SidebarFinancialSummary() {
               <dt>Gastos operativos</dt>
               <dd className="font-semibold text-red-600">- {peso(operationalExpenses)}</dd>
             </div>
-            <div className="flex items-center justify-between border-t border-dashed border-slate-200 pt-2 text-slate-500">
-              <dt>Total egresos</dt>
-              <dd className="font-semibold text-slate-900">- {peso(totalCosts)}</dd>
-            </div>
           </dl>
         </div>
       </div>
     </section>
   )
 }
-
