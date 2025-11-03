@@ -331,7 +331,7 @@ export default function ResellersPage() {
             Registrar liquidación
           </h2>
           <p className="text-sm text-slate-500">
-            Cuenta las fichas sobrantes para calcular cuántas se vendieron y registrar el pago recibido.
+            Cuenta las fichas sobrantes para calcular cuántas se vendieron y registra el pago recibido.
           </p>
         </div>
 
