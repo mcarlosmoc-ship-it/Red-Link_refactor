@@ -17,8 +17,13 @@ export default function PaymentsPage() {
 
   const filteredPayments = useMemo(() => {
     const term = searchTerm.trim().toLowerCase()
+    const isInSelectedPeriod = (date) => {
+      const period = getPeriodFromDateString(date)
+      if (!period) return false
+      return Array.isArray(period) ? period.includes(selectedPeriod) : period === selectedPeriod
+    }
     return payments
-      .filter((payment) => getPeriodFromDateString(payment.date) === selectedPeriod)
+      .filter((payment) => isInSelectedPeriod(payment.date))
       .filter((payment) => {
         const matchesMethod = methodFilter === 'Todos' || payment.method === methodFilter
         const matchesTerm =

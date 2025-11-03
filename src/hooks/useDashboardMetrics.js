@@ -70,6 +70,12 @@ export const useDashboardMetrics = ({ statusFilter, searchTerm }) => {
   const currentPeriod = periods?.current ?? selectedPeriod
   const offset = diffPeriods(currentPeriod, selectedPeriod)
 
+  const matchesSelectedPeriod = (date) => {
+    const period = getPeriodFromDateString(date)
+    if (!period) return false
+    return Array.isArray(period) ? period.includes(selectedPeriod) : period === selectedPeriod
+  }
+
   const projectedClients = useMemo(
     () => clients.map((client) => projectClientForOffset(client, offset)),
     [clients, offset],
@@ -102,9 +108,7 @@ export const useDashboardMetrics = ({ statusFilter, searchTerm }) => {
     const resellerIncome = resellers.reduce((acc, reseller) => {
       const settlementsGain = reseller.settlements.reduce(
         (total, settlement) =>
-          getPeriodFromDateString(settlement.date) === selectedPeriod
-            ? total + (settlement.myGain ?? 0)
-            : total,
+          matchesSelectedPeriod(settlement.date) ? total + (settlement.myGain ?? 0) : total,
         0,
       )
       return acc + settlementsGain
@@ -112,7 +116,7 @@ export const useDashboardMetrics = ({ statusFilter, searchTerm }) => {
 
     const totalExpenses = expenses.reduce(
       (total, expense) =>
-        getPeriodFromDateString(expense.date) === selectedPeriod ? total + (expense.amount ?? 0) : total,
+        matchesSelectedPeriod(expense.date) ? total + (expense.amount ?? 0) : total,
       0,
     )
     const internetCosts = (baseCosts?.base1 ?? 0) + (baseCosts?.base2 ?? 0)
