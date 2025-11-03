@@ -7,3 +7,4 @@ Proyecto React + Vite + Tailwind.
 - npm run build
 - npm run preview
 - npm run lint
+- npm run test (ejecuta Vitest)
