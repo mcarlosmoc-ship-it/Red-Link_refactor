@@ -1,26 +1,33 @@
 import React, { useMemo, useState } from 'react'
-import { peso } from '../utils/formatters.js'
+import { peso, formatPeriodLabel, getPeriodFromDateString } from '../utils/formatters.js'
 import { Card, CardContent } from '../components/ui/Card.jsx'
 import { useBackofficeStore } from '../store/useBackofficeStore.js'
 
 const METHODS = ['Todos', 'Efectivo', 'Transferencia', 'Tarjeta', 'Revendedor']
 
 export default function PaymentsPage() {
-  const { payments } = useBackofficeStore((state) => ({ payments: state.payments }))
+  const { payments, selectedPeriod } = useBackofficeStore((state) => ({
+    payments: state.payments,
+    selectedPeriod: state.periods?.selected ?? state.periods?.current,
+  }))
   const [methodFilter, setMethodFilter] = useState('Todos')
   const [searchTerm, setSearchTerm] = useState('')
 
+  const periodLabel = formatPeriodLabel(selectedPeriod)
+
   const filteredPayments = useMemo(() => {
     const term = searchTerm.trim().toLowerCase()
-    return payments.filter((payment) => {
-      const matchesMethod = methodFilter === 'Todos' || payment.method === methodFilter
-      const matchesTerm =
-        term.length === 0 ||
-        payment.clientName.toLowerCase().includes(term) ||
-        payment.note.toLowerCase().includes(term)
-      return matchesMethod && matchesTerm
-    })
-  }, [payments, methodFilter, searchTerm])
+    return payments
+      .filter((payment) => getPeriodFromDateString(payment.date) === selectedPeriod)
+      .filter((payment) => {
+        const matchesMethod = methodFilter === 'Todos' || payment.method === methodFilter
+        const matchesTerm =
+          term.length === 0 ||
+          payment.clientName.toLowerCase().includes(term) ||
+          payment.note.toLowerCase().includes(term)
+        return matchesMethod && matchesTerm
+      })
+  }, [payments, methodFilter, searchTerm, selectedPeriod])
 
   const totalAmount = filteredPayments.reduce((sum, payment) => sum + (payment.amount ?? 0), 0)
 
@@ -35,8 +42,12 @@ export default function PaymentsPage() {
             <p className="text-sm text-slate-500">
               Filtra por método de cobro o busca notas para auditar movimientos recientes.
             </p>
+            <p className="text-xs text-slate-500">Periodo seleccionado: {periodLabel}</p>
           </div>
-          <div className="text-sm font-medium text-slate-600">Total filtrado: {peso(totalAmount)}</div>
+          <div className="flex flex-col items-end gap-1 text-sm font-medium text-slate-600">
+            <span>Total filtrado: {peso(totalAmount)}</span>
+            <span className="text-xs font-normal text-slate-500">Datos de {periodLabel}</span>
+          </div>
         </div>
 
         <Card>
@@ -106,7 +117,7 @@ export default function PaymentsPage() {
                   {filteredPayments.length === 0 && (
                     <tr>
                       <td colSpan={6} className="px-3 py-6 text-center text-sm text-slate-500">
-                        No hay pagos registrados con los criterios seleccionados.
+                        No hay pagos registrados con los criterios seleccionados en {periodLabel}.
                       </td>
                     </tr>
                   )}
