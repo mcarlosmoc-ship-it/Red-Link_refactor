@@ -1,17 +1,44 @@
 import React, { useMemo, useState } from 'react'
 import { peso, formatPeriodLabel, getPeriodFromDateString } from '../utils/formatters.js'
+import Button from '../components/ui/Button.jsx'
 import { Card, CardContent } from '../components/ui/Card.jsx'
 import { useBackofficeStore } from '../store/useBackofficeStore.js'
+import { usePayments } from '../hooks/usePayments.js'
+import { useToast } from '../hooks/useToast.js'
 
 const METHODS = ['Todos', 'Efectivo', 'Transferencia', 'Tarjeta', 'Revendedor']
 
 export default function PaymentsPage() {
-  const { payments, selectedPeriod } = useBackofficeStore((state) => ({
-    payments: state.payments,
-    selectedPeriod: state.periods?.selected ?? state.periods?.current,
-  }))
+  const selectedPeriod = useBackofficeStore((state) => state.periods?.selected ?? state.periods?.current)
+  const { payments, status: paymentsStatus, reload } = usePayments({ periodKey: selectedPeriod })
+  const { showToast } = useToast()
   const [methodFilter, setMethodFilter] = useState('Todos')
   const [searchTerm, setSearchTerm] = useState('')
+  const [isRetrying, setIsRetrying] = useState(false)
+
+  const isLoadingPayments = Boolean(paymentsStatus?.isLoading && payments.length === 0)
+  const isSyncingPayments = Boolean(paymentsStatus?.isLoading)
+  const hasPaymentsError = Boolean(paymentsStatus?.error)
+
+  const handleRetry = async () => {
+    setIsRetrying(true)
+    try {
+      await reload()
+      showToast({
+        type: 'success',
+        title: 'Pagos sincronizados',
+        description: 'Los registros se actualizaron correctamente.',
+      })
+    } catch (error) {
+      showToast({
+        type: 'error',
+        title: 'No se pudieron cargar los pagos',
+        description: error?.message ?? 'Intenta nuevamente.',
+      })
+    } finally {
+      setIsRetrying(false)
+    }
+  }
 
   const periodLabel = formatPeriodLabel(selectedPeriod)
 
@@ -83,6 +110,38 @@ export default function PaymentsPage() {
                 />
               </label>
             </div>
+
+            {isLoadingPayments && (
+              <div
+                role="status"
+                className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700"
+              >
+                Cargando pagos del periodo…
+              </div>
+            )}
+            {!isLoadingPayments && isSyncingPayments && (
+              <div
+                role="status"
+                className="rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-600"
+              >
+                Sincronizando movimientos recientes…
+              </div>
+            )}
+            {hasPaymentsError && (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
+                <span>No se pudieron cargar los pagos. Intenta nuevamente.</span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="border border-red-200 bg-white text-red-700 hover:border-red-300"
+                  onClick={handleRetry}
+                  disabled={isRetrying}
+                >
+                  {isRetrying ? 'Reintentando…' : 'Reintentar'}
+                </Button>
+              </div>
+            )}
 
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-slate-200 text-left text-sm">

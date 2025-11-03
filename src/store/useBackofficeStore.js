@@ -15,6 +15,9 @@ export const INVENTORY_IP_RANGES = {
 }
 
 const PERIOD_HISTORY_MONTHS = 12
+const RESOURCE_TTL_MS = 60_000
+
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 const createInitialPeriods = () => {
   const current = getCurrentPeriodKey()
@@ -92,22 +95,23 @@ const mapReseller = (reseller) => ({
   name: reseller.full_name,
   base: reseller.base_id,
   location: reseller.location,
-  deliveries: reseller.deliveries.map((delivery) => ({
+  deliveries: (reseller.deliveries ?? []).map((delivery) => ({
     id: delivery.id,
     date: delivery.delivered_on,
     settled: delivery.settlement_status === 'settled',
     totalValue: normalizeDecimal(delivery.total_value),
-    qty: delivery.items.reduce((acc, item) => {
+    qty: (delivery.items ?? []).reduce((acc, item) => {
       const voucherKey = voucherTypeKeyById[String(item.voucher_type_id)] ?? `type-${item.voucher_type_id}`
       acc[voucherKey] = item.quantity
       return acc
     }, {}),
   })),
-  settlements: reseller.settlements.map((settlement) => ({
+  settlements: (reseller.settlements ?? []).map((settlement) => ({
     id: settlement.id,
     date: settlement.settled_on,
     amount: normalizeDecimal(settlement.amount),
     note: settlement.notes ?? '',
+    myGain: normalizeDecimal(settlement.my_gain ?? settlement.amount),
   })),
 })
 
@@ -117,6 +121,107 @@ const convertBaseCosts = (baseCosts = {}) =>
     acc[key] = normalizeDecimal(value)
     return acc
   }, {})
+
+const serializeClientPayload = (payload) => ({
+  client_type: payload.type,
+  full_name: payload.name,
+  location: payload.location,
+  base_id: payload.base,
+  ip_address: payload.ip || null,
+  antenna_ip: payload.antennaIp || null,
+  modem_ip: payload.modemIp || null,
+  antenna_model: payload.antennaModel || null,
+  modem_model: payload.modemModel || null,
+  monthly_fee: payload.monthlyFee ?? CLIENT_PRICE,
+  paid_months_ahead: payload.paidMonthsAhead ?? 0,
+  debt_months: payload.debtMonths ?? 0,
+  service_status: payload.service ?? 'Activo',
+})
+
+const createResourceStatus = () => ({
+  isLoading: false,
+  isMutating: false,
+  error: null,
+  lastFetchedAt: null,
+  retries: 0,
+})
+
+const createInitialStatus = () => ({
+  clients: createResourceStatus(),
+  payments: createResourceStatus(),
+  resellers: createResourceStatus(),
+  expenses: createResourceStatus(),
+  inventory: createResourceStatus(),
+  metrics: createResourceStatus(),
+  initialize: createResourceStatus(),
+})
+
+const setStatus = (set, resource, updates) => {
+  set((state) => ({
+    status: {
+      ...state.status,
+      [resource]: {
+        ...state.status[resource],
+        ...updates,
+      },
+    },
+  }))
+}
+
+const runWithStatus = async ({ set, get, resource, action, retries = 0, updateTimestamp = true }) => {
+  setStatus(set, resource, { isLoading: true, error: null })
+
+  try {
+    const result = await action()
+    setStatus(set, resource, {
+      isLoading: false,
+      error: null,
+      retries: 0,
+      ...(updateTimestamp ? { lastFetchedAt: Date.now() } : {}),
+    })
+    return result
+  } catch (error) {
+    const message = error?.message ?? 'Ocurrió un error inesperado.'
+    const currentRetries = (get().status?.[resource]?.retries ?? 0) + 1
+    setStatus(set, resource, {
+      isLoading: false,
+      error: message,
+      retries: currentRetries,
+    })
+
+    if (retries > 0) {
+      await wait(Math.min(500 * currentRetries, 2000))
+      return runWithStatus({ set, get, resource, action, retries: retries - 1, updateTimestamp })
+    }
+
+    throw error
+  }
+}
+
+const runMutation = async ({ set, resources, action }) => {
+  const targetResources = Array.isArray(resources) ? resources : [resources]
+  targetResources.forEach((resource) => setStatus(set, resource, { isMutating: true, error: null }))
+
+  try {
+    const result = await action()
+    targetResources.forEach((resource) => setStatus(set, resource, { isMutating: false }))
+    return result
+  } catch (error) {
+    const message = error?.message ?? 'Ocurrió un error inesperado.'
+    targetResources.forEach((resource) => setStatus(set, resource, { isMutating: false, error: message }))
+    throw error
+  }
+}
+
+const shouldUseCache = ({ status, force, ttl = RESOURCE_TTL_MS, extraCondition = true }) => {
+  if (force || !extraCondition) {
+    return false
+  }
+  if (!status?.lastFetchedAt) {
+    return false
+  }
+  return Date.now() - status.lastFetchedAt < ttl
+}
 
 const createInitialState = () => ({
   clients: [],
@@ -128,23 +233,19 @@ const createInitialState = () => ({
   voucherPrices: defaultVoucherPrices,
   periods: createInitialPeriods(),
   metrics: null,
-  loading: false,
-  error: null,
+  metricsPeriodKey: null,
+  paymentsPeriodKey: null,
+  status: createInitialStatus(),
 })
-
-const setAsyncState = async (setter, action) => {
-  try {
-    await action()
-  } catch (error) {
-    const message = error?.message ?? 'Ocurrió un error inesperado.'
-    setter({ error: message })
-    throw error
-  }
-}
 
 export const useBackofficeStore = create((set, get) => ({
   ...createInitialState(),
-  clearError: () => set({ error: null }),
+  clearResourceError: (resource) => {
+    if (!resource || !get().status?.[resource]) {
+      return
+    }
+    setStatus(set, resource, { error: null })
+  },
   syncCurrentPeriod: () =>
     set((state) => {
       const actualCurrent = getCurrentPeriodKey()
@@ -243,173 +344,352 @@ export const useBackofficeStore = create((set, get) => ({
         },
       }
     }),
-  fetchClients: async () =>
-    setAsyncState(set, async () => {
-      const { data } = await apiClient.get('/clients')
-      set({ clients: data.map(mapClient) })
+  loadClients: async ({ force = false, retries = 1 } = {}) => {
+    const status = get().status.clients
+    if (shouldUseCache({ status, force })) {
+      return get().clients
+    }
+
+    return runWithStatus({
+      set,
+      get,
+      resource: 'clients',
+      retries,
+      action: async () => {
+        const { data } = await apiClient.get('/clients')
+        set({ clients: data.map(mapClient) })
+        return data
+      },
+    })
+  },
+  loadPayments: async ({ force = false, retries = 1, periodKey } = {}) => {
+    const status = get().status.payments
+    const targetPeriod = periodKey ?? get().paymentsPeriodKey ?? get().periods?.selected
+    const matchesPeriod = !targetPeriod || get().paymentsPeriodKey === targetPeriod
+
+    if (shouldUseCache({ status, force, extraCondition: matchesPeriod })) {
+      return get().payments
+    }
+
+    return runWithStatus({
+      set,
+      get,
+      resource: 'payments',
+      retries,
+      action: async () => {
+        const query = targetPeriod ? { period_key: targetPeriod } : undefined
+        const { data } = await apiClient.get('/payments', query ? { query } : undefined)
+        set({ payments: data.map(mapPayment), paymentsPeriodKey: targetPeriod ?? null })
+        return data
+      },
+    })
+  },
+  loadResellers: async ({ force = false, retries = 1 } = {}) => {
+    const status = get().status.resellers
+    if (shouldUseCache({ status, force })) {
+      return get().resellers
+    }
+
+    return runWithStatus({
+      set,
+      get,
+      resource: 'resellers',
+      retries,
+      action: async () => {
+        const { data } = await apiClient.get('/resellers')
+        set({ resellers: data.map(mapReseller) })
+        return data
+      },
+    })
+  },
+  loadExpenses: async ({ force = false, retries = 1 } = {}) => {
+    const status = get().status.expenses
+    if (shouldUseCache({ status, force })) {
+      return get().expenses
+    }
+
+    return runWithStatus({
+      set,
+      get,
+      resource: 'expenses',
+      retries,
+      action: async () => {
+        const { data } = await apiClient.get('/expenses')
+        set({ expenses: data.map(mapExpense) })
+        return data
+      },
+    })
+  },
+  loadInventory: async ({ force = false, retries = 1 } = {}) => {
+    const status = get().status.inventory
+    if (shouldUseCache({ status, force })) {
+      return get().inventory
+    }
+
+    return runWithStatus({
+      set,
+      get,
+      resource: 'inventory',
+      retries,
+      action: async () => {
+        const { data } = await apiClient.get('/inventory')
+        set({ inventory: data.map(mapInventoryItem) })
+        return data
+      },
+    })
+  },
+  loadMetrics: async ({ force = false, retries = 1, periodKey } = {}) => {
+    const status = get().status.metrics
+    const targetPeriod =
+      periodKey ?? get().periods?.selected ?? get().periods?.current ?? getCurrentPeriodKey()
+    const matchesPeriod = get().metricsPeriodKey === targetPeriod
+
+    if (shouldUseCache({ status, force, extraCondition: matchesPeriod })) {
+      return get().metrics
+    }
+
+    return runWithStatus({
+      set,
+      get,
+      resource: 'metrics',
+      retries,
+      action: async () => {
+        const { data } = await apiClient.get('/metrics/overview', {
+          query: { period_key: targetPeriod },
+        })
+        set({
+          metrics: data,
+          baseCosts: convertBaseCosts(data.base_costs),
+          metricsPeriodKey: targetPeriod,
+        })
+        return data
+      },
+    })
+  },
+  initialize: async ({ force = false } = {}) =>
+    runWithStatus({
+      set,
+      get,
+      resource: 'initialize',
+      updateTimestamp: false,
+      action: async () => {
+        await Promise.all([
+          get().loadClients({ force, retries: 1 }),
+          get().loadPayments({ force, retries: 1 }),
+          get().loadResellers({ force, retries: 1 }),
+          get().loadExpenses({ force, retries: 1 }),
+          get().loadInventory({ force, retries: 1 }),
+        ])
+        await get().loadMetrics({ force, retries: 1 })
+      },
     }),
-  fetchPayments: async () =>
-    setAsyncState(set, async () => {
-      const { data } = await apiClient.get('/payments')
-      set({ payments: data.map(mapPayment) })
-    }),
-  fetchResellers: async () =>
-    setAsyncState(set, async () => {
-      const { data } = await apiClient.get('/resellers')
-      set({ resellers: data.map(mapReseller) })
-    }),
-  fetchExpenses: async () =>
-    setAsyncState(set, async () => {
-      const { data } = await apiClient.get('/expenses')
-      set({ expenses: data.map(mapExpense) })
-    }),
-  fetchInventory: async () =>
-    setAsyncState(set, async () => {
-      const { data } = await apiClient.get('/inventory')
-      set({ inventory: data.map(mapInventoryItem) })
-    }),
-  fetchMetrics: async (periodKey) =>
-    setAsyncState(set, async () => {
-      const targetPeriod =
-        periodKey ?? get().periods?.selected ?? get().periods?.current ?? getCurrentPeriodKey()
-      const { data } = await apiClient.get('/metrics/overview', {
-        query: { period_key: targetPeriod },
-      })
-      set({
-        metrics: data,
-        baseCosts: convertBaseCosts(data.base_costs),
-      })
-    }),
-  initialize: async () => {
-    set({ loading: true })
+  refreshData: async ({ silent = false } = {}) => {
     try {
-      await Promise.all([
-        get().fetchClients(),
-        get().fetchPayments(),
-        get().fetchResellers(),
-        get().fetchExpenses(),
-        get().fetchInventory(),
-      ])
-      await get().fetchMetrics()
-    } finally {
-      set({ loading: false })
+      await get().initialize({ force: true })
+    } catch (error) {
+      if (!silent) {
+        throw error
+      }
     }
   },
-  refreshData: async () => {
-    await get().initialize()
+  createClient: async (payload) => {
+    await runMutation({
+      set,
+      resources: 'clients',
+      action: async () => {
+        await apiClient.post('/clients', serializeClientPayload(payload))
+      },
+    })
+
+    await Promise.all([
+      get().loadClients({ force: true, retries: 1 }),
+      get().loadMetrics({ force: true, retries: 1 }),
+    ])
   },
-  recordPayment: async ({ clientId, months, amount, method, note, periodKey, paidOn }) =>
-    setAsyncState(set, async () => {
-      const state = get()
-      const client = state.clients.find((item) => item.id === clientId)
-      const monthlyFee = client?.monthlyFee ?? CLIENT_PRICE
-      const normalizedMonths = normalizeDecimal(months, 0)
-      const normalizedAmount = normalizeDecimal(amount, 0)
+  toggleClientService: async (clientId) => {
+    const client = get().clients.find((item) => item.id === clientId)
+    if (!client) {
+      throw new Error('No se encontró el cliente especificado.')
+    }
 
-      const computedAmount =
-        normalizedAmount > 0 ? normalizedAmount : normalizedMonths * monthlyFee
-      const computedMonths =
-        normalizedMonths > 0
-          ? normalizedMonths
-          : monthlyFee > 0
-            ? computedAmount / monthlyFee
-            : 0
+    const nextStatus = client.service === 'Activo' ? 'Suspendido' : 'Activo'
 
-      await apiClient.post('/payments', {
-        client_id: clientId,
-        period_key: periodKey ?? state.periods?.selected ?? state.periods?.current,
-        paid_on: paidOn ?? today(),
-        amount: computedAmount,
-        months_paid: computedMonths,
-        method: method ?? 'Efectivo',
-        note: note ?? '',
-      })
+    await runMutation({
+      set,
+      resources: 'clients',
+      action: async () => {
+        await apiClient.patch(`/clients/${clientId}`, {
+          service_status: nextStatus,
+        })
+      },
+    })
 
-      await Promise.all([get().fetchClients(), get().fetchPayments(), get().fetchMetrics(periodKey)])
-    }),
-  addExpense: async (expense) =>
-    setAsyncState(set, async () => {
-      await apiClient.post('/expenses', {
-        base_id: expense.base,
-        expense_date: expense.date || today(),
-        category: expense.cat,
-        description: expense.desc,
-        amount: expense.amount,
-      })
-      await Promise.all([get().fetchExpenses(), get().fetchMetrics()])
-    }),
-  addResellerDelivery: async ({ resellerId, qty, date, totalValue = 0 }) =>
-    setAsyncState(set, async () => {
-      const items = Object.entries(qty ?? {})
-        .filter(([, value]) => Number(value) > 0)
-        .map(([voucherTypeId, quantity]) => ({
-          voucher_type_id: VOUCHER_TYPE_IDS[voucherTypeId] ?? Number(voucherTypeId),
-          quantity: Number(quantity),
-        }))
+    await Promise.all([
+      get().loadClients({ force: true, retries: 1 }),
+      get().loadMetrics({ force: true, retries: 1 }),
+    ])
 
-      await apiClient.post(`/resellers/${resellerId}/deliveries`, {
-        reseller_id: resellerId,
-        delivered_on: date ?? today(),
-        settlement_status: 'pending',
-        total_value: totalValue,
-        items,
-      })
+    return nextStatus
+  },
+  recordPayment: async ({ clientId, months, amount, method, note, periodKey, paidOn }) => {
+    const state = get()
+    const client = state.clients.find((item) => item.id === clientId)
+    const monthlyFee = client?.monthlyFee ?? CLIENT_PRICE
+    const normalizedMonths = normalizeDecimal(months, 0)
+    const normalizedAmount = normalizeDecimal(amount, 0)
 
-      await get().fetchResellers()
-    }),
-  settleResellerDelivery: async ({ resellerId, deliveryId, amount, notes = '' }) =>
-    setAsyncState(set, async () => {
-      await apiClient.post(`/resellers/${resellerId}/settlements`, {
-        reseller_id: resellerId,
-        delivery_id: deliveryId,
-        settled_on: today(),
-        amount: amount ?? 0,
-        notes,
-      })
+    const computedAmount = normalizedAmount > 0 ? normalizedAmount : normalizedMonths * monthlyFee
+    const computedMonths =
+      normalizedMonths > 0
+        ? normalizedMonths
+        : monthlyFee > 0
+          ? computedAmount / monthlyFee
+          : 0
 
-      await Promise.all([get().fetchResellers(), get().fetchMetrics()])
-    }),
-  addInventoryItem: async (payload) =>
-    setAsyncState(set, async () => {
-      await apiClient.post('/inventory', {
-        brand: payload.brand,
-        model: payload.model,
-        serial_number: payload.serial,
-        asset_tag: payload.assetTag,
-        base_id: payload.base,
-        ip_address: payload.ip,
-        status: payload.status,
-        location: payload.location,
-        client_id: payload.client,
-        notes: payload.notes,
-        installed_at: payload.installedAt,
-      })
-      await get().fetchInventory()
-    }),
-  updateInventoryItem: async ({ id, ...changes }) =>
-    setAsyncState(set, async () => {
-      await apiClient.put(`/inventory/${id}`, {
-        brand: changes.brand,
-        model: changes.model,
-        serial_number: changes.serial,
-        asset_tag: changes.assetTag,
-        base_id: changes.base,
-        ip_address: changes.ip,
-        status: changes.status,
-        location: changes.location,
-        client_id: changes.client,
-        notes: changes.notes,
-        installed_at: changes.installedAt,
-      })
-      await get().fetchInventory()
-    }),
-  removeInventoryItem: async (itemId) =>
-    setAsyncState(set, async () => {
-      await apiClient.delete(`/inventory/${itemId}`)
-      await get().fetchInventory()
-    }),
-  updateBaseCosts: (partial) =>
-    set((state) => ({ baseCosts: { ...state.baseCosts, ...partial } })),
+    await runMutation({
+      set,
+      resources: 'payments',
+      action: async () => {
+        await apiClient.post('/payments', {
+          client_id: clientId,
+          period_key: periodKey ?? state.periods?.selected ?? state.periods?.current,
+          paid_on: paidOn ?? today(),
+          amount: computedAmount,
+          months_paid: computedMonths,
+          method: method ?? 'Efectivo',
+          note: note ?? '',
+        })
+      },
+    })
+
+    await Promise.all([
+      get().loadClients({ force: true, retries: 1 }),
+      get().loadPayments({ force: true, retries: 1, periodKey }),
+      get().loadMetrics({ force: true, retries: 1, periodKey }),
+    ])
+  },
+  addExpense: async (expense) => {
+    await runMutation({
+      set,
+      resources: 'expenses',
+      action: async () => {
+        await apiClient.post('/expenses', {
+          base_id: expense.base,
+          expense_date: expense.date || today(),
+          category: expense.cat,
+          description: expense.desc,
+          amount: expense.amount,
+        })
+      },
+    })
+
+    await Promise.all([
+      get().loadExpenses({ force: true, retries: 1 }),
+      get().loadMetrics({ force: true, retries: 1 }),
+    ])
+  },
+  addResellerDelivery: async ({ resellerId, qty, date, totalValue = 0 }) => {
+    const items = Object.entries(qty ?? {})
+      .filter(([, value]) => Number(value) > 0)
+      .map(([voucherTypeId, quantity]) => ({
+        voucher_type_id: VOUCHER_TYPE_IDS[voucherTypeId] ?? Number(voucherTypeId),
+        quantity: Number(quantity),
+      }))
+
+    await runMutation({
+      set,
+      resources: 'resellers',
+      action: async () => {
+        await apiClient.post(`/resellers/${resellerId}/deliveries`, {
+          reseller_id: resellerId,
+          delivered_on: date ?? today(),
+          settlement_status: 'pending',
+          total_value: totalValue,
+          items,
+        })
+      },
+    })
+
+    await get().loadResellers({ force: true, retries: 1 })
+  },
+  settleResellerDelivery: async ({ resellerId, deliveryId, amount, notes = '' }) => {
+    await runMutation({
+      set,
+      resources: ['resellers', 'metrics'],
+      action: async () => {
+        await apiClient.post(`/resellers/${resellerId}/settlements`, {
+          reseller_id: resellerId,
+          delivery_id: deliveryId,
+          settled_on: today(),
+          amount: amount ?? 0,
+          notes,
+        })
+      },
+    })
+
+    await Promise.all([
+      get().loadResellers({ force: true, retries: 1 }),
+      get().loadMetrics({ force: true, retries: 1 }),
+    ])
+  },
+  addInventoryItem: async (payload) => {
+    await runMutation({
+      set,
+      resources: 'inventory',
+      action: async () => {
+        await apiClient.post('/inventory', {
+          brand: payload.brand,
+          model: payload.model,
+          serial_number: payload.serial,
+          asset_tag: payload.assetTag,
+          base_id: payload.base,
+          ip_address: payload.ip,
+          status: payload.status,
+          location: payload.location,
+          client_id: payload.client,
+          notes: payload.notes,
+          installed_at: payload.installedAt,
+        })
+      },
+    })
+
+    await get().loadInventory({ force: true, retries: 1 })
+  },
+  updateInventoryItem: async ({ id, ...changes }) => {
+    await runMutation({
+      set,
+      resources: 'inventory',
+      action: async () => {
+        await apiClient.put(`/inventory/${id}`, {
+          brand: changes.brand,
+          model: changes.model,
+          serial_number: changes.serial,
+          asset_tag: changes.assetTag,
+          base_id: changes.base,
+          ip_address: changes.ip,
+          status: changes.status,
+          location: changes.location,
+          client_id: changes.client,
+          notes: changes.notes,
+          installed_at: changes.installedAt,
+        })
+      },
+    })
+
+    await get().loadInventory({ force: true, retries: 1 })
+  },
+  removeInventoryItem: async (itemId) => {
+    await runMutation({
+      set,
+      resources: 'inventory',
+      action: async () => {
+        await apiClient.delete(`/inventory/${itemId}`)
+      },
+    })
+
+    await get().loadInventory({ force: true, retries: 1 })
+  },
+  updateBaseCosts: (partial) => set((state) => ({ baseCosts: { ...state.baseCosts, ...partial } })),
   updateVoucherPrices: (partial) =>
     set((state) => ({ voucherPrices: { ...state.voucherPrices, ...partial } })),
 }))

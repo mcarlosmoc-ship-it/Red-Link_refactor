@@ -1,7 +1,9 @@
 import React, { useCallback, useMemo, useState } from 'react'
 import Button from '../components/ui/Button.jsx'
 import { Card, CardContent } from '../components/ui/Card.jsx'
-import { CLIENT_PRICE, useBackofficeStore } from '../store/useBackofficeStore.js'
+import { CLIENT_PRICE } from '../store/useBackofficeStore.js'
+import { useClients } from '../hooks/useClients.js'
+import { useToast } from '../hooks/useToast.js'
 import { peso } from '../utils/formatters.js'
 
 const periodsFormatter = new Intl.NumberFormat('es-MX', { maximumFractionDigits: 2 })
@@ -75,17 +77,44 @@ const defaultForm = {
 }
 
 export default function ClientsPage() {
-  const { clients, addClient, toggleClientService } = useBackofficeStore((state) => ({
-    clients: state.clients,
-    addClient: state.addClient,
-    toggleClientService: state.toggleClientService,
-  }))
+  const {
+    clients,
+    status: clientsStatus,
+    reload: reloadClients,
+    createClient,
+    toggleClientService,
+  } = useClients()
+  const { showToast } = useToast()
   const [searchTerm, setSearchTerm] = useState('')
   const [locationFilter, setLocationFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
   const [formState, setFormState] = useState({ ...defaultForm })
   const [formErrors, setFormErrors] = useState({})
-  const [feedback, setFeedback] = useState(null)
+  const [isRetrying, setIsRetrying] = useState(false)
+  const isMutatingClients = Boolean(clientsStatus?.isMutating)
+  const isSyncingClients = Boolean(clientsStatus?.isLoading)
+  const isLoadingClients = Boolean(clientsStatus?.isLoading && clients.length === 0)
+  const hasClientsError = Boolean(clientsStatus?.error)
+
+  const handleRetryLoad = async () => {
+    setIsRetrying(true)
+    try {
+      await reloadClients()
+      showToast({
+        type: 'success',
+        title: 'Clientes sincronizados',
+        description: 'El listado se actualizó correctamente.',
+      })
+    } catch (error) {
+      showToast({
+        type: 'error',
+        title: 'No se pudieron cargar los clientes',
+        description: error?.message ?? 'Intenta nuevamente.',
+      })
+    } finally {
+      setIsRetrying(false)
+    }
+  }
 
   const availableLocations = useMemo(() => {
     const unique = new Set(LOCATIONS)
@@ -281,7 +310,7 @@ export default function ClientsPage() {
     return Object.keys(errors).length === 0
   }
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault()
     if (!validateForm()) return
 
@@ -308,11 +337,39 @@ export default function ClientsPage() {
       payload.modemModel = formState.modemModel.trim()
     }
 
-    addClient(payload)
+    try {
+      await createClient(payload)
+      showToast({
+        type: 'success',
+        title: 'Cliente agregado',
+        description: `Se agregó a ${formState.name.trim()} correctamente.`,
+      })
+      setFormState({ ...defaultForm })
+      setFormErrors({})
+    } catch (error) {
+      showToast({
+        type: 'error',
+        title: 'No se pudo agregar el cliente',
+        description: error?.message ?? 'Intenta nuevamente.',
+      })
+    }
+  }
 
-    setFeedback({ type: 'success', message: `Se agregó a ${formState.name.trim()} correctamente.` })
-    setFormState({ ...defaultForm })
-    setFormErrors({})
+  const handleToggleService = async (client) => {
+    try {
+      const nextStatus = await toggleClientService(client.id)
+      showToast({
+        type: 'success',
+        title: nextStatus === 'Activo' ? 'Servicio activado' : 'Servicio suspendido',
+        description: `${client.name} ahora está ${nextStatus.toLowerCase()}.`,
+      })
+    } catch (error) {
+      showToast({
+        type: 'error',
+        title: 'No se pudo actualizar el servicio',
+        description: error?.message ?? 'Intenta nuevamente.',
+      })
+    }
   }
 
   return (
@@ -332,9 +389,35 @@ export default function ClientsPage() {
           </p>
         </div>
 
-        {feedback && feedback.type === 'success' && (
-          <div role="alert" className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-            {feedback.message}
+        {isLoadingClients && (
+          <div
+            role="status"
+            className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700"
+          >
+            Cargando clientes…
+          </div>
+        )}
+        {!isLoadingClients && isSyncingClients && (
+          <div
+            role="status"
+            className="rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-600"
+          >
+            Sincronizando cambios recientes…
+          </div>
+        )}
+        {hasClientsError && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
+            <span>No se pudo cargar el listado de clientes. Intenta nuevamente.</span>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="border border-red-200 bg-white text-red-700 hover:border-red-300"
+              onClick={handleRetryLoad}
+              disabled={isRetrying}
+            >
+              {isRetrying ? 'Reintentando…' : 'Reintentar'}
+            </Button>
           </div>
         )}
 
@@ -472,8 +555,9 @@ export default function ClientsPage() {
                             <Button
                               size="sm"
                               variant="ghost"
-                              className="border border-slate-200 bg-white text-slate-700 hover:border-blue-200"
-                              onClick={() => toggleClientService(client.id)}
+                              className="border border-slate-200 bg-white text-slate-700 hover:border-blue-200 disabled:cursor-not-allowed disabled:opacity-50"
+                              onClick={() => handleToggleService(client)}
+                              disabled={isMutatingClients}
                             >
                               {client.service === 'Activo' ? 'Suspender' : 'Activar'}
                             </Button>
@@ -614,8 +698,9 @@ export default function ClientsPage() {
                             <Button
                               size="sm"
                               variant="ghost"
-                              className="border border-slate-200 bg-white text-slate-700 hover:border-blue-200"
-                              onClick={() => toggleClientService(client.id)}
+                              className="border border-slate-200 bg-white text-slate-700 hover:border-blue-200 disabled:cursor-not-allowed disabled:opacity-50"
+                              onClick={() => handleToggleService(client)}
+                              disabled={isMutatingClients}
                             >
                               {client.service === 'Activo' ? 'Suspender' : 'Activar'}
                             </Button>
@@ -851,7 +936,13 @@ export default function ClientsPage() {
             >
               Limpiar
             </Button>
-            <Button type="submit">Guardar cliente</Button>
+            <Button
+              type="submit"
+              disabled={isMutatingClients}
+              className="disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isMutatingClients ? 'Guardando…' : 'Guardar cliente'}
+            </Button>
           </div>
         </form>
       </section>
