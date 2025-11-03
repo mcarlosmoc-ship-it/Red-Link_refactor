@@ -7,6 +7,7 @@ import ResellersPage from './pages/Resellers.jsx'
 import PaymentsPage from './pages/Payments.jsx'
 import ExpensesPage from './pages/Expenses.jsx'
 import SettingsPage from './pages/Settings.jsx'
+import ReportsPage from './pages/Reports.jsx'
 
 export default function App() {
   return (
@@ -18,6 +19,7 @@ export default function App() {
         <Route path="resellers" element={<ResellersPage />} />
         <Route path="payments" element={<PaymentsPage />} />
         <Route path="expenses" element={<ExpensesPage />} />
+        <Route path="reports" element={<ReportsPage />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" replace />} />

@@ -1,7 +1,6 @@
 import React from 'react'
 import { NavLink } from 'react-router-dom'
-import { DollarSign, FileText, Home, Settings, Users, Wifi } from 'lucide-react'
-import { SidebarFinancialSummary } from './SidebarFinancialSummary.jsx'
+import { BarChart3, DollarSign, FileText, Home, Settings, Users, Wifi } from 'lucide-react'
 
 const navItems = [
   { to: '/dashboard', label: 'Dashboard', icon: Home },
@@ -9,6 +8,7 @@ const navItems = [
   { to: '/resellers', label: 'Revendedores', icon: Wifi },
   { to: '/payments', label: 'Pagos', icon: DollarSign },
   { to: '/expenses', label: 'Gastos', icon: FileText },
+  { to: '/reports', label: 'Reportes', icon: BarChart3 },
   { to: '/settings', label: 'Configuración', icon: Settings },
 ]
 
@@ -51,8 +51,6 @@ export function AppSidebar() {
               </NavLink>
             ))}
           </nav>
-
-          <SidebarFinancialSummary />
         </div>
         <div className="border-t border-slate-200 px-6 py-4 text-xs text-slate-500">
           © {new Date().getFullYear()} Red-Link
