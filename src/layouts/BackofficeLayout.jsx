@@ -3,7 +3,7 @@ import { Outlet } from 'react-router-dom'
 import { Bell } from 'lucide-react'
 import Button from '../components/ui/Button.jsx'
 import { AppSidebar } from '../components/layout/AppSidebar.jsx'
-import { today } from '../utils/formatters.js'
+import { formatDate } from '../utils/formatters.js'
 import { useBackofficeStore } from '../store/useBackofficeStore.js'
 
 export default function BackofficeLayout() {
@@ -23,7 +23,7 @@ export default function BackofficeLayout() {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h1 className="text-xl font-semibold text-slate-900">Panel operativo</h1>
-                <p className="text-sm text-slate-500">Actualizado el {today()}</p>
+                <p className="text-sm text-slate-500">Actualizado el {formatDate(new Date())}</p>
               </div>
               <div className="flex items-center gap-3">
                 <button
