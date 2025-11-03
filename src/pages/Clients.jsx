@@ -4,6 +4,15 @@ import { Card, CardContent } from '../components/ui/Card.jsx'
 import { CLIENT_PRICE, useBackofficeStore } from '../store/useBackofficeStore.js'
 import { peso } from '../utils/formatters.js'
 
+const periodsFormatter = new Intl.NumberFormat('es-MX', { maximumFractionDigits: 2 })
+
+const formatPeriods = (value) => {
+  const numericValue = Number(value) || 0
+  return periodsFormatter.format(numericValue)
+}
+
+const isApproximatelyOne = (value) => Math.abs(Number(value) - 1) < 0.01
+
 const LOCATIONS = ['Nuevo Amatenango', 'Zapotal', 'Naranjal', 'Belén', 'Lagunita']
 
 const IP_RANGES = {
@@ -108,13 +117,12 @@ export default function ClientsPage() {
         }
       }
     }
-    if (!Number.isInteger(Number(formState.debtMonths)) || Number(formState.debtMonths) < 0) {
+    const debtValue = Number(formState.debtMonths)
+    if (!Number.isFinite(debtValue) || debtValue < 0) {
       errors.debtMonths = 'Los periodos pendientes no pueden ser negativos.'
     }
-    if (
-      !Number.isInteger(Number(formState.paidMonthsAhead)) ||
-      Number(formState.paidMonthsAhead) < 0
-    ) {
+    const aheadValue = Number(formState.paidMonthsAhead)
+    if (!Number.isFinite(aheadValue) || aheadValue < 0) {
       errors.paidMonthsAhead = 'Los periodos adelantados no pueden ser negativos.'
     }
     const monthlyFeeValue = Number(formState.monthlyFee)
@@ -274,9 +282,24 @@ export default function ClientsPage() {
                       </td>
                       <td className="px-3 py-2 text-slate-600">{peso(client.monthlyFee ?? CLIENT_PRICE)}</td>
                       <td className="px-3 py-2 text-slate-600">
-                        {client.debtMonths > 0
-                          ? `${client.debtMonths} ${client.debtMonths === 1 ? 'periodo' : 'periodos'}`
-                          : 'Sin deuda'}
+                        {(() => {
+                          const debtMonths = Number(client.debtMonths ?? 0)
+                          const hasDebt = debtMonths > 0.0001
+                          if (!hasDebt) return 'Sin deuda'
+
+                          const totalDue = debtMonths * (client.monthlyFee ?? CLIENT_PRICE)
+                          return (
+                            <div className="flex flex-col gap-1">
+                              <span>
+                                Debe {formatPeriods(debtMonths)}{' '}
+                                {isApproximatelyOne(debtMonths) ? 'periodo' : 'periodos'}
+                              </span>
+                              <span className="text-xs font-medium text-red-600">
+                                Total: {peso(totalDue)}
+                              </span>
+                            </div>
+                          )
+                        })()}
                       </td>
                       <td className="px-3 py-2 text-right">
                         <Button
@@ -402,31 +425,33 @@ export default function ClientsPage() {
               />
               {formErrors.monthlyFee && <span className="text-xs text-red-600">{formErrors.monthlyFee}</span>}
             </label>
-            <label className="grid gap-1 text-xs font-medium text-slate-600">
-              Periodos pendientes
-              <input
-                type="number"
-                min={0}
-                value={formState.debtMonths}
-                onChange={(event) => setFormState((prev) => ({ ...prev, debtMonths: event.target.value }))}
-                className={`rounded-md border px-3 py-2 text-sm ${
-                  formErrors.debtMonths ? 'border-red-400 focus:border-red-400 focus:ring-red-200' : 'border-slate-300'
-                }`}
-              />
+              <label className="grid gap-1 text-xs font-medium text-slate-600">
+                Periodos pendientes
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={formState.debtMonths}
+                  onChange={(event) => setFormState((prev) => ({ ...prev, debtMonths: event.target.value }))}
+                  className={`rounded-md border px-3 py-2 text-sm ${
+                    formErrors.debtMonths ? 'border-red-400 focus:border-red-400 focus:ring-red-200' : 'border-slate-300'
+                  }`}
+                />
               {formErrors.debtMonths && (
                 <span className="text-xs text-red-600">{formErrors.debtMonths}</span>
               )}
             </label>
-            <label className="grid gap-1 text-xs font-medium text-slate-600">
-              Periodos adelantados
-              <input
-                type="number"
-                min={0}
-                value={formState.paidMonthsAhead}
-                onChange={(event) => setFormState((prev) => ({ ...prev, paidMonthsAhead: event.target.value }))}
-                className={`rounded-md border px-3 py-2 text-sm ${
-                  formErrors.paidMonthsAhead
-                    ? 'border-red-400 focus:border-red-400 focus:ring-red-200'
+              <label className="grid gap-1 text-xs font-medium text-slate-600">
+                Periodos adelantados
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={formState.paidMonthsAhead}
+                  onChange={(event) => setFormState((prev) => ({ ...prev, paidMonthsAhead: event.target.value }))}
+                  className={`rounded-md border px-3 py-2 text-sm ${
+                    formErrors.paidMonthsAhead
+                      ? 'border-red-400 focus:border-red-400 focus:ring-red-200'
                     : 'border-slate-300'
                 }`}
               />

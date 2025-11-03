@@ -144,43 +144,58 @@ export const useBackofficeStore = create(
               : client,
           ),
         })),
-      recordPayment: ({ clientId, months, method, note }) =>
+      recordPayment: ({ clientId, months, amount, method, note }) =>
         set((state) => {
-          const amountMonths = Math.max(0, Number(months) || 0)
-          const updatedClients = state.clients.map((client) => {
-            if (client.id !== clientId) return client
+          const client = state.clients.find((item) => item.id === clientId)
+          if (!client) {
+            return state
+          }
 
-            let remainingMonths = amountMonths
-            let debt = client.debtMonths
-            let ahead = client.paidMonthsAhead
+          const clientMonthlyFee = client?.monthlyFee ?? CLIENT_PRICE
+          const normalizedMonthlyFee = clientMonthlyFee > 0 ? clientMonthlyFee : CLIENT_PRICE
 
-            if (remainingMonths >= debt) {
-              remainingMonths -= debt
-              debt = 0
-              ahead = ahead + remainingMonths
-            } else {
-              debt = Math.max(0, debt - remainingMonths)
-            }
+          const safeMonths = Number.isFinite(Number(months)) ? Math.max(0, Number(months)) : 0
+          const providedAmount = Number.isFinite(Number(amount)) ? Math.max(0, Number(amount)) : 0
+          const computedAmount =
+            providedAmount > 0 ? providedAmount : safeMonths * normalizedMonthlyFee
+          const effectiveMonths =
+            normalizedMonthlyFee > 0 ? computedAmount / normalizedMonthlyFee : safeMonths
+
+          if (!Number.isFinite(effectiveMonths) || effectiveMonths <= 0) {
+            return state
+          }
+
+          const updatedClients = state.clients.map((candidate) => {
+            if (candidate.id !== clientId) return candidate
+
+            const currentDebt = Number(candidate.debtMonths ?? 0)
+            const currentAhead = Number(candidate.paidMonthsAhead ?? 0)
+
+            const remainingAfterDebt = Math.max(0, effectiveMonths - Math.max(0, currentDebt))
+
+            const newDebt = Math.max(0, currentDebt - effectiveMonths)
+            const normalizedDebt = newDebt < 0.0001 ? 0 : Number(newDebt.toFixed(4))
+            const newAhead =
+              remainingAfterDebt > 0 ? currentAhead + remainingAfterDebt : currentAhead
+            const normalizedAhead = newAhead < 0.0001 ? 0 : Number(newAhead.toFixed(4))
 
             return {
-              ...client,
-              debtMonths: debt,
-              paidMonthsAhead: ahead,
-              service: debt === 0 ? 'Activo' : client.service,
+              ...candidate,
+              debtMonths: normalizedDebt,
+              paidMonthsAhead: normalizedAhead,
+              service: normalizedDebt === 0 ? 'Activo' : candidate.service,
             }
           })
-
-          const client = state.clients.find((item) => item.id === clientId)
 
           const paymentEntry = {
             id: createId('PAY'),
             date: today(),
             clientId,
             clientName: client?.name ?? 'Cliente desconocido',
-            months: amountMonths,
+            months: Number(effectiveMonths.toFixed(4)),
             method: method || 'Efectivo',
             note: note?.trim() ?? '',
-            amount: amountMonths * (client?.monthlyFee ?? CLIENT_PRICE),
+            amount: Number(computedAmount.toFixed(2)),
           }
 
           return {
