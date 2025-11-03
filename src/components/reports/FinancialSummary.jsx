@@ -1,12 +1,14 @@
 import React, { useMemo } from 'react'
-import { peso } from '../../utils/formatters.js'
+import { peso, formatPeriodLabel } from '../../utils/formatters.js'
 import { useDashboardMetrics } from '../../hooks/useDashboardMetrics.js'
 import { useBackofficeStore } from '../../store/useBackofficeStore.js'
 
 export default function FinancialSummary() {
-  const { baseCosts, expenses } = useBackofficeStore((state) => ({
+  const { baseCosts, expenses, selectedPeriod, currentPeriod } = useBackofficeStore((state) => ({
     baseCosts: state.baseCosts,
     expenses: state.expenses,
+    selectedPeriod: state.periods?.selected ?? state.periods?.current,
+    currentPeriod: state.periods?.current ?? state.periods?.selected,
   }))
 
   const { metrics } = useDashboardMetrics({ statusFilter: 'all', searchTerm: '' })
@@ -22,6 +24,10 @@ export default function FinancialSummary() {
   const totalIncome = metrics.clientIncome + metrics.resellerIncome
   const totalCosts = metrics.internetCosts + metrics.totalExpenses
   const netPositive = metrics.netEarnings >= 0
+  const periodLabel = useMemo(
+    () => formatPeriodLabel(selectedPeriod ?? currentPeriod),
+    [selectedPeriod, currentPeriod],
+  )
 
   return (
     <section aria-labelledby="financial-summary-heading" className="space-y-4">
@@ -33,7 +39,9 @@ export default function FinancialSummary() {
           >
             Ganancias y costos
           </p>
-          <p className="text-sm text-slate-500">Resumen del balance financiero actual.</p>
+          <p className="text-sm text-slate-500">
+            Resumen del balance financiero para {periodLabel}.
+          </p>
         </div>
         <span
           className={`rounded-full px-2 py-1 text-xs font-semibold ${
