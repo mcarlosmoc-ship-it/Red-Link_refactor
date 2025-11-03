@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useCallback, useMemo, useState } from 'react'
 import Button from '../components/ui/Button.jsx'
 import { Card, CardContent } from '../components/ui/Card.jsx'
 import { CLIENT_PRICE, useBackofficeStore } from '../store/useBackofficeStore.js'
@@ -8,7 +8,7 @@ const LOCATIONS = ['Nuevo Amatenango', 'Zapotal', 'Naranjal', 'Belén', 'Lagunit
 
 const CLIENT_TYPE_LABELS = {
   residential: 'Cliente residencial',
-  token: 'Cliente con fichas',
+  token: 'Punto con antena pública',
 }
 
 const IP_RANGES = {
@@ -118,23 +118,90 @@ export default function ClientsPage() {
   const getAvailableIps = (rangeKey, base) =>
     availableIpsByRange[rangeKey]?.[String(base)] ?? []
 
-  const filteredClients = useMemo(() => {
-    const term = searchTerm.trim().toLowerCase()
-    return clients.filter((client) => {
-      const matchesTerm =
-        term.length === 0 ||
-        client.name.toLowerCase().includes(term) ||
-        client.location.toLowerCase().includes(term)
-      const matchesLocation = locationFilter === 'all' || client.location === locationFilter
-      const matchesStatus =
-        statusFilter === 'all'
-          ? true
-          : statusFilter === 'debt'
-            ? client.debtMonths > 0
-            : client.debtMonths === 0
-      return matchesTerm && matchesLocation && matchesStatus
+  const normalizedSearchTerm = searchTerm.trim().toLowerCase()
+  const matchesTerm = useCallback(
+    (values) =>
+      normalizedSearchTerm.length === 0 ||
+      values.some((value) => {
+        if (value === null || value === undefined) return false
+        return value.toString().toLowerCase().includes(normalizedSearchTerm)
+      }),
+    [normalizedSearchTerm],
+  )
+
+  const residentialClients = useMemo(
+    () => clients.filter((client) => (client.type ?? 'residential') === 'residential'),
+    [clients],
+  )
+  const tokenClients = useMemo(
+    () => clients.filter((client) => client.type === 'token'),
+    [clients],
+  )
+
+  const filteredResidentialClients = useMemo(() => {
+    return residentialClients.filter((client) => {
+      const searchValues = [
+        client.name,
+        client.location,
+        ...(IP_FIELDS_BY_TYPE.residential ?? []).map(({ name }) => client[name]),
+      ]
+      if (!matchesTerm(searchValues)) return false
+
+      if (locationFilter !== 'all' && client.location !== locationFilter) return false
+
+      if (statusFilter === 'debt') return client.debtMonths > 0
+      if (statusFilter === 'ok') return client.debtMonths === 0
+
+      return true
     })
-  }, [clients, searchTerm, locationFilter, statusFilter])
+  }, [residentialClients, matchesTerm, locationFilter, statusFilter])
+
+  const filteredTokenClients = useMemo(() => {
+    return tokenClients.filter((client) => {
+      const searchValues = [
+        client.name,
+        client.location,
+        client.antennaModel,
+        client.modemModel,
+        client.antennaIp,
+        client.modemIp,
+      ]
+      if (!matchesTerm(searchValues)) return false
+
+      if (locationFilter !== 'all' && client.location !== locationFilter) return false
+
+      if (statusFilter === 'debt') return false
+      if (statusFilter === 'ok') return client.service === 'Activo'
+
+      return true
+    })
+  }, [tokenClients, matchesTerm, locationFilter, statusFilter])
+
+  const tokenInventoryByBase = useMemo(() => {
+    const countsByBase = tokenClients.reduce((acc, client) => {
+      const baseKey = String(client.base ?? 1)
+      acc[baseKey] = (acc[baseKey] ?? 0) + 1
+      return acc
+    }, {})
+
+    return Object.keys(IP_RANGES.tokenAntenna).map((baseKey) => {
+      const antennaSet = assignedIpsByRange.tokenAntenna?.[baseKey]
+      const modemSet = assignedIpsByRange.tokenModem?.[baseKey]
+      const antennaAvailable = availableIpsByRange.tokenAntenna?.[baseKey] ?? []
+      const modemAvailable = availableIpsByRange.tokenModem?.[baseKey] ?? []
+
+      return {
+        base: Number(baseKey),
+        antennasInstalled: countsByBase[baseKey] ?? 0,
+        antennaIpsInUse: antennaSet ? antennaSet.size : 0,
+        antennaIpsAvailable: antennaAvailable.length,
+        nextAntennaIp: antennaAvailable[0] ?? null,
+        modemIpsInUse: modemSet ? modemSet.size : 0,
+        modemIpsAvailable: modemAvailable.length,
+        nextModemIp: modemAvailable[0] ?? null,
+      }
+    })
+  }, [tokenClients, assignedIpsByRange, availableIpsByRange])
 
   const validateForm = () => {
     const errors = {}
@@ -236,11 +303,11 @@ export default function ClientsPage() {
               Listado de clientes
             </h2>
             <p className="text-sm text-slate-500">
-              Busca por nombre o localidad, filtra por estado y gestiona servicios activos.
+              Busca por nombre, localidad, equipo o dirección IP y gestiona los servicios activos.
             </p>
           </div>
           <p className="text-sm text-slate-500" role="status">
-            {filteredClients.length} registro(s) encontrados.
+            Residenciales: {filteredResidentialClients.length} • Antenas públicas: {filteredTokenClients.length}
           </p>
         </div>
 
@@ -251,7 +318,7 @@ export default function ClientsPage() {
         )}
 
         <Card>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-6">
             <div className="grid gap-3 md:grid-cols-4">
               <label className="grid gap-1 text-xs font-medium text-slate-600">
                 Buscar
@@ -259,7 +326,7 @@ export default function ClientsPage() {
                   value={searchTerm}
                   onChange={(event) => setSearchTerm(event.target.value)}
                   type="search"
-                  placeholder="Nombre o localidad"
+                  placeholder="Nombre, localidad o IP"
                   className="rounded-md border border-slate-300 px-3 py-2 text-sm"
                 />
               </label>
@@ -287,7 +354,7 @@ export default function ClientsPage() {
                 >
                   <option value="all">Todos</option>
                   <option value="debt">Pendientes</option>
-                  <option value="ok">Al día</option>
+                  <option value="ok">Al día / Activos</option>
                 </select>
               </label>
               <div className="flex items-end">
@@ -306,119 +373,245 @@ export default function ClientsPage() {
               </div>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
-                <thead className="bg-slate-50 text-slate-600">
-                  <tr>
-                    <th scope="col" className="px-3 py-2 font-medium">
-                      Cliente
-                    </th>
-                    <th scope="col" className="px-3 py-2 font-medium">
-                      Localidad
-                    </th>
-                    <th scope="col" className="px-3 py-2 font-medium">
-                      Base
-                    </th>
-                    <th scope="col" className="px-3 py-2 font-medium">
-                      Tipo
-                    </th>
-                    <th scope="col" className="px-3 py-2 font-medium">
-                      Equipamiento
-                    </th>
-                    <th scope="col" className="px-3 py-2 font-medium">
-                      Servicio
-                    </th>
-                    <th scope="col" className="px-3 py-2 font-medium">
-                      Pago mensual
-                    </th>
-                    <th scope="col" className="px-3 py-2 font-medium">
-                      Deuda
-                    </th>
-                    <th scope="col" className="px-3 py-2 font-medium text-right">
-                      Acciones
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {filteredClients.map((client) => (
-                    <tr key={client.id}>
-                      <td className="px-3 py-2 font-medium text-slate-900">
-                        <div className="flex flex-col">
-                          <span>{client.name}</span>
-                          {(IP_FIELDS_BY_TYPE[client.type ?? 'residential'] ?? [])
-                            .map(({ name, label }) => ({
-                              label,
-                              value: client[name],
-                            }))
-                            .filter(({ value }) => Boolean(value))
-                            .map(({ label, value }) => (
-                              <span key={label} className="text-xs text-slate-500">
-                                {label}: {value}
-                              </span>
-                            ))}
+            <div className="space-y-6">
+              <section aria-label="Clientes residenciales" className="space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h3 className="text-base font-semibold text-slate-900">Clientes residenciales</h3>
+                    <p className="text-xs text-slate-500">
+                      Control de pagos y estado del servicio mensual.
+                    </p>
+                  </div>
+                  <span className="text-xs text-slate-500" role="status">
+                    {filteredResidentialClients.length} registro(s)
+                  </span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
+                    <thead className="bg-slate-50 text-slate-600">
+                      <tr>
+                        <th scope="col" className="px-3 py-2 font-medium">
+                          Cliente
+                        </th>
+                        <th scope="col" className="px-3 py-2 font-medium">
+                          Localidad
+                        </th>
+                        <th scope="col" className="px-3 py-2 font-medium">
+                          Base
+                        </th>
+                        <th scope="col" className="px-3 py-2 font-medium">
+                          Servicio
+                        </th>
+                        <th scope="col" className="px-3 py-2 font-medium">
+                          Pago mensual
+                        </th>
+                        <th scope="col" className="px-3 py-2 font-medium">
+                          Deuda
+                        </th>
+                        <th scope="col" className="px-3 py-2 font-medium text-right">
+                          Acciones
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {filteredResidentialClients.map((client) => (
+                        <tr key={client.id}>
+                          <td className="px-3 py-2 font-medium text-slate-900">
+                            <div className="flex flex-col">
+                              <span>{client.name}</span>
+                              {client.ip && (
+                                <span className="text-xs text-slate-500">IP: {client.ip}</span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-3 py-2 text-slate-600">{client.location}</td>
+                          <td className="px-3 py-2 text-slate-600">Base {client.base}</td>
+                          <td className="px-3 py-2">
+                            <span
+                              className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
+                                client.service === 'Activo'
+                                  ? 'bg-emerald-50 text-emerald-700'
+                                  : 'bg-red-50 text-red-700'
+                              }`}
+                            >
+                              {client.service}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-slate-600">
+                            {peso(client.monthlyFee ?? CLIENT_PRICE)}
+                          </td>
+                          <td className="px-3 py-2 text-slate-600">
+                            {client.debtMonths > 0
+                              ? `${client.debtMonths} ${
+                                  client.debtMonths === 1 ? 'periodo' : 'periodos'
+                                }`
+                              : 'Sin deuda'}
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="border border-slate-200 bg-white text-slate-700 hover:border-blue-200"
+                              onClick={() => toggleClientService(client.id)}
+                            >
+                              {client.service === 'Activo' ? 'Suspender' : 'Activar'}
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                      {filteredResidentialClients.length === 0 && (
+                        <tr>
+                          <td colSpan={7} className="px-3 py-6 text-center text-sm text-slate-500">
+                            No se encontraron clientes residenciales.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+
+              <section aria-label="Antenas públicas" className="space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h3 className="text-base font-semibold text-slate-900">Antenas públicas instaladas</h3>
+                    <p className="text-xs text-slate-500">
+                      Controla tus antenas, los módems instalados y las direcciones IP asignadas.
+                    </p>
+                  </div>
+                  <span className="text-xs text-slate-500" role="status">
+                    {filteredTokenClients.length} registro(s)
+                  </span>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-2">
+                  {tokenInventoryByBase.map((info) => (
+                    <div
+                      key={info.base}
+                      className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-xs text-slate-600"
+                    >
+                      <h4 className="text-sm font-semibold text-slate-700">Base {info.base}</h4>
+                      <dl className="mt-2 space-y-1">
+                        <div className="flex justify-between gap-2">
+                          <dt className="font-medium">Antenas instaladas</dt>
+                          <dd>{info.antennasInstalled}</dd>
                         </div>
-                      </td>
-                      <td className="px-3 py-2 text-slate-600">{client.location}</td>
-                      <td className="px-3 py-2 text-slate-600">Base {client.base}</td>
-                      <td className="px-3 py-2 text-slate-600">
-                        {CLIENT_TYPE_LABELS[client.type ?? 'residential']}
-                      </td>
-                      <td className="px-3 py-2 text-slate-600">
-                        {client.type === 'token' ? (
-                          <div className="flex flex-col text-xs text-slate-500">
-                            <span>Antena: {client.antennaModel || 'Sin dato'}</span>
-                            <span>Módem: {client.modemModel || 'Sin dato'}</span>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-slate-500">Servicio residencial</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2">
-                        <span
-                          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
-                            client.service === 'Activo'
-                              ? 'bg-emerald-50 text-emerald-700'
-                              : 'bg-red-50 text-red-700'
-                          }`}
-                        >
-                          {client.service}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2 text-slate-600">
-                        {client.type === 'token'
-                          ? 'Sin mensualidad'
-                          : peso(client.monthlyFee ?? CLIENT_PRICE)}
-                      </td>
-                      <td className="px-3 py-2 text-slate-600">
-                        {client.type === 'token'
-                          ? 'No aplica'
-                          : client.debtMonths > 0
-                            ? `${client.debtMonths} ${
-                                client.debtMonths === 1 ? 'periodo' : 'periodos'
-                              }`
-                            : 'Sin deuda'}
-                      </td>
-                      <td className="px-3 py-2 text-right">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="border border-slate-200 bg-white text-slate-700 hover:border-blue-200"
-                          onClick={() => toggleClientService(client.id)}
-                        >
-                          {client.service === 'Activo' ? 'Suspender' : 'Activar'}
-                        </Button>
-                      </td>
-                    </tr>
+                        <div className="flex justify-between gap-2">
+                          <dt>IPs de antena en uso</dt>
+                          <dd>{info.antennaIpsInUse}</dd>
+                        </div>
+                        <div className="flex justify-between gap-2">
+                          <dt>IPs de antena disponibles</dt>
+                          <dd>{info.antennaIpsAvailable}</dd>
+                        </div>
+                        <div className="flex justify-between gap-2">
+                          <dt>Próxima IP de antena</dt>
+                          <dd>{info.nextAntennaIp ?? 'Sin disponibles'}</dd>
+                        </div>
+                        <div className="flex justify-between gap-2">
+                          <dt>IPs de módem en uso</dt>
+                          <dd>{info.modemIpsInUse}</dd>
+                        </div>
+                        <div className="flex justify-between gap-2">
+                          <dt>IPs de módem disponibles</dt>
+                          <dd>{info.modemIpsAvailable}</dd>
+                        </div>
+                        <div className="flex justify-between gap-2">
+                          <dt>Próxima IP de módem</dt>
+                          <dd>{info.nextModemIp ?? 'Sin disponibles'}</dd>
+                        </div>
+                      </dl>
+                    </div>
                   ))}
-                  {filteredClients.length === 0 && (
-                    <tr>
-                      <td colSpan={9} className="px-3 py-6 text-center text-sm text-slate-500">
-                        No se encontraron clientes.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
+                    <thead className="bg-slate-50 text-slate-600">
+                      <tr>
+                        <th scope="col" className="px-3 py-2 font-medium">
+                          Punto
+                        </th>
+                        <th scope="col" className="px-3 py-2 font-medium">
+                          Localidad
+                        </th>
+                        <th scope="col" className="px-3 py-2 font-medium">
+                          Base
+                        </th>
+                        <th scope="col" className="px-3 py-2 font-medium">
+                          Antena instalada
+                        </th>
+                        <th scope="col" className="px-3 py-2 font-medium">
+                          Módem / Router
+                        </th>
+                        <th scope="col" className="px-3 py-2 font-medium">
+                          Servicio
+                        </th>
+                        <th scope="col" className="px-3 py-2 font-medium text-right">
+                          Acciones
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {filteredTokenClients.map((client) => (
+                        <tr key={client.id}>
+                          <td className="px-3 py-2 font-medium text-slate-900">
+                            <div className="flex flex-col">
+                              <span>{client.name}</span>
+                              {client.antennaIp && (
+                                <span className="text-xs text-slate-500">IP antena: {client.antennaIp}</span>
+                              )}
+                              {client.modemIp && (
+                                <span className="text-xs text-slate-500">IP módem: {client.modemIp}</span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-3 py-2 text-slate-600">{client.location}</td>
+                          <td className="px-3 py-2 text-slate-600">Base {client.base}</td>
+                          <td className="px-3 py-2 text-slate-600">
+                            <div className="flex flex-col text-xs text-slate-500">
+                              <span>Modelo: {client.antennaModel || 'Sin dato'}</span>
+                            </div>
+                          </td>
+                          <td className="px-3 py-2 text-slate-600">
+                            <div className="flex flex-col text-xs text-slate-500">
+                              <span>Modelo: {client.modemModel || 'Sin dato'}</span>
+                            </div>
+                          </td>
+                          <td className="px-3 py-2">
+                            <span
+                              className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
+                                client.service === 'Activo'
+                                  ? 'bg-emerald-50 text-emerald-700'
+                                  : 'bg-red-50 text-red-700'
+                              }`}
+                            >
+                              {client.service}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="border border-slate-200 bg-white text-slate-700 hover:border-blue-200"
+                              onClick={() => toggleClientService(client.id)}
+                            >
+                              {client.service === 'Activo' ? 'Suspender' : 'Activar'}
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                      {filteredTokenClients.length === 0 && (
+                        <tr>
+                          <td colSpan={7} className="px-3 py-6 text-center text-sm text-slate-500">
+                            No se encontraron antenas públicas instaladas con los filtros actuales.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
             </div>
           </CardContent>
         </Card>
