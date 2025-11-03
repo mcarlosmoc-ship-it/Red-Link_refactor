@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, func
+from sqlalchemy import Column, ForeignKey, Integer, String
 from sqlalchemy.orm import relationship
 
 from ..database import Base
@@ -28,8 +28,6 @@ class Reseller(Base):
         nullable=False,
     )
     location = Column(String, nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-
     base = relationship("BaseStation", back_populates="resellers")
     deliveries = relationship(
         "ResellerDelivery",

@@ -47,4 +47,4 @@ class Expense(Base):
     base = relationship("BaseStation", back_populates="expenses")
 
 
-Index("expenses_base_date_idx", Expense.base_id, Expense.expense_date.desc())
+Index("expenses_base_date_idx", Expense.base_id, Expense.expense_date)

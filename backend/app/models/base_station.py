@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import Column, DateTime, Integer, String, Text, func
+from sqlalchemy import Column, Integer, String, Text
 from sqlalchemy.orm import relationship
 
 from ..database import Base
@@ -18,7 +18,6 @@ class BaseStation(Base):
     name = Column(String, nullable=False)
     location = Column(String, nullable=False)
     notes = Column(Text, nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     clients = relationship("Client", back_populates="base")
     resellers = relationship("Reseller", back_populates="base")

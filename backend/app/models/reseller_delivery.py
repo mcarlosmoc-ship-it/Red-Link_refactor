@@ -5,7 +5,7 @@ from __future__ import annotations
 import enum
 import uuid
 
-from sqlalchemy import Column, Date, DateTime, Enum as SAEnum, ForeignKey, Integer, Numeric, String, Text, func
+from sqlalchemy import Column, Date, Enum as SAEnum, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.orm import relationship
 
 from ..database import Base
@@ -40,8 +40,6 @@ class ResellerDelivery(Base):
     )
     total_value = Column(Numeric(12, 2), nullable=False, default=0, server_default="0")
     notes = Column(Text, nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-
     reseller = relationship("Reseller", back_populates="deliveries")
     items = relationship(
         "ResellerDeliveryItem",
