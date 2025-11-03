@@ -127,6 +127,7 @@ export const useDashboardMetrics = ({ statusFilter, searchTerm }) => {
       paidClients,
       pendingClients,
       clientIncome,
+      totalDebtAmount,
       resellerIncome,
       totalExpenses,
       internetCosts,
