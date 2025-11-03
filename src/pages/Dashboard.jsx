@@ -1,17 +1,10 @@
 import React, { useMemo, useState } from 'react'
 import { DollarSign, Users, Wifi } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import Button from '../components/ui/Button.jsx'
 import StatCard from '../components/dashboard/StatCard.jsx'
 import { peso } from '../utils/formatters.js'
 import { useDashboardMetrics } from '../hooks/useDashboardMetrics.js'
 import { useBackofficeStore } from '../store/useBackofficeStore.js'
-
-const STATUS_FILTERS = [
-  { value: 'pending', label: 'Pendientes' },
-  { value: 'paid', label: 'Al día' },
-  { value: 'all', label: 'Todos' },
-]
 
 export default function DashboardPage() {
   const [statusFilter, setStatusFilter] = useState('pending')
@@ -79,22 +72,38 @@ export default function DashboardPage() {
         <div className="grid gap-4 md:grid-cols-3">
           <StatCard
             title="Clientes activos"
-            value={metrics.totalClients}
+            value={`${metrics.totalClients} activos`}
             icon={Users}
-            trend={`+${metrics.paidClients} al día`}
+            trend={`${metrics.paidClients} al día`}
+            valueClassName="text-sm font-medium text-slate-500"
+            trendClassName="text-3xl font-semibold text-slate-900"
+            onClick={() => setStatusFilter((current) => (current === 'paid' ? 'all' : 'paid'))}
+            aria-pressed={statusFilter === 'paid'}
+            className={`${statusFilter === 'paid' ? 'ring-2 ring-emerald-200' : ''}`}
           />
           <StatCard
             title="Pendientes de pago"
             value={metrics.pendingClients}
             icon={DollarSign}
             trend={metrics.pendingClients > 0 ? `-${metrics.pendingClients} por cobrar` : 'Todo al día'}
-            className={metrics.pendingClients > 0 ? 'ring-2 ring-amber-200' : ''}
+            onClick={() => setStatusFilter((current) => (current === 'pending' ? 'all' : 'pending'))}
+            aria-pressed={statusFilter === 'pending'}
+            className={`${
+              statusFilter === 'pending'
+                ? 'ring-2 ring-blue-200'
+                : metrics.pendingClients > 0
+                  ? 'ring-2 ring-amber-200'
+                  : ''
+            }`}
           />
           <StatCard
             title="Ingresos estimados"
             value={peso(metrics.clientIncome + metrics.resellerIncome)}
             icon={Wifi}
             trend={`Gastos: ${peso(metrics.internetCosts + metrics.totalExpenses)}`}
+            onClick={() => setStatusFilter('all')}
+            aria-pressed={statusFilter === 'all'}
+            className={`${statusFilter === 'all' ? 'ring-2 ring-slate-200' : ''}`}
           />
         </div>
       </section>
@@ -107,18 +116,10 @@ export default function DashboardPage() {
             </h2>
             <p className="text-sm text-slate-500">Filtra y registra pagos sin perder el contexto.</p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {STATUS_FILTERS.map((filter) => (
-              <Button
-                key={filter.value}
-                variant={statusFilter === filter.value ? 'default' : 'ghost'}
-                className={statusFilter === filter.value ? '' : 'border border-slate-200 bg-white text-slate-700 hover:border-blue-200'}
-                onClick={() => setStatusFilter(filter.value)}
-                type="button"
-              >
-                {filter.label}
-              </Button>
-            ))}
+          <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
+            {statusFilter === 'paid' && 'Mostrando clientes al día'}
+            {statusFilter === 'pending' && 'Mostrando clientes con pagos pendientes'}
+            {statusFilter === 'all' && 'Mostrando todos los clientes activos'}
           </div>
         </div>
 
