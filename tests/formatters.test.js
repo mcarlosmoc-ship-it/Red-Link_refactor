@@ -4,6 +4,8 @@ import {
   addMonthsToPeriod,
   diffPeriods,
   periodRange,
+  parsePeriodKey,
+  periodToIndex,
 } from '../src/utils/formatters.js'
 
 describe('getPeriodFromDateString', () => {
@@ -79,5 +81,25 @@ describe('periodRange', () => {
     expect(range[0]).toBe('2020-01')
     expect(range[range.length - 1]).toBe('2022-12')
     expect(range.length).toBe(36)
+  })
+})
+
+describe('parsePeriodKey', () => {
+  it('parses valid period keys into the expected date', () => {
+    const date = parsePeriodKey('2024-01')
+    expect(date.getFullYear()).toBe(2024)
+    expect(date.getMonth()).toBe(0)
+    expect(date.getDate()).toBe(1)
+    expect(periodToIndex('2024-01')).toBe(2024 * 12)
+  })
+
+  it('clamps out-of-range months to the nearest valid month', () => {
+    const upper = parsePeriodKey('2024-15')
+    expect(upper.getFullYear()).toBe(2024)
+    expect(upper.getMonth()).toBe(11)
+
+    const lower = parsePeriodKey('2024-00')
+    expect(lower.getFullYear()).toBe(2024)
+    expect(lower.getMonth()).toBe(0)
   })
 })
