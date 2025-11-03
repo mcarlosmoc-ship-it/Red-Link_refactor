@@ -98,7 +98,7 @@ export default function ResellersPage() {
       0,
     )
 
-  const handleDeliverySubmit = (event) => {
+  const handleDeliverySubmit = async (event) => {
     event.preventDefault()
     const hasQty = VOUCHER_TYPES.some((item) => Number(deliveryForm.qty[item.key]) > 0)
     if (!deliveryForm.resellerId || !hasQty) {
@@ -106,12 +106,19 @@ export default function ResellersPage() {
       return
     }
 
-    addResellerDelivery({ resellerId: deliveryForm.resellerId, qty: deliveryForm.qty, date: today() })
-    setFeedback({ type: 'success', message: 'Entrega registrada correctamente.' })
-    setDeliveryForm({ resellerId: deliveryForm.resellerId, qty: createEmptyQty() })
+    try {
+      await addResellerDelivery({ resellerId: deliveryForm.resellerId, qty: deliveryForm.qty, date: today() })
+      setFeedback({ type: 'success', message: 'Entrega registrada correctamente.' })
+      setDeliveryForm({ resellerId: deliveryForm.resellerId, qty: createEmptyQty() })
+    } catch (error) {
+      setFeedback({
+        type: 'error',
+        message: error?.message ?? 'No se pudo registrar la entrega. Intenta nuevamente.',
+      })
+    }
   }
 
-  const handleSettlementSubmit = (event) => {
+  const handleSettlementSubmit = async (event) => {
     event.preventDefault()
     if (!settlementForm.resellerId || !settlementForm.deliveryId) {
       setFeedback({ type: 'error', message: 'Selecciona una entrega pendiente.' })
@@ -136,28 +143,26 @@ export default function ResellersPage() {
       return
     }
 
-    const normalizedLeftovers = VOUCHER_TYPES.reduce(
-      (acc, voucher) => ({
-        ...acc,
-        [voucher.key]: Math.max(0, Number(settlementForm.leftovers[voucher.key]) || 0),
-      }),
-      {},
-    )
-
-    settleResellerDelivery({
-      resellerId: settlementForm.resellerId,
-      deliveryId: settlementForm.deliveryId,
-      paidPercent: Number(settlementForm.paidPercent) || 0,
-      received: Number(settlementForm.received) || 0,
-      leftovers: normalizedLeftovers,
-    })
-    setFeedback({ type: 'success', message: 'Liquidación registrada correctamente.' })
-    setSettlementForm((prev) => ({
-      ...prev,
-      deliveryId: '',
-      received: '',
-      leftovers: createEmptyQty(),
-    }))
+    try {
+      await settleResellerDelivery({
+        resellerId: settlementForm.resellerId,
+        deliveryId: settlementForm.deliveryId,
+        amount: settlementDetails?.expectedTotal ?? 0,
+        notes: `Liquidación ${Number(settlementForm.paidPercent) || 0}%`,
+      })
+      setFeedback({ type: 'success', message: 'Liquidación registrada correctamente.' })
+      setSettlementForm((prev) => ({
+        ...prev,
+        deliveryId: '',
+        received: '',
+        leftovers: createEmptyQty(),
+      }))
+    } catch (error) {
+      setFeedback({
+        type: 'error',
+        message: error?.message ?? 'No se pudo registrar la liquidación. Intenta nuevamente.',
+      })
+    }
   }
 
   const settlementDiffClass = settlementDetails
