@@ -58,6 +58,49 @@ export const periodToIndex = (periodKey) => {
   return date.getFullYear() * 12 + date.getMonth()
 }
 
+const addMonthCandidate = (container, year, month) => {
+  if (!Number.isFinite(month) || month < 1 || month > 12) {
+    return
+  }
+
+  const monthKey = String(month).padStart(2, '0')
+  const periodKey = `${year}-${monthKey}`
+
+  if (!container.includes(periodKey)) {
+    container.push(periodKey)
+  }
+}
+
+const normalizeSlashDateParts = (value) => {
+  const [first, second, year] = value.split('/')
+  const firstNumber = Number.parseInt(first, 10)
+  const secondNumber = Number.parseInt(second, 10)
+  const yearNumber = Number.parseInt(year, 10)
+
+  if (
+    !Number.isFinite(firstNumber) ||
+    !Number.isFinite(secondNumber) ||
+    !Number.isFinite(yearNumber)
+  ) {
+    return null
+  }
+
+  return { dayCandidate: firstNumber, monthCandidate: secondNumber, year: yearNumber }
+}
+
+const isValidDateComposition = (year, month, day) => {
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
+    return false
+  }
+
+  const date = new Date(year, month - 1, day)
+  return (
+    date.getFullYear() === year &&
+    date.getMonth() + 1 === month &&
+    date.getDate() === day
+  )
+}
+
 export const getPeriodFromDateString = (value) => {
   if (!value) return null
 
@@ -66,8 +109,30 @@ export const getPeriodFromDateString = (value) => {
   }
 
   if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(value)) {
-    const [, month, year] = value.split('/')
-    return `${year}-${String(month).padStart(2, '0')}`
+    const normalized = normalizeSlashDateParts(value)
+
+    if (!normalized) {
+      return null
+    }
+
+    const { dayCandidate, monthCandidate, year } = normalized
+    const candidates = []
+
+    if (isValidDateComposition(year, monthCandidate, dayCandidate)) {
+      addMonthCandidate(candidates, year, monthCandidate)
+    }
+
+    if (isValidDateComposition(year, dayCandidate, monthCandidate)) {
+      addMonthCandidate(candidates, year, dayCandidate)
+    }
+
+    if (candidates.length === 1) {
+      return candidates[0]
+    }
+
+    if (candidates.length > 1) {
+      return candidates
+    }
   }
 
   const timestamp = Date.parse(value)
