@@ -17,6 +17,8 @@ from sqlalchemy import (
     func,
 )
 
+from sqlalchemy.orm import relationship
+
 from ..database import Base
 
 
@@ -41,6 +43,8 @@ class Expense(Base):
     description = Column(Text, nullable=False)
     amount = Column(Numeric(12, 2), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    base = relationship("BaseStation", back_populates="expenses")
 
 
 Index("expenses_base_date_idx", Expense.base_id, Expense.expense_date.desc())
