@@ -11,7 +11,22 @@ const periodLabelFormatter = new Intl.DateTimeFormat('es-MX', {
 
 export const peso = (value) => currencyFormatter.format(value ?? 0)
 
-export const today = () => dateFormatter.format(new Date())
+export const today = () => {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+export const formatDate = (value) => {
+  if (!value) return ''
+
+  const candidate = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(candidate.getTime())) return ''
+
+  return dateFormatter.format(candidate)
+}
 
 export const toPeriodKey = (date = new Date()) => {
   const year = date.getFullYear()
