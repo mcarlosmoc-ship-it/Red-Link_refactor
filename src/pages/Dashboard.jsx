@@ -98,7 +98,7 @@ export default function DashboardPage() {
   const remainingBalance = Math.max(0, outstandingAmount - plannedAmount)
   const additionalAhead = Math.max(0, plannedMonths - (activeClient?.debtMonths ?? 0))
 
-  const handleSubmitPayment = (event) => {
+  const handleSubmitPayment = async (event) => {
     event.preventDefault()
     if (!paymentForm.clientId) {
       setFeedback({ type: 'error', message: 'Selecciona un cliente para registrar el pago.' })
@@ -133,21 +133,28 @@ export default function DashboardPage() {
       : monthsValue
     const amountToRegister = isAmountMode ? amountValue : monthsValue * normalizedMonthlyFee
 
-    recordPayment({
-      clientId: paymentForm.clientId,
-      months: monthsToRegister,
-      amount: amountToRegister,
-      method: paymentForm.method,
-      note: paymentForm.note,
-    })
+    try {
+      await recordPayment({
+        clientId: paymentForm.clientId,
+        months: monthsToRegister,
+        amount: amountToRegister,
+        method: paymentForm.method,
+        note: paymentForm.note,
+      })
 
-    setFeedback({
-      type: 'success',
-      message: `Se registró el pago de ${peso(amountToRegister)} (${formatPeriods(monthsToRegister)} ${
-        isApproximatelyOne(monthsToRegister) ? 'periodo' : 'periodos'
-      }) para ${activeClient?.name ?? 'el cliente'}.`,
-    })
-    setPaymentForm(createEmptyPaymentForm())
+      setFeedback({
+        type: 'success',
+        message: `Se registró el pago de ${peso(amountToRegister)} (${formatPeriods(monthsToRegister)} ${
+          isApproximatelyOne(monthsToRegister) ? 'periodo' : 'periodos'
+        }) para ${activeClient?.name ?? 'el cliente'}.`,
+      })
+      setPaymentForm(createEmptyPaymentForm())
+    } catch (error) {
+      setFeedback({
+        type: 'error',
+        message: error?.message ?? 'No se pudo registrar el pago. Intenta nuevamente.',
+      })
+    }
   }
 
   const handleMonthsInputChange = (value) => {

@@ -42,18 +42,22 @@ export default function ExpensesPage() {
     return Object.keys(errors).length === 0
   }
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault()
     if (!validate()) return
-    addExpense({
-      date: form.date,
-      desc: form.desc.trim(),
-      cat: form.cat,
-      amount: Number(form.amount),
-      base: Number(form.base) || 0,
-    })
-    setForm(createDefaultExpense())
-    setFormErrors({})
+    try {
+      await addExpense({
+        date: form.date,
+        desc: form.desc.trim(),
+        cat: form.cat,
+        amount: Number(form.amount),
+        base: Number(form.base) || 0,
+      })
+      setForm(createDefaultExpense())
+      setFormErrors({})
+    } catch (error) {
+      setFormErrors({ submit: error?.message ?? 'No se pudo registrar el gasto.' })
+    }
   }
 
   return (
@@ -135,6 +139,9 @@ export default function ExpensesPage() {
             </label>
           </div>
           <div className="flex justify-end gap-2">
+            {formErrors.submit && (
+              <p className="flex-1 text-xs text-red-600">{formErrors.submit}</p>
+            )}
             <Button
               type="button"
               variant="ghost"

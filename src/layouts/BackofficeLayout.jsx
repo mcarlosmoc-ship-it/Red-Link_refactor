@@ -7,12 +7,15 @@ import { formatDate } from '../utils/formatters.js'
 import { useBackofficeStore } from '../store/useBackofficeStore.js'
 
 export default function BackofficeLayout() {
-  const resetDemoData = useBackofficeStore((state) => state.resetDemoData)
+  const initialize = useBackofficeStore((state) => state.initialize)
+  const refreshData = useBackofficeStore((state) => state.refreshData)
   const syncCurrentPeriod = useBackofficeStore((state) => state.syncCurrentPeriod)
 
   useEffect(() => {
+    initialize()
     syncCurrentPeriod()
-  }, [syncCurrentPeriod])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900">
@@ -38,9 +41,9 @@ export default function BackofficeLayout() {
                   type="button"
                   variant="ghost"
                   className="border border-slate-200 bg-white text-slate-700 hover:border-blue-200"
-                  onClick={resetDemoData}
+                  onClick={refreshData}
                 >
-                  Restablecer demo
+                  Actualizar datos
                 </Button>
               </div>
             </div>

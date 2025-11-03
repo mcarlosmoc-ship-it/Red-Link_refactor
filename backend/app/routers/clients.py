@@ -7,8 +7,9 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from .. import models, schemas
+from .. import schemas
 from ..database import get_db
+from ..services import ClientService
 
 router = APIRouter()
 
@@ -16,13 +17,13 @@ router = APIRouter()
 @router.get("/", response_model=List[schemas.ClientRead])
 def list_clients(db: Session = Depends(get_db)) -> List[schemas.ClientRead]:
     """Return all clients stored in the database."""
-    return db.query(models.Client).all()
+    return list(ClientService.list_clients(db))
 
 
 @router.get("/{client_id}", response_model=schemas.ClientRead)
 def get_client(client_id: str, db: Session = Depends(get_db)) -> schemas.ClientRead:
     """Retrieve a single client by its identifier."""
-    client = db.query(models.Client).filter(models.Client.id == client_id).first()
+    client = ClientService.get_client(db, client_id)
     if client is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client not found")
     return client
@@ -34,21 +35,16 @@ def create_client(
     db: Session = Depends(get_db),
 ) -> schemas.ClientRead:
     """Create a new client record."""
-    client = models.Client(**client_in.dict())
-    db.add(client)
-    db.commit()
-    db.refresh(client)
-    return client
+    return ClientService.create_client(db, client_in)
 
 
 @router.delete("/{client_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_client(client_id: str, db: Session = Depends(get_db)) -> None:
     """Delete a client if it exists."""
-    client = db.query(models.Client).filter(models.Client.id == client_id).first()
+    client = ClientService.get_client(db, client_id)
     if client is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client not found")
-    db.delete(client)
-    db.commit()
+    ClientService.delete_client(db, client)
 
 
 @router.put("/{client_id}", response_model=schemas.ClientRead)
@@ -58,14 +54,7 @@ def update_client(
     db: Session = Depends(get_db),
 ) -> schemas.ClientRead:
     """Update a client's information."""
-    client = db.query(models.Client).filter(models.Client.id == client_id).first()
+    client = ClientService.get_client(db, client_id)
     if client is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client not found")
-
-    update_data = client_in.dict(exclude_unset=True)
-    for key, value in update_data.items():
-        setattr(client, key, value)
-
-    db.commit()
-    db.refresh(client)
-    return client
+    return ClientService.update_client(db, client, client_in)
