@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useCallback, useMemo, useState } from 'react'
 import Button from '../components/ui/Button.jsx'
 import { Card, CardContent } from '../components/ui/Card.jsx'
 import { CLIENT_PRICE, useBackofficeStore } from '../store/useBackofficeStore.js'
@@ -15,23 +15,60 @@ const isApproximatelyOne = (value) => Math.abs(Number(value) - 1) < 0.01
 
 const LOCATIONS = ['Nuevo Amatenango', 'Zapotal', 'Naranjal', 'Belén', 'Lagunita']
 
-const IP_RANGES = {
-  1: { prefix: '192.168.3.', start: 1, end: 254 },
-  2: { prefix: '192.168.200.', start: 1, end: 254 },
+const CLIENT_TYPE_LABELS = {
+  residential: 'Cliente residencial',
+  token: 'Punto con antena pública',
 }
 
+const IP_RANGES = {
+  residential: {
+    1: { prefix: '192.168.3.', start: 1, end: 254 },
+    2: { prefix: '192.168.200.', start: 1, end: 254 },
+  },
+  tokenAntenna: {
+    1: { prefix: '192.168.4.', start: 1, end: 254 },
+    2: { prefix: '192.168.90.', start: 1, end: 254 },
+  },
+  tokenModem: {
+    1: { prefix: '192.168.5.', start: 1, end: 254 },
+    2: { prefix: '192.168.91.', start: 1, end: 254 },
+  },
+}
+
+const IP_FIELDS_BY_TYPE = {
+  residential: [
+    { name: 'ip', label: 'Dirección IP', placeholder: '192.168.3.10', rangeKey: 'residential' },
+  ],
+  token: [
+    { name: 'antennaIp', label: 'IP de la antena', placeholder: '192.168.4.10', rangeKey: 'tokenAntenna' },
+    { name: 'modemIp', label: 'IP del módem', placeholder: '192.168.5.10', rangeKey: 'tokenModem' },
+  ],
+}
+
+const ANTENNA_MODELS = ['LiteBeam', 'Loco M5']
+
 const IP_OPTIONS = Object.fromEntries(
-  Object.entries(IP_RANGES).map(([base, { prefix, start, end }]) => [
-    base,
-    Array.from({ length: end - start + 1 }, (_, index) => `${prefix}${start + index}`),
+  Object.entries(IP_RANGES).map(([rangeKey, baseRanges]) => [
+    rangeKey,
+    Object.fromEntries(
+      Object.entries(baseRanges).map(([base, { prefix, start, end }]) => [
+        base,
+        Array.from({ length: end - start + 1 }, (_, index) => `${prefix}${start + index}`),
+      ]),
+    ),
   ]),
 )
 
 const defaultForm = {
+  type: 'residential',
   name: '',
   location: LOCATIONS[0],
   base: 1,
   ip: '',
+  antennaIp: '',
+  modemIp: '',
+  antennaModel: ANTENNA_MODELS[0],
+  modemModel: '',
   debtMonths: 0,
   paidMonthsAhead: 0,
   monthlyFee: CLIENT_PRICE,
@@ -56,65 +93,176 @@ export default function ClientsPage() {
     return Array.from(unique)
   }, [clients])
 
-  const assignedIpsByBase = useMemo(() => {
+  const assignedIpsByRange = useMemo(() => {
     const result = {}
-    clients.forEach(({ base, ip }) => {
-      const key = String(base)
-      if (!result[key]) result[key] = new Set()
-      result[key].add(ip)
+    clients.forEach((client) => {
+      const type = client.type ?? 'residential'
+      const baseKey = String(client.base ?? 1)
+      const ipFields = IP_FIELDS_BY_TYPE[type] ?? []
+      ipFields.forEach(({ name, rangeKey }) => {
+        const value = client[name]
+        if (!value) return
+        if (!result[rangeKey]) result[rangeKey] = {}
+        if (!result[rangeKey][baseKey]) result[rangeKey][baseKey] = new Set()
+        result[rangeKey][baseKey].add(value)
+      })
     })
     return result
   }, [clients])
 
-  const availableIpsByBase = useMemo(() => {
-    return Object.fromEntries(
-      Object.entries(IP_OPTIONS).map(([base, options]) => {
-        const used = assignedIpsByBase[base] ?? new Set()
-        return [base, options.filter((ip) => !used.has(ip))]
-      }),
-    )
-  }, [assignedIpsByBase])
-
-  const availableIpsForSelectedBase = availableIpsByBase[String(formState.base)] ?? []
-
-  const filteredClients = useMemo(() => {
-    const term = searchTerm.trim().toLowerCase()
-    return clients.filter((client) => {
-      const matchesTerm =
-        term.length === 0 ||
-        client.name.toLowerCase().includes(term) ||
-        client.location.toLowerCase().includes(term)
-      const matchesLocation = locationFilter === 'all' || client.location === locationFilter
-      const matchesStatus =
-        statusFilter === 'all'
-          ? true
-          : statusFilter === 'debt'
-            ? client.debtMonths > 0
-            : client.debtMonths === 0
-      return matchesTerm && matchesLocation && matchesStatus
+  const availableIpsByRange = useMemo(() => {
+    const result = {}
+    Object.entries(IP_OPTIONS).forEach(([rangeKey, baseOptions]) => {
+      result[rangeKey] = {}
+      Object.entries(baseOptions).forEach(([baseKey, options]) => {
+        const used = assignedIpsByRange[rangeKey]?.[baseKey] ?? new Set()
+        result[rangeKey][baseKey] = options.filter((ip) => !used.has(ip))
+      })
     })
-  }, [clients, searchTerm, locationFilter, statusFilter])
+    return result
+  }, [assignedIpsByRange])
+
+  const currentIpFields = IP_FIELDS_BY_TYPE[formState.type] ?? []
+
+  const getAvailableIps = (rangeKey, base) =>
+    availableIpsByRange[rangeKey]?.[String(base)] ?? []
+
+  const normalizedSearchTerm = searchTerm.trim().toLowerCase()
+  const matchesTerm = useCallback(
+    (values) =>
+      normalizedSearchTerm.length === 0 ||
+      values.some((value) => {
+        if (value === null || value === undefined) return false
+        return value.toString().toLowerCase().includes(normalizedSearchTerm)
+      }),
+    [normalizedSearchTerm],
+  )
+
+  const residentialClients = useMemo(
+    () => clients.filter((client) => (client.type ?? 'residential') === 'residential'),
+    [clients],
+  )
+  const tokenClients = useMemo(
+    () => clients.filter((client) => client.type === 'token'),
+    [clients],
+  )
+
+  const filteredResidentialClients = useMemo(() => {
+    return residentialClients.filter((client) => {
+      const searchValues = [
+        client.name,
+        client.location,
+        ...(IP_FIELDS_BY_TYPE.residential ?? []).map(({ name }) => client[name]),
+      ]
+      if (!matchesTerm(searchValues)) return false
+
+      if (locationFilter !== 'all' && client.location !== locationFilter) return false
+
+      if (statusFilter === 'debt') return client.debtMonths > 0
+      if (statusFilter === 'ok') return client.debtMonths === 0
+
+      return true
+    })
+  }, [residentialClients, matchesTerm, locationFilter, statusFilter])
+
+  const filteredTokenClients = useMemo(() => {
+    return tokenClients.filter((client) => {
+      const searchValues = [
+        client.name,
+        client.location,
+        client.antennaModel,
+        client.modemModel,
+        client.antennaIp,
+        client.modemIp,
+      ]
+      if (!matchesTerm(searchValues)) return false
+
+      if (locationFilter !== 'all' && client.location !== locationFilter) return false
+
+      if (statusFilter === 'debt') return false
+      if (statusFilter === 'ok') return client.service === 'Activo'
+
+      return true
+    })
+  }, [tokenClients, matchesTerm, locationFilter, statusFilter])
+
+  const tokenInventoryByBase = useMemo(() => {
+    const countsByBase = tokenClients.reduce((acc, client) => {
+      const baseKey = String(client.base ?? 1)
+      acc[baseKey] = (acc[baseKey] ?? 0) + 1
+      return acc
+    }, {})
+
+    return Object.keys(IP_RANGES.tokenAntenna).map((baseKey) => {
+      const antennaSet = assignedIpsByRange.tokenAntenna?.[baseKey]
+      const modemSet = assignedIpsByRange.tokenModem?.[baseKey]
+      const antennaAvailable = availableIpsByRange.tokenAntenna?.[baseKey] ?? []
+      const modemAvailable = availableIpsByRange.tokenModem?.[baseKey] ?? []
+
+      return {
+        base: Number(baseKey),
+        antennasInstalled: countsByBase[baseKey] ?? 0,
+        antennaIpsInUse: antennaSet ? antennaSet.size : 0,
+        antennaIpsAvailable: antennaAvailable.length,
+        nextAntennaIp: antennaAvailable[0] ?? null,
+        modemIpsInUse: modemSet ? modemSet.size : 0,
+        modemIpsAvailable: modemAvailable.length,
+        nextModemIp: modemAvailable[0] ?? null,
+      }
+    })
+  }, [tokenClients, assignedIpsByRange, availableIpsByRange])
 
   const validateForm = () => {
     const errors = {}
     if (!formState.name.trim()) errors.name = 'El nombre es obligatorio.'
-    const trimmedIp = formState.ip.trim()
-    if (!trimmedIp) {
-      errors.ip = 'Ingresa la dirección IP asignada.'
+    const ipFields = IP_FIELDS_BY_TYPE[formState.type] ?? []
+    ipFields.forEach(({ name, rangeKey, label }) => {
+      const rawValue = formState[name]
+      const value = typeof rawValue === 'string' ? rawValue.trim() : ''
+      if (!value) {
+        errors[name] = `Ingresa ${label.toLowerCase()}.`
+        return
+      }
+
+      const baseRange = IP_RANGES[rangeKey]?.[formState.base]
+      if (!baseRange) return
+
+      if (!value.startsWith(baseRange.prefix)) {
+        errors[name] = `La IP debe iniciar con ${baseRange.prefix}`
+        return
+      }
+
+      const suffix = Number(value.split('.').pop())
+      const isValidSuffix =
+        Number.isInteger(suffix) && suffix >= baseRange.start && suffix <= baseRange.end
+      if (!isValidSuffix) {
+        errors[name] = `La IP debe estar entre ${baseRange.prefix}${baseRange.start} y ${baseRange.prefix}${baseRange.end}.`
+        return
+      }
+
+      const used = assignedIpsByRange[rangeKey]?.[String(formState.base)] ?? new Set()
+      if (used.has(value)) {
+        errors[name] = 'La IP seleccionada ya está en uso.'
+      }
+    })
+
+    if (formState.type === 'residential') {
+      if (!Number.isInteger(Number(formState.debtMonths)) || Number(formState.debtMonths) < 0) {
+        errors.debtMonths = 'Los periodos pendientes no pueden ser negativos.'
+      }
+      if (
+        !Number.isInteger(Number(formState.paidMonthsAhead)) ||
+        Number(formState.paidMonthsAhead) < 0
+      ) {
+        errors.paidMonthsAhead = 'Los periodos adelantados no pueden ser negativos.'
+      }
+      const monthlyFeeValue = Number(formState.monthlyFee)
+      if (!Number.isFinite(monthlyFeeValue) || monthlyFeeValue <= 0) {
+        errors.monthlyFee = 'Ingresa un monto mensual mayor a cero.'
+      }
     } else {
-      const baseRange = IP_RANGES[formState.base]
-      if (baseRange) {
-        if (!trimmedIp.startsWith(baseRange.prefix)) {
-          errors.ip = `La IP debe iniciar con ${baseRange.prefix}`
-        } else {
-          const suffix = Number(trimmedIp.split('.').pop())
-          const isValidSuffix = Number.isInteger(suffix) && suffix >= baseRange.start && suffix <= baseRange.end
-          if (!isValidSuffix) {
-            errors.ip = `La IP debe estar entre ${baseRange.prefix}${baseRange.start} y ${baseRange.prefix}${baseRange.end}.`
-          } else if (!availableIpsForSelectedBase.includes(trimmedIp)) {
-            errors.ip = 'La IP seleccionada ya está en uso.'
-          }
-        }
+      if (!formState.modemModel.trim()) {
+        errors.modemModel = 'Describe el módem instalado en el cliente.'
       }
     }
     const debtValue = Number(formState.debtMonths)
@@ -137,15 +285,30 @@ export default function ClientsPage() {
     event.preventDefault()
     if (!validateForm()) return
 
-    addClient({
+    const payload = {
+      type: formState.type,
       name: formState.name.trim(),
       location: formState.location,
       base: Number(formState.base) || 1,
-      ip: formState.ip.trim(),
-      debtMonths: Number(formState.debtMonths) || 0,
-      paidMonthsAhead: Number(formState.paidMonthsAhead) || 0,
-      monthlyFee: Number(formState.monthlyFee) || CLIENT_PRICE,
-    })
+      debtMonths: formState.type === 'residential' ? Number(formState.debtMonths) || 0 : 0,
+      paidMonthsAhead:
+        formState.type === 'residential' ? Number(formState.paidMonthsAhead) || 0 : 0,
+      monthlyFee:
+        formState.type === 'residential'
+          ? Number(formState.monthlyFee) || CLIENT_PRICE
+          : 0,
+    }
+
+    if (formState.type === 'residential') {
+      payload.ip = formState.ip.trim()
+    } else {
+      payload.antennaIp = formState.antennaIp.trim()
+      payload.modemIp = formState.modemIp.trim()
+      payload.antennaModel = formState.antennaModel
+      payload.modemModel = formState.modemModel.trim()
+    }
+
+    addClient(payload)
 
     setFeedback({ type: 'success', message: `Se agregó a ${formState.name.trim()} correctamente.` })
     setFormState({ ...defaultForm })
@@ -161,11 +324,11 @@ export default function ClientsPage() {
               Listado de clientes
             </h2>
             <p className="text-sm text-slate-500">
-              Busca por nombre o localidad, filtra por estado y gestiona servicios activos.
+              Busca por nombre, localidad, equipo o dirección IP y gestiona los servicios activos.
             </p>
           </div>
           <p className="text-sm text-slate-500" role="status">
-            {filteredClients.length} registro(s) encontrados.
+            Residenciales: {filteredResidentialClients.length} • Antenas públicas: {filteredTokenClients.length}
           </p>
         </div>
 
@@ -176,7 +339,7 @@ export default function ClientsPage() {
         )}
 
         <Card>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-6">
             <div className="grid gap-3 md:grid-cols-4">
               <label className="grid gap-1 text-xs font-medium text-slate-600">
                 Buscar
@@ -184,7 +347,7 @@ export default function ClientsPage() {
                   value={searchTerm}
                   onChange={(event) => setSearchTerm(event.target.value)}
                   type="search"
-                  placeholder="Nombre o localidad"
+                  placeholder="Nombre, localidad o IP"
                   className="rounded-md border border-slate-300 px-3 py-2 text-sm"
                 />
               </label>
@@ -212,7 +375,7 @@ export default function ClientsPage() {
                 >
                   <option value="all">Todos</option>
                   <option value="debt">Pendientes</option>
-                  <option value="ok">Al día</option>
+                  <option value="ok">Al día / Activos</option>
                 </select>
               </label>
               <div className="flex items-end">
@@ -231,40 +394,136 @@ export default function ClientsPage() {
               </div>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
-                <thead className="bg-slate-50 text-slate-600">
-                  <tr>
-                    <th scope="col" className="px-3 py-2 font-medium">
-                      Cliente
-                    </th>
-                    <th scope="col" className="px-3 py-2 font-medium">
-                      Localidad
-                    </th>
-                    <th scope="col" className="px-3 py-2 font-medium">
-                      Base
-                    </th>
-                    <th scope="col" className="px-3 py-2 font-medium">
-                      Servicio
-                    </th>
-                    <th scope="col" className="px-3 py-2 font-medium">
-                      Pago mensual
-                    </th>
-                    <th scope="col" className="px-3 py-2 font-medium">
-                      Deuda
-                    </th>
-                    <th scope="col" className="px-3 py-2 font-medium text-right">
-                      Acciones
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {filteredClients.map((client) => (
-                    <tr key={client.id}>
-                      <td className="px-3 py-2 font-medium text-slate-900">
-                        <div className="flex flex-col">
-                          <span>{client.name}</span>
-                          <span className="text-xs text-slate-500">IP {client.ip}</span>
+            <div className="space-y-6">
+              <section aria-label="Clientes residenciales" className="space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h3 className="text-base font-semibold text-slate-900">Clientes residenciales</h3>
+                    <p className="text-xs text-slate-500">
+                      Control de pagos y estado del servicio mensual.
+                    </p>
+                  </div>
+                  <span className="text-xs text-slate-500" role="status">
+                    {filteredResidentialClients.length} registro(s)
+                  </span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
+                    <thead className="bg-slate-50 text-slate-600">
+                      <tr>
+                        <th scope="col" className="px-3 py-2 font-medium">
+                          Cliente
+                        </th>
+                        <th scope="col" className="px-3 py-2 font-medium">
+                          Localidad
+                        </th>
+                        <th scope="col" className="px-3 py-2 font-medium">
+                          Base
+                        </th>
+                        <th scope="col" className="px-3 py-2 font-medium">
+                          Servicio
+                        </th>
+                        <th scope="col" className="px-3 py-2 font-medium">
+                          Pago mensual
+                        </th>
+                        <th scope="col" className="px-3 py-2 font-medium">
+                          Deuda
+                        </th>
+                        <th scope="col" className="px-3 py-2 font-medium text-right">
+                          Acciones
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {filteredResidentialClients.map((client) => (
+                        <tr key={client.id}>
+                          <td className="px-3 py-2 font-medium text-slate-900">
+                            <div className="flex flex-col">
+                              <span>{client.name}</span>
+                              {client.ip && (
+                                <span className="text-xs text-slate-500">IP: {client.ip}</span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-3 py-2 text-slate-600">{client.location}</td>
+                          <td className="px-3 py-2 text-slate-600">Base {client.base}</td>
+                          <td className="px-3 py-2">
+                            <span
+                              className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
+                                client.service === 'Activo'
+                                  ? 'bg-emerald-50 text-emerald-700'
+                                  : 'bg-red-50 text-red-700'
+                              }`}
+                            >
+                              {client.service}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-slate-600">
+                            {peso(client.monthlyFee ?? CLIENT_PRICE)}
+                          </td>
+                          <td className="px-3 py-2 text-slate-600">
+                            {client.debtMonths > 0
+                              ? `${client.debtMonths} ${
+                                  client.debtMonths === 1 ? 'periodo' : 'periodos'
+                                }`
+                              : 'Sin deuda'}
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="border border-slate-200 bg-white text-slate-700 hover:border-blue-200"
+                              onClick={() => toggleClientService(client.id)}
+                            >
+                              {client.service === 'Activo' ? 'Suspender' : 'Activar'}
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                      {filteredResidentialClients.length === 0 && (
+                        <tr>
+                          <td colSpan={7} className="px-3 py-6 text-center text-sm text-slate-500">
+                            No se encontraron clientes residenciales.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+
+              <section aria-label="Antenas públicas" className="space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h3 className="text-base font-semibold text-slate-900">Antenas públicas instaladas</h3>
+                    <p className="text-xs text-slate-500">
+                      Controla tus antenas, los módems instalados y las direcciones IP asignadas.
+                    </p>
+                  </div>
+                  <span className="text-xs text-slate-500" role="status">
+                    {filteredTokenClients.length} registro(s)
+                  </span>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-2">
+                  {tokenInventoryByBase.map((info) => (
+                    <div
+                      key={info.base}
+                      className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-xs text-slate-600"
+                    >
+                      <h4 className="text-sm font-semibold text-slate-700">Base {info.base}</h4>
+                      <dl className="mt-2 space-y-1">
+                        <div className="flex justify-between gap-2">
+                          <dt className="font-medium">Antenas instaladas</dt>
+                          <dd>{info.antennasInstalled}</dd>
+                        </div>
+                        <div className="flex justify-between gap-2">
+                          <dt>IPs de antena en uso</dt>
+                          <dd>{info.antennaIpsInUse}</dd>
+                        </div>
+                        <div className="flex justify-between gap-2">
+                          <dt>IPs de antena disponibles</dt>
+                          <dd>{info.antennaIpsAvailable}</dd>
                         </div>
                       </td>
                       <td className="px-3 py-2 text-slate-600">{client.location}</td>
@@ -313,15 +572,95 @@ export default function ClientsPage() {
                       </td>
                     </tr>
                   ))}
-                  {filteredClients.length === 0 && (
-                    <tr>
-                      <td colSpan={7} className="px-3 py-6 text-center text-sm text-slate-500">
-                        No se encontraron clientes.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
+                    <thead className="bg-slate-50 text-slate-600">
+                      <tr>
+                        <th scope="col" className="px-3 py-2 font-medium">
+                          Punto
+                        </th>
+                        <th scope="col" className="px-3 py-2 font-medium">
+                          Localidad
+                        </th>
+                        <th scope="col" className="px-3 py-2 font-medium">
+                          Base
+                        </th>
+                        <th scope="col" className="px-3 py-2 font-medium">
+                          Antena instalada
+                        </th>
+                        <th scope="col" className="px-3 py-2 font-medium">
+                          Módem / Router
+                        </th>
+                        <th scope="col" className="px-3 py-2 font-medium">
+                          Servicio
+                        </th>
+                        <th scope="col" className="px-3 py-2 font-medium text-right">
+                          Acciones
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {filteredTokenClients.map((client) => (
+                        <tr key={client.id}>
+                          <td className="px-3 py-2 font-medium text-slate-900">
+                            <div className="flex flex-col">
+                              <span>{client.name}</span>
+                              {client.antennaIp && (
+                                <span className="text-xs text-slate-500">IP antena: {client.antennaIp}</span>
+                              )}
+                              {client.modemIp && (
+                                <span className="text-xs text-slate-500">IP módem: {client.modemIp}</span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-3 py-2 text-slate-600">{client.location}</td>
+                          <td className="px-3 py-2 text-slate-600">Base {client.base}</td>
+                          <td className="px-3 py-2 text-slate-600">
+                            <div className="flex flex-col text-xs text-slate-500">
+                              <span>Modelo: {client.antennaModel || 'Sin dato'}</span>
+                            </div>
+                          </td>
+                          <td className="px-3 py-2 text-slate-600">
+                            <div className="flex flex-col text-xs text-slate-500">
+                              <span>Modelo: {client.modemModel || 'Sin dato'}</span>
+                            </div>
+                          </td>
+                          <td className="px-3 py-2">
+                            <span
+                              className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
+                                client.service === 'Activo'
+                                  ? 'bg-emerald-50 text-emerald-700'
+                                  : 'bg-red-50 text-red-700'
+                              }`}
+                            >
+                              {client.service}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="border border-slate-200 bg-white text-slate-700 hover:border-blue-200"
+                              onClick={() => toggleClientService(client.id)}
+                            >
+                              {client.service === 'Activo' ? 'Suspender' : 'Activar'}
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                      {filteredTokenClients.length === 0 && (
+                        <tr>
+                          <td colSpan={7} className="px-3 py-6 text-center text-sm text-slate-500">
+                            No se encontraron antenas públicas instaladas con los filtros actuales.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
             </div>
           </CardContent>
         </Card>
@@ -340,6 +679,56 @@ export default function ClientsPage() {
         <form className="grid gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm" onSubmit={handleSubmit}>
           <div className="grid gap-4 md:grid-cols-2">
             <label className="grid gap-1 text-xs font-medium text-slate-600">
+              Tipo de cliente
+              <select
+                value={formState.type}
+                onChange={(event) => {
+                  const newType = event.target.value
+                  setFormState((prev) => {
+                    const updated = {
+                      ...prev,
+                      type: newType,
+                    }
+
+                    const previousFields = IP_FIELDS_BY_TYPE[prev.type] ?? []
+                    const nextFields = IP_FIELDS_BY_TYPE[newType] ?? []
+
+                    previousFields.forEach(({ name }) => {
+                      if (!nextFields.some((field) => field.name === name)) {
+                        updated[name] = ''
+                      }
+                    })
+
+                    nextFields.forEach(({ name }) => {
+                      if (typeof updated[name] === 'undefined') {
+                        updated[name] = ''
+                      }
+                    })
+
+                    if (newType === 'token') {
+                      updated.monthlyFee = 0
+                      updated.debtMonths = 0
+                      updated.paidMonthsAhead = 0
+                      updated.modemModel = ''
+                      updated.antennaModel = ANTENNA_MODELS[0]
+                    } else if (prev.type === 'token') {
+                      updated.monthlyFee = CLIENT_PRICE
+                    }
+
+                    return updated
+                  })
+                  setFormErrors({})
+                }}
+                className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+              >
+                {Object.entries(CLIENT_TYPE_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1 text-xs font-medium text-slate-600">
               Nombre completo
               <input
                 value={formState.name}
@@ -352,30 +741,42 @@ export default function ClientsPage() {
               />
               {formErrors.name && <span className="text-xs text-red-600">{formErrors.name}</span>}
             </label>
-            <label className="grid gap-1 text-xs font-medium text-slate-600">
-              Dirección IP
-              <input
-                value={formState.ip}
-                onChange={(event) => setFormState((prev) => ({ ...prev, ip: event.target.value }))}
-                className={`rounded-md border px-3 py-2 text-sm ${
-                  formErrors.ip ? 'border-red-400 focus:border-red-400 focus:ring-red-200' : 'border-slate-300'
-                }`}
-                placeholder="192.168.0.1"
-                list="ip-options"
-                required
-              />
-              <datalist id="ip-options">
-                {availableIpsForSelectedBase.map((ip) => (
-                  <option key={ip} value={ip} />
-                ))}
-              </datalist>
-              <span className="text-[11px] text-slate-500">
-                {availableIpsForSelectedBase.length > 0
-                  ? 'Selecciona una IP disponible del listado.'
-                  : 'No hay direcciones IP disponibles en esta base.'}
-              </span>
-              {formErrors.ip && <span className="text-xs text-red-600">{formErrors.ip}</span>}
-            </label>
+            {currentIpFields.map(({ name, label, placeholder, rangeKey }) => {
+              const availableIps = getAvailableIps(rangeKey, formState.base)
+              const datalistId = `ip-options-${name}`
+              return (
+                <label key={name} className="grid gap-1 text-xs font-medium text-slate-600">
+                  {label}
+                  <input
+                    value={formState[name]}
+                    onChange={(event) =>
+                      setFormState((prev) => ({ ...prev, [name]: event.target.value }))
+                    }
+                    className={`rounded-md border px-3 py-2 text-sm ${
+                      formErrors[name]
+                        ? 'border-red-400 focus:border-red-400 focus:ring-red-200'
+                        : 'border-slate-300'
+                    }`}
+                    placeholder={placeholder}
+                    list={datalistId}
+                    required
+                  />
+                  <datalist id={datalistId}>
+                    {availableIps.map((ip) => (
+                      <option key={ip} value={ip} />
+                    ))}
+                  </datalist>
+                  <span className="text-[11px] text-slate-500">
+                    {availableIps.length > 0
+                      ? 'Selecciona una IP disponible del listado.'
+                      : 'No hay direcciones IP disponibles en esta base.'}
+                  </span>
+                  {formErrors[name] && (
+                    <span className="text-xs text-red-600">{formErrors[name]}</span>
+                  )}
+                </label>
+              )
+            })}
             <label className="grid gap-1 text-xs font-medium text-slate-600">
               Localidad
               <select
@@ -397,10 +798,15 @@ export default function ClientsPage() {
                 onChange={(event) => {
                   const newBase = Number(event.target.value)
                   setFormState((prev) => {
-                    const baseKey = String(newBase)
-                    const validOptions = availableIpsByBase[baseKey] ?? []
-                    const nextIp = validOptions.includes(prev.ip) ? prev.ip : ''
-                    return { ...prev, base: newBase, ip: nextIp }
+                    const updated = { ...prev, base: newBase }
+                    const nextFields = IP_FIELDS_BY_TYPE[prev.type] ?? []
+                    nextFields.forEach(({ name, rangeKey }) => {
+                      const validOptions = getAvailableIps(rangeKey, newBase)
+                      if (!validOptions.includes(prev[name])) {
+                        updated[name] = ''
+                      }
+                    })
+                    return updated
                   })
                 }}
                 className="rounded-md border border-slate-300 px-3 py-2 text-sm"

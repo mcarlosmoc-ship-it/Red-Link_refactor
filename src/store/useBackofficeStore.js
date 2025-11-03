@@ -33,6 +33,7 @@ const createInitialState = () => ({
   clients: [
     {
       id: createId('CLI'),
+      type: 'residential',
       name: 'Juan Pérez',
       location: 'Nuevo Amatenango',
       base: 1,
@@ -44,6 +45,7 @@ const createInitialState = () => ({
     },
     {
       id: createId('CLI'),
+      type: 'residential',
       name: 'Ana Gómez',
       location: 'Belén',
       base: 1,
@@ -55,6 +57,7 @@ const createInitialState = () => ({
     },
     {
       id: createId('CLI'),
+      type: 'residential',
       name: 'María Gómez',
       location: 'Lagunita',
       base: 2,
@@ -66,6 +69,7 @@ const createInitialState = () => ({
     },
     {
       id: createId('CLI'),
+      type: 'residential',
       name: 'Pedro López',
       location: 'Zapotal',
       base: 2,
@@ -77,6 +81,7 @@ const createInitialState = () => ({
     },
     {
       id: createId('CLI'),
+      type: 'residential',
       name: 'José Ruiz',
       location: 'Naranjal',
       base: 1,
@@ -84,6 +89,36 @@ const createInitialState = () => ({
       monthlyFee: 300,
       paidMonthsAhead: 0,
       debtMonths: 1,
+      service: 'Activo',
+    },
+    {
+      id: createId('CLI'),
+      type: 'token',
+      name: 'Punto Comunitario 1',
+      location: 'Nuevo Amatenango',
+      base: 1,
+      antennaModel: 'LiteBeam',
+      antennaIp: '192.168.4.10',
+      modemModel: 'Router TP-Link',
+      modemIp: '192.168.5.10',
+      monthlyFee: 0,
+      paidMonthsAhead: 0,
+      debtMonths: 0,
+      service: 'Activo',
+    },
+    {
+      id: createId('CLI'),
+      type: 'token',
+      name: 'Punto Comunitario 2',
+      location: 'Lagunita',
+      base: 2,
+      antennaModel: 'Loco M5',
+      antennaIp: '192.168.90.15',
+      modemModel: 'Router Mikrotik',
+      modemIp: '192.168.91.15',
+      monthlyFee: 0,
+      paidMonthsAhead: 0,
+      debtMonths: 0,
       service: 'Activo',
     },
   ],
@@ -268,7 +303,9 @@ export const useBackofficeStore = create(
             {
               id: createId('CLI'),
               ...payload,
-              monthlyFee: Number(payload.monthlyFee) || CLIENT_PRICE,
+              type: payload.type ?? 'residential',
+              monthlyFee:
+                Number(payload.monthlyFee) || (payload.type === 'token' ? 0 : CLIENT_PRICE),
               service: payload.debtMonths > 0 ? 'Suspendido' : 'Activo',
             },
           ],
