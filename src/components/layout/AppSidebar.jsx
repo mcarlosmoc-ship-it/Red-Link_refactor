@@ -1,6 +1,15 @@
 import React from 'react'
 import { NavLink } from 'react-router-dom'
-import { BarChart3, DollarSign, FileText, Home, Settings, Users, Wifi } from 'lucide-react'
+import {
+  BarChart3,
+  DollarSign,
+  FileText,
+  Home,
+  Package,
+  Settings,
+  Users,
+  Wifi,
+} from 'lucide-react'
 
 const navItems = [
   { to: '/dashboard', label: 'Dashboard', icon: Home },
@@ -9,6 +18,7 @@ const navItems = [
   { to: '/payments', label: 'Pagos', icon: DollarSign },
   { to: '/expenses', label: 'Gastos', icon: FileText },
   { to: '/reports', label: 'Reportes', icon: BarChart3 },
+  { to: '/inventory', label: 'Equipos / Inventario', icon: Package },
   { to: '/settings', label: 'Configuración', icon: Settings },
 ]
 
