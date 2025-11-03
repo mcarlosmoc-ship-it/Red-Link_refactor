@@ -3,14 +3,29 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal
-from typing import Dict
+from typing import Dict, Iterable, Tuple
 
 from sqlalchemy.orm import Session
 
-from .. import models
+from .. import models, schemas
+from .clients import ClientService
 from .payments import PaymentService
 from .resellers import ResellerService
+
+
+@dataclass
+class _DashboardClient:
+    id: str
+    full_name: str
+    location: str
+    monthly_fee: Decimal
+    debt_months: Decimal
+    paid_months_ahead: Decimal
+    service_status: str
+    client_type: str | None
 
 
 class MetricsService:
@@ -121,3 +136,195 @@ class MetricsService:
             breakdown[str(cost.base_id)] = breakdown.get(str(cost.base_id), Decimal("0")) + value
             total += value
         return total, breakdown
+
+    @staticmethod
+    def dashboard(
+        db: Session,
+        *,
+        period_key: str | None = None,
+        current_period: str | None = None,
+        status_filter: schemas.StatusFilter = schemas.StatusFilter.ALL,
+        search: str | None = None,
+    ) -> dict:
+        """Aggregate dashboard metrics and project client states."""
+
+        actual_current = current_period or MetricsService._current_period_key()
+        target_period = period_key or actual_current
+        offset = MetricsService._diff_periods(actual_current, target_period)
+
+        clients = list(ClientService.list_clients(db))
+        projected_clients = [
+            MetricsService._project_client_for_offset(client, offset) for client in clients
+        ]
+
+        filtered_clients = MetricsService._filter_clients(projected_clients, status_filter, search)
+
+        summary, base_costs = MetricsService._build_dashboard_summary(
+            db,
+            projected_clients,
+            target_period,
+        )
+
+        return {
+            "summary": summary,
+            "clients": [MetricsService._serialize_dashboard_client(client) for client in filtered_clients],
+            "base_costs": base_costs,
+        }
+
+    @staticmethod
+    def _current_period_key() -> str:
+        today = date.today()
+        return f"{today.year}-{today.month:02d}"
+
+    @staticmethod
+    def _diff_periods(current_period: str, target_period: str) -> int:
+        current_year, current_month = MetricsService._split_period(current_period)
+        target_year, target_month = MetricsService._split_period(target_period)
+        return (target_year - current_year) * 12 + (target_month - current_month)
+
+    @staticmethod
+    def _split_period(period: str) -> Tuple[int, int]:
+        try:
+            year_str, month_str = period.split("-", maxsplit=1)
+            return int(year_str), int(month_str)
+        except Exception:  # pragma: no cover - defensive fallback
+            today = date.today()
+            return today.year, today.month
+
+    @staticmethod
+    def _project_client_for_offset(client: models.Client, offset: int) -> _DashboardClient:
+        debt = Decimal(client.debt_months or 0)
+        ahead = Decimal(client.paid_months_ahead or 0)
+
+        if offset > 0:
+            consumed_ahead = min(ahead, Decimal(offset))
+            remaining_ahead = ahead - consumed_ahead
+            extra_debt = Decimal(offset) - consumed_ahead
+            debt = MetricsService._normalize_months(debt + extra_debt)
+            ahead = MetricsService._normalize_months(remaining_ahead)
+        elif offset < 0:
+            months_back = Decimal(abs(offset))
+            restored_debt = min(debt, months_back)
+            debt = MetricsService._normalize_months(debt - restored_debt)
+            recovered_ahead = months_back - restored_debt
+            ahead = MetricsService._normalize_months(ahead + recovered_ahead)
+        else:
+            debt = MetricsService._normalize_months(debt)
+            ahead = MetricsService._normalize_months(ahead)
+
+        service_status = (
+            models.ServiceStatus.ACTIVE.value if debt == Decimal("0") else models.ServiceStatus.SUSPENDED.value
+        )
+
+        client_type = None
+        if hasattr(client.client_type, "value"):
+            client_type = client.client_type.value
+        elif client.client_type is not None:
+            client_type = str(client.client_type)
+
+        return _DashboardClient(
+            id=client.id,
+            full_name=client.full_name,
+            location=client.location,
+            monthly_fee=Decimal(client.monthly_fee or 0),
+            debt_months=debt,
+            paid_months_ahead=ahead,
+            service_status=service_status,
+            client_type=client_type,
+        )
+
+    @staticmethod
+    def _normalize_months(value: Decimal) -> Decimal:
+        rounded = value.quantize(Decimal("0.0001"))
+        return rounded if rounded.copy_abs() >= Decimal("0.0001") else Decimal("0")
+
+    @staticmethod
+    def _filter_clients(
+        clients: Iterable[_DashboardClient],
+        status_filter: schemas.StatusFilter,
+        search: str | None,
+    ) -> list[_DashboardClient]:
+        normalized_search = search.lower().strip() if search else ""
+
+        def matches_status(client: _DashboardClient) -> bool:
+            if status_filter == schemas.StatusFilter.PAID:
+                return client.debt_months == Decimal("0")
+            if status_filter == schemas.StatusFilter.PENDING:
+                return client.debt_months > Decimal("0")
+            return True
+
+        def matches_search(client: _DashboardClient) -> bool:
+            if not normalized_search:
+                return True
+            name = (client.full_name or "").lower()
+            location = (client.location or "").lower()
+            return normalized_search in name or normalized_search in location
+
+        return [client for client in clients if matches_status(client) and matches_search(client)]
+
+    @staticmethod
+    def _build_dashboard_summary(
+        db: Session,
+        clients: Iterable[_DashboardClient],
+        period_key: str,
+    ) -> tuple[dict, Dict[str, Decimal]]:
+        clients_list = list(clients)
+
+        total_clients = len(clients_list)
+        paid_clients = sum(1 for client in clients_list if client.debt_months == Decimal("0"))
+        pending_clients = total_clients - paid_clients
+        total_debt_amount = sum(
+            client.debt_months * client.monthly_fee
+            for client in clients_list
+        )
+
+        client_income = sum(
+            client.monthly_fee
+            for client in clients_list
+            if client.debt_months == Decimal("0")
+        )
+
+        reseller_income = MetricsService._total_reseller_income_for_period(db, period_key)
+        expenses_total = MetricsService._total_expenses_for_period(db, period_key)
+        internet_costs, base_costs = MetricsService._total_operating_costs_for_period(db, period_key)
+
+        net_earnings = client_income + reseller_income - expenses_total - internet_costs
+
+        summary = {
+            "total_clients": total_clients,
+            "paid_clients": paid_clients,
+            "pending_clients": pending_clients,
+            "total_debt_amount": total_debt_amount,
+            "client_income": client_income,
+            "reseller_income": reseller_income,
+            "total_expenses": expenses_total,
+            "internet_costs": internet_costs,
+            "net_earnings": net_earnings,
+        }
+
+        return summary, base_costs
+
+    @staticmethod
+    def _total_reseller_income_for_period(db: Session, period_key: str) -> Decimal:
+        total = Decimal("0")
+        for reseller in ResellerService.list_resellers(db):
+            for settlement in reseller.settlements:
+                if not settlement.settled_on:
+                    continue
+                if settlement.settled_on.strftime("%Y-%m") != period_key:
+                    continue
+                total += Decimal(settlement.my_gain or settlement.amount or 0)
+        return total
+
+    @staticmethod
+    def _serialize_dashboard_client(client: _DashboardClient) -> dict:
+        return {
+            "id": client.id,
+            "name": client.full_name,
+            "location": client.location,
+            "monthly_fee": client.monthly_fee,
+            "debt_months": client.debt_months,
+            "paid_months_ahead": client.paid_months_ahead,
+            "service_status": client.service_status,
+            "client_type": client.client_type,
+        }

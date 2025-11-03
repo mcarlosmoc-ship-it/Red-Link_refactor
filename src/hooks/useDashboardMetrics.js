@@ -1,149 +1,65 @@
 import { useMemo } from 'react'
 import { CLIENT_PRICE, useBackofficeStore } from '../store/useBackofficeStore.js'
-import { diffPeriods, getPeriodFromDateString } from '../utils/formatters.js'
 
-const projectClientForOffset = (client, offset) => {
-  if (!offset) {
-    return {
-      ...client,
-      debtMonths: Number(client.debtMonths ?? 0) || 0,
-      paidMonthsAhead: Number(client.paidMonthsAhead ?? 0) || 0,
-      service: (client.debtMonths ?? 0) > 0 ? 'Suspendido' : client.service ?? 'Activo',
-    }
+const normalizeMetricValue = (value, fallback = 0) => {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : fallback
   }
-
-  const baseDebt = Number(client.debtMonths ?? 0)
-  const baseAhead = Number(client.paidMonthsAhead ?? 0)
-
-  const safeDebt = Number.isFinite(baseDebt) ? Math.max(baseDebt, 0) : 0
-  const safeAhead = Number.isFinite(baseAhead) ? Math.max(baseAhead, 0) : 0
-
-  if (offset > 0) {
-    const consumedAhead = Math.min(safeAhead, offset)
-    const remainingAhead = safeAhead - consumedAhead
-    const extraDebt = offset - consumedAhead
-    const projectedDebt = safeDebt + extraDebt
-
-    const normalizedDebt = projectedDebt < 0.0001 ? 0 : Number(projectedDebt.toFixed(4))
-    const normalizedAhead = remainingAhead < 0.0001 ? 0 : Number(remainingAhead.toFixed(4))
-
-    return {
-      ...client,
-      debtMonths: normalizedDebt,
-      paidMonthsAhead: normalizedAhead,
-      service: normalizedDebt === 0 ? 'Activo' : 'Suspendido',
-    }
-  }
-
-  const monthsBack = Math.abs(offset)
-  const restoredDebt = Math.min(safeDebt, monthsBack)
-  const updatedDebt = safeDebt - restoredDebt
-  const recoveredAhead = monthsBack - restoredDebt
-  const updatedAhead = safeAhead + recoveredAhead
-
-  const normalizedDebt = updatedDebt < 0.0001 ? 0 : Number(updatedDebt.toFixed(4))
-  const normalizedAhead = updatedAhead < 0.0001 ? 0 : Number(updatedAhead.toFixed(4))
-
-  return {
-    ...client,
-    debtMonths: normalizedDebt,
-    paidMonthsAhead: normalizedAhead,
-    service: normalizedDebt === 0 ? 'Activo' : 'Suspendido',
-  }
+  const numeric = Number(value)
+  return Number.isFinite(numeric) ? numeric : fallback
 }
 
-const includesSearch = (value, searchTerm) => {
-  if (!searchTerm) return true
-  return value?.toLowerCase().includes(searchTerm.toLowerCase())
-}
-
-export const useDashboardMetrics = ({ statusFilter, searchTerm }) => {
-  const { clients, resellers, expenses, baseCosts, periods } = useBackofficeStore((state) => ({
-    clients: state.clients,
-    resellers: state.resellers,
-    expenses: state.expenses,
-    baseCosts: state.baseCosts,
-    periods: state.periods,
+export const useDashboardMetrics = () => {
+  const { metricsSummary, dashboardClients, baseCosts } = useBackofficeStore((state) => ({
+    metricsSummary: state.metrics,
+    dashboardClients: state.dashboardClients ?? [],
+    baseCosts: state.baseCosts ?? {},
   }))
 
-  const selectedPeriod = periods?.selected ?? periods?.current
-  const currentPeriod = periods?.current ?? selectedPeriod
-  const offset = diffPeriods(currentPeriod, selectedPeriod)
-
-  const matchesSelectedPeriod = (date) => {
-    const period = getPeriodFromDateString(date)
-    if (!period) return false
-    return Array.isArray(period) ? period.includes(selectedPeriod) : period === selectedPeriod
-  }
-
-  const projectedClients = useMemo(
-    () => clients.map((client) => projectClientForOffset(client, offset)),
-    [clients, offset],
-  )
-
-  const filteredClients = useMemo(() => {
-    return projectedClients.filter((client) => {
-      const matchesStatus =
-        statusFilter === 'paid'
-          ? client.debtMonths === 0
-          : statusFilter === 'pending'
-            ? client.debtMonths > 0
-            : true
-      const matchesSearch =
-        includesSearch(client.name, searchTerm) || includesSearch(client.location, searchTerm)
-      return matchesStatus && matchesSearch
-    })
-  }, [projectedClients, statusFilter, searchTerm])
-
-  const totalDebtAmount = useMemo(
-    () =>
-      projectedClients.reduce(
-        (total, client) =>
-          total + (client.debtMonths ?? 0) * (client.monthlyFee ?? CLIENT_PRICE),
-        0,
-      ),
-    [projectedClients],
-  )
-
   const metrics = useMemo(() => {
-    const totalClients = projectedClients.length
-    const paidClients = projectedClients.filter((client) => client.debtMonths === 0).length
-    const pendingClients = projectedClients.filter((client) => client.debtMonths > 0).length
-    const clientIncome = projectedClients.reduce(
-      (total, client) =>
-        client.debtMonths === 0 ? total + (client.monthlyFee ?? CLIENT_PRICE) : total,
-      0,
-    )
+    if (!metricsSummary) {
+      return {
+        totalClients: 0,
+        paidClients: 0,
+        pendingClients: 0,
+        clientIncome: 0,
+        totalDebtAmount: 0,
+        resellerIncome: 0,
+        totalExpenses: 0,
+        internetCosts: (baseCosts?.base1 ?? 0) + (baseCosts?.base2 ?? 0),
+        netEarnings: 0,
+      }
+    }
 
-    const resellerIncome = resellers.reduce((acc, reseller) => {
-      const settlementsGain = reseller.settlements.reduce(
-        (total, settlement) =>
-          matchesSelectedPeriod(settlement.date) ? total + (settlement.myGain ?? 0) : total,
-        0,
-      )
-      return acc + settlementsGain
-    }, 0)
-
-    const totalExpenses = expenses.reduce(
-      (total, expense) =>
-        matchesSelectedPeriod(expense.date) ? total + (expense.amount ?? 0) : total,
-      0,
-    )
-    const internetCosts = (baseCosts?.base1 ?? 0) + (baseCosts?.base2 ?? 0)
-    const netEarnings = clientIncome + resellerIncome - totalExpenses - internetCosts
+    const internetCosts = normalizeMetricValue(metricsSummary.internet_costs)
 
     return {
-      totalClients,
-      paidClients,
-      pendingClients,
-      clientIncome,
-      totalDebtAmount,
-      resellerIncome,
-      totalExpenses,
+      totalClients: normalizeMetricValue(metricsSummary.total_clients),
+      paidClients: normalizeMetricValue(metricsSummary.paid_clients),
+      pendingClients: normalizeMetricValue(metricsSummary.pending_clients),
+      clientIncome: normalizeMetricValue(metricsSummary.client_income),
+      totalDebtAmount: normalizeMetricValue(metricsSummary.total_debt_amount),
+      resellerIncome: normalizeMetricValue(metricsSummary.reseller_income),
+      totalExpenses: normalizeMetricValue(metricsSummary.total_expenses),
       internetCosts,
-      netEarnings,
+      netEarnings: normalizeMetricValue(metricsSummary.net_earnings),
     }
-  }, [projectedClients, resellers, expenses, baseCosts, selectedPeriod, totalDebtAmount])
+  }, [metricsSummary, baseCosts])
 
-  return { metrics, filteredClients, projectedClients }
+  const filteredClients = useMemo(
+    () =>
+      dashboardClients.map((client) => ({
+        id: client.id,
+        name: client.name,
+        location: client.location,
+        monthlyFee: normalizeMetricValue(client.monthly_fee, CLIENT_PRICE),
+        debtMonths: normalizeMetricValue(client.debt_months),
+        paidMonthsAhead: normalizeMetricValue(client.paid_months_ahead),
+        service: client.service_status ?? 'Activo',
+        type: client.client_type ?? null,
+      })),
+    [dashboardClients],
+  )
+
+  return { metrics, filteredClients, projectedClients: filteredClients }
 }

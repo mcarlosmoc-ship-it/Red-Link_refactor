@@ -4,7 +4,12 @@ import { useToast } from './useToast.js'
 
 const DEFAULT_TTL = 60_000
 
-export const useDashboardData = ({ autoLoad = true, ttl = DEFAULT_TTL, periodKey } = {}) => {
+export const useDashboardData = ({
+  autoLoad = true,
+  ttl = DEFAULT_TTL,
+  periodKey,
+  filters,
+} = {}) => {
   const {
     metrics,
     resellers,
@@ -17,6 +22,8 @@ export const useDashboardData = ({ autoLoad = true, ttl = DEFAULT_TTL, periodKey
     loadExpenses,
     metricsPeriodKey,
     selectedPeriod,
+    currentPeriod,
+    metricsFilters,
     clearMetricsError,
     clearResellersError,
     clearExpensesError,
@@ -32,6 +39,8 @@ export const useDashboardData = ({ autoLoad = true, ttl = DEFAULT_TTL, periodKey
     loadExpenses: state.loadExpenses,
     metricsPeriodKey: state.metricsPeriodKey,
     selectedPeriod: state.periods?.selected ?? state.periods?.current ?? null,
+    currentPeriod: state.periods?.current ?? state.periods?.selected ?? null,
+    metricsFilters: state.metricsFilters,
     clearMetricsError: () => state.clearResourceError('metrics'),
     clearResellersError: () => state.clearResourceError('resellers'),
     clearExpensesError: () => state.clearResourceError('expenses'),
@@ -39,6 +48,10 @@ export const useDashboardData = ({ autoLoad = true, ttl = DEFAULT_TTL, periodKey
 
   const { showToast } = useToast()
   const targetPeriod = periodKey ?? selectedPeriod ?? null
+  const activeFilters = {
+    statusFilter: filters?.statusFilter ?? metricsFilters?.statusFilter ?? 'all',
+    searchTerm: filters?.searchTerm ?? metricsFilters?.searchTerm ?? '',
+  }
 
   useEffect(() => {
     if (!metricsStatus?.error) return
@@ -92,7 +105,17 @@ export const useDashboardData = ({ autoLoad = true, ttl = DEFAULT_TTL, periodKey
       return
     }
 
-    loadMetrics({ force: !metricsStatus?.lastFetchedAt || !matchesPeriod, periodKey: targetPeriod }).catch(() => {})
+    const matchesFilters =
+      (metricsFilters?.statusFilter ?? 'all') === activeFilters.statusFilter &&
+      (metricsFilters?.searchTerm ?? '') === activeFilters.searchTerm
+
+    loadMetrics({
+      force: !metricsStatus?.lastFetchedAt || !matchesPeriod || !matchesFilters,
+      periodKey: targetPeriod,
+      statusFilter: activeFilters.statusFilter,
+      searchTerm: activeFilters.searchTerm,
+      currentPeriod,
+    }).catch(() => {})
   }, [
     autoLoad,
     ttl,
@@ -100,6 +123,11 @@ export const useDashboardData = ({ autoLoad = true, ttl = DEFAULT_TTL, periodKey
     metricsStatus?.lastFetchedAt,
     metricsPeriodKey,
     targetPeriod,
+    activeFilters.statusFilter,
+    activeFilters.searchTerm,
+    metricsFilters?.statusFilter,
+    metricsFilters?.searchTerm,
+    currentPeriod,
     loadMetrics,
   ])
 
@@ -107,9 +135,23 @@ export const useDashboardData = ({ autoLoad = true, ttl = DEFAULT_TTL, periodKey
     () =>
       (options = {}) => {
         clearMetricsError()
-        return loadMetrics({ ...options, force: true, periodKey: targetPeriod })
+        return loadMetrics({
+          ...options,
+          force: true,
+          periodKey: targetPeriod,
+          statusFilter: activeFilters.statusFilter,
+          searchTerm: activeFilters.searchTerm,
+          currentPeriod,
+        })
       },
-    [loadMetrics, targetPeriod, clearMetricsError],
+    [
+      loadMetrics,
+      targetPeriod,
+      clearMetricsError,
+      activeFilters.statusFilter,
+      activeFilters.searchTerm,
+      currentPeriod,
+    ],
   )
 
   const reloadResellers = useMemo(

@@ -11,7 +11,7 @@ export default function FinancialSummary() {
     currentPeriod: state.periods?.current ?? state.periods?.selected,
   }))
 
-  const { metrics } = useDashboardMetrics({ statusFilter: 'all', searchTerm: '' })
+  const { metrics } = useDashboardMetrics()
 
   const base1 = baseCosts?.base1 ?? 0
   const base2 = baseCosts?.base2 ?? 0
