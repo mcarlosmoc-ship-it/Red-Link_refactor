@@ -132,6 +132,48 @@ def test_payment_creates_missing_period(client, db_session, seed_basic_data):
     assert created_period.ends_on == date(2025, 2, 28)
 
 
+def test_payment_reuses_period_with_mismatched_key(client, db_session):
+    """Existing periods with non-normalized keys should be reused."""
+
+    base = models.BaseStation(code="B2", name="Base Dos", location="Norte")
+    db_session.add(base)
+
+    legacy_period = models.BillingPeriod(
+        period_key="2025-1",
+        starts_on=date(2025, 1, 1),
+        ends_on=date(2025, 1, 31),
+    )
+    db_session.add(legacy_period)
+
+    client_model = models.Client(
+        full_name="Cliente Antiguo",
+        location="Norte",
+        base=base,
+        client_type=models.ClientType.RESIDENTIAL,
+        monthly_fee=Decimal("300"),
+        debt_months=Decimal("1"),
+        paid_months_ahead=Decimal("0"),
+        service_status=models.ServiceStatus.SUSPENDED,
+    )
+    db_session.add(client_model)
+    db_session.commit()
+
+    payload = {
+        "client_id": client_model.id,
+        "period_key": "2025-01",
+        "paid_on": date(2025, 1, 12).isoformat(),
+        "amount": "300.00",
+        "months_paid": "1",
+        "method": models.PaymentMethod.EFECTIVO.value,
+    }
+
+    response = client.post("/payments/", json=payload)
+    assert response.status_code == 201, response.text
+
+    db_session.refresh(legacy_period)
+    assert legacy_period.period_key == "2025-01"
+
+
 def test_payment_returns_400_when_commit_fails(
     client, db_session, seed_basic_data, monkeypatch
 ):

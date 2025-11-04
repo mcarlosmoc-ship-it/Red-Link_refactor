@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Iterable, Optional
 
 from sqlalchemy import func
@@ -49,9 +49,15 @@ class PaymentService:
 
         period = BillingPeriodService.ensure_period(db, data.period_key)
 
-        months_paid = Decimal(data.months_paid)
+        cents = Decimal("0.01")
+
+        months_paid = Decimal(data.months_paid).quantize(cents, rounding=ROUND_HALF_UP)
         if months_paid <= 0:
             raise ValueError("months_paid must be greater than zero")
+
+        amount = Decimal(data.amount).quantize(cents, rounding=ROUND_HALF_UP)
+        if amount <= 0:
+            raise ValueError("amount must be greater than zero")
 
         current_debt = Decimal(client.debt_months or 0)
         current_ahead = Decimal(client.paid_months_ahead or 0)
@@ -67,7 +73,9 @@ class PaymentService:
             client.service_status = models.ServiceStatus.ACTIVE
 
         payment_data = data.model_dump()
+        payment_data["amount"] = amount
         payment_data["period_key"] = period.period_key
+        payment_data["months_paid"] = months_paid
         payment = models.Payment(**payment_data)
         db.add(payment)
         db.add(client)
