@@ -12,7 +12,7 @@ from .routers import (
     resellers_router,
 )
 
-app = FastAPI(title="Red Link Backoffice API")
+app = FastAPI(title="Red-Link Backoffice API")
 
 app.add_middleware(
     CORSMiddleware,
