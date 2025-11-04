@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 from pathlib import Path
 
 from alembic import command
@@ -20,6 +21,9 @@ def run_database_migrations() -> None:
     base_dir = Path(__file__).resolve().parent.parent
     config = Config(str(base_dir / "alembic.ini"))
     config.set_main_option("script_location", str(base_dir / "alembic"))
+
+    if str(base_dir) not in sys.path:
+        sys.path.insert(0, str(base_dir))
 
     database_url = os.getenv("DATABASE_URL", SQLALCHEMY_DATABASE_URL)
     if database_url:

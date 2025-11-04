@@ -22,9 +22,30 @@ npm --version
 python3 --version
 ```
 
+## Inicio rápido en Linux/macOS
+
+Para un flujo completamente automatizado en entornos Unix, ejecuta `./dev.sh` desde la raíz del repositorio. El asistente:
+
+- Verifica que `npm` y `python3` estén disponibles.
+- Crea (si hace falta) el entorno virtual en `backend/.venv` e instala las dependencias del backend.
+- Ejecuta `npm install` cuando aún no existe `node_modules/`.
+- Aplica `alembic upgrade head` reutilizando la misma `DATABASE_URL` que usa la API.
+- Corre `npm run lint`, `npm run test -- --run` y `pytest` (puedes omitirlos con `--skip-checks`).
+- Levanta FastAPI y Vite en paralelo; al terminar verás el backend en `http://localhost:8000` y el frontend en `http://localhost:5173`.
+
+Opcionalmente puedes acelerar la preparación con:
+
+```bash
+./dev.sh --skip-frontend-install      # omite npm install
+./dev.sh --skip-backend-install       # omite pip install -r backend/requirements.txt
+./dev.sh --skip-checks                # evita lint y pruebas automáticas
+```
+
+Detén los servicios con `Ctrl+C`; el script finaliza ambos procesos de forma segura.
+
 ## Inicio rápido en Windows (PowerShell)
 
-Si estás en Windows y el lanzador `.bat` no funciona en tu equipo, puedes usar el nuevo script `Red-Link_QUICKSTART.ps1`. Este script automatiza la instalación mínima y levanta ambos servicios en ventanas separadas.
+Si estás en Windows y el lanzador `.bat` no funciona en tu equipo, puedes usar el script `Red-Link_QUICKSTART.ps1`. Este script automatiza la instalación mínima y levanta ambos servicios en ventanas separadas.
 
 1. Haz clic derecho sobre `Red-Link_QUICKSTART.ps1` y elige **Run with PowerShell**.
    - También puedes ejecutarlo desde una terminal con:

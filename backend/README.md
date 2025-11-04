@@ -63,3 +63,14 @@ Ambos scripts aplican `alembic upgrade head` y después lanzan Uvicorn en
 > instala [Git Bash](https://git-scm.com/download/win) o habilita el Subsistema
 > de Windows para Linux (WSL). Con cualquiera de estas opciones podrás ejecutar
 > el script `./start.sh` directamente.
+
+Si necesitas levantar frontend y backend desde el mismo asistente en Linux o
+macOS, ejecuta el script `dev.sh` ubicado en la raíz del repositorio:
+
+```bash
+cd ..
+./dev.sh
+```
+
+El comando creará/actualizará `backend/.venv`, instalará dependencias, aplicará
+las migraciones y abrirá tanto Uvicorn como `npm run dev` en paralelo.
