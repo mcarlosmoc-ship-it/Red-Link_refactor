@@ -103,4 +103,24 @@ it('allows overriding the status filter when invoking the hook', () => {
   expect(result.filteredClients).toHaveLength(1)
   expect(result.filteredClients[0]).toMatchObject({ name: 'Bob' })
 })
+
+it('returns default metrics and empty projected clients when metrics are unavailable', () => {
+  mockState.metrics = null
+  mockState.dashboardClients = []
+
+  const result = renderHook()
+
+  expect(result.metrics).toMatchObject({
+    totalClients: 0,
+    pendingClients: 0,
+    paidClients: 0,
+    clientIncome: 0,
+    totalDebtAmount: 0,
+    resellerIncome: 0,
+    totalExpenses: 0,
+    netEarnings: 0,
+  })
+  expect(result.metrics.internetCosts).toBe(150)
+  expect(result.projectedClients).toHaveLength(0)
+})
 })
