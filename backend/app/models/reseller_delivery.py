@@ -5,7 +5,16 @@ from __future__ import annotations
 import enum
 import uuid
 
-from sqlalchemy import Column, Date, Enum as SAEnum, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import (
+    Column,
+    Date,
+    Enum as SAEnum,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    Text,
+)
 from sqlalchemy.orm import relationship
 
 from ..database import Base
@@ -17,6 +26,15 @@ class DeliverySettlementStatus(str, enum.Enum):
     PENDING = "pending"
     SETTLED = "settled"
     PARTIAL = "partial"
+
+
+DELIVERY_STATUS_ENUM = SAEnum(
+    DeliverySettlementStatus,
+    name="delivery_settlement_status_enum",
+    values_callable=lambda enum_cls: [member.value for member in enum_cls],
+    native_enum=False,
+    validate_strings=True,
+)
 
 
 class ResellerDelivery(Base):
@@ -33,7 +51,7 @@ class ResellerDelivery(Base):
     reseller_id = Column(String(36), ForeignKey("resellers.reseller_id", ondelete="CASCADE"), nullable=False)
     delivered_on = Column(Date, nullable=False)
     settlement_status = Column(
-        SAEnum(DeliverySettlementStatus, name="delivery_settlement_status_enum"),
+        DELIVERY_STATUS_ENUM,
         nullable=False,
         default=DeliverySettlementStatus.PENDING,
         server_default=DeliverySettlementStatus.PENDING.value,
