@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from .. import schemas
 from ..database import get_db
-from ..services import MetricsService
+from ..services import MetricsService, OperatingCostService
 
 router = APIRouter()
 
@@ -48,3 +48,15 @@ def get_dashboard_metrics(
         search=search,
     )
     return schemas.DashboardMetricsResponse(**payload)
+
+
+@router.put("/base-costs", response_model=schemas.BaseCostUpdateResponse)
+def update_base_costs(
+    payload: schemas.BaseCostUpdateRequest, db: Session = Depends(get_db)
+) -> schemas.BaseCostUpdateResponse:
+    period_key, costs = OperatingCostService.update_costs(
+        db,
+        period_key=payload.period_key,
+        costs=payload.costs,
+    )
+    return schemas.BaseCostUpdateResponse(period_key=period_key, costs=costs)

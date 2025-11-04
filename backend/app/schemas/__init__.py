@@ -4,6 +4,8 @@ from .client import ClientBase, ClientCreate, ClientRead, ClientUpdate
 from .expense import ExpenseBase, ExpenseCreate, ExpenseRead
 from .inventory import InventoryBase, InventoryCreate, InventoryRead, InventoryUpdate
 from .metrics import (
+    BaseCostUpdateRequest,
+    BaseCostUpdateResponse,
     CommunityMetrics,
     DashboardClient,
     DashboardMetricsResponse,
@@ -54,4 +56,6 @@ __all__ = [
     "DashboardClient",
     "DashboardMetricsSummary",
     "DashboardMetricsResponse",
+    "BaseCostUpdateRequest",
+    "BaseCostUpdateResponse",
 ]

@@ -3,7 +3,22 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
+from sqlalchemy.orm import Session
+
 from backend.app import models
+
+
+def _ensure_base(db_session: Session, base_code: str, name: str, location: str) -> models.BaseStation:
+    base = (
+        db_session.query(models.BaseStation)
+        .filter(models.BaseStation.code == base_code)
+        .first()
+    )
+    if base is None:
+        base = models.BaseStation(code=base_code, name=name, location=location)
+        db_session.add(base)
+        db_session.flush()
+    return base
 
 
 def test_metrics_overview_returns_totals(client, db_session, seed_basic_data):
@@ -85,3 +100,37 @@ def test_dashboard_metrics_endpoint_returns_filtered_clients(client, seed_basic_
     )
     assert search_response.status_code == 200
     assert search_response.json()["clients"] == []
+
+
+def test_update_base_costs_endpoint_persists_values(client, db_session, seed_basic_data):
+    period_key = seed_basic_data["period"].period_key
+
+    base_one = seed_basic_data["client"].base
+    base_two = _ensure_base(db_session, base_code="B2", name="Base Dos", location="Norte")
+
+    payload = {
+        "period_key": period_key,
+        "costs": {
+            str(base_one.id): "350.50",
+            str(base_two.id): "120.25",
+        },
+    }
+
+    response = client.put("/metrics/base-costs", json=payload)
+    assert response.status_code == 200
+
+    data = response.json()
+    assert data["period_key"] == period_key
+    assert Decimal(str(data["costs"][str(base_one.id)])) == Decimal("350.50")
+    assert Decimal(str(data["costs"][str(base_two.id)])) == Decimal("120.25")
+
+    stored_costs = (
+        db_session.query(models.BaseOperatingCost)
+        .filter(models.BaseOperatingCost.period_key == period_key)
+        .order_by(models.BaseOperatingCost.base_id)
+        .all()
+    )
+
+    assert len(stored_costs) == 2
+    assert Decimal(str(stored_costs[0].total_cost)) == Decimal("350.50")
+    assert Decimal(str(stored_costs[1].total_cost)) == Decimal("120.25")
