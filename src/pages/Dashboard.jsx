@@ -126,6 +126,30 @@ export default function DashboardPage() {
     }
   }, [isCurrentPeriod, setPaymentForm])
 
+  useEffect(() => {
+    const previousFilters = lastMetricsFiltersRef.current
+    const filtersChanged =
+      previousFilters?.statusFilter !== statusFilter || previousFilters?.searchTerm !== searchTerm
+
+    if (!filtersChanged) {
+      lastMetricsFiltersRef.current = { statusFilter, searchTerm }
+      return
+    }
+
+    if (dashboardStatus.metrics?.isLoading) {
+      return
+    }
+
+    reloadMetrics().catch(() => {})
+
+    lastMetricsFiltersRef.current = { statusFilter, searchTerm }
+  }, [
+    statusFilter,
+    searchTerm,
+    reloadMetrics,
+    dashboardStatus.metrics?.isLoading,
+  ])
+
   const filterDescription = useMemo(() => {
     if (statusFilter === 'paid') {
       return `Mostrando clientes al día en ${periodLabel}`
