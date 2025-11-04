@@ -4,7 +4,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from ..models.payment import PaymentMethod
 from .client import ClientRead
@@ -33,5 +33,4 @@ class PaymentRead(PaymentBase):
     created_at: datetime
     client: Optional[ClientRead] = None
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)

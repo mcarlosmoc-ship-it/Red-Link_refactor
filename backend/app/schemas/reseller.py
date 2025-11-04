@@ -6,7 +6,7 @@ from datetime import date
 from decimal import Decimal
 from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from ..models.reseller_delivery import DeliverySettlementStatus
 
@@ -29,8 +29,7 @@ class ResellerDeliveryItemBase(BaseModel):
 class ResellerDeliveryItemRead(ResellerDeliveryItemBase):
     id: int
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ResellerDeliveryBase(BaseModel):
@@ -49,8 +48,7 @@ class ResellerDeliveryRead(ResellerDeliveryBase):
     id: str
     items: List[ResellerDeliveryItemRead]
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ResellerSettlementBase(BaseModel):
@@ -68,8 +66,7 @@ class ResellerSettlementCreate(ResellerSettlementBase):
 class ResellerSettlementRead(ResellerSettlementBase):
     id: str
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ResellerRead(ResellerBase):
@@ -77,5 +74,4 @@ class ResellerRead(ResellerBase):
     deliveries: List[ResellerDeliveryRead] = []
     settlements: List[ResellerSettlementRead] = []
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
