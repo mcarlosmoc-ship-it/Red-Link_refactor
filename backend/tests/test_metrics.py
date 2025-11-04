@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import date
-
 from decimal import Decimal
 
 from backend.app import models
@@ -10,10 +9,11 @@ from backend.app import models
 def test_metrics_overview_returns_totals(client, db_session, seed_basic_data):
     client_model = seed_basic_data["client"]
     period = seed_basic_data["period"]
+    period_key = period.period_key
 
     payment_payload = {
         "client_id": client_model.id,
-        "period_key": period.period_key,
+        "period_key": period_key,
         "paid_on": date(2025, 1, 20).isoformat(),
         "amount": "600.00",
         "months_paid": "2",
@@ -22,7 +22,7 @@ def test_metrics_overview_returns_totals(client, db_session, seed_basic_data):
     response = client.post("/payments/", json=payment_payload)
     assert response.status_code == 201
 
-    metrics_response = client.get("/metrics/overview", params={"period_key": period.period_key})
+    metrics_response = client.get("/metrics/overview", params={"period_key": period_key})
     assert metrics_response.status_code == 200
 
     metrics = metrics_response.json()

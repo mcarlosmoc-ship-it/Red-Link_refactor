@@ -10,6 +10,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload
 
 from .. import models, schemas
+from .billing_periods import BillingPeriodService
 
 
 class PaymentService:
@@ -41,6 +42,8 @@ class PaymentService:
         if client is None:
             raise ValueError("Client not found")
 
+        period = BillingPeriodService.ensure_period(db, data.period_key)
+
         months_paid = Decimal(data.months_paid)
         if months_paid <= 0:
             raise ValueError("months_paid must be greater than zero")
@@ -58,7 +61,9 @@ class PaymentService:
         if new_debt <= 0:
             client.service_status = models.ServiceStatus.ACTIVE
 
-        payment = models.Payment(**data.dict())
+        payment_data = data.model_dump()
+        payment_data["period_key"] = period.period_key
+        payment = models.Payment(**payment_data)
         db.add(payment)
         db.add(client)
         db.commit()
