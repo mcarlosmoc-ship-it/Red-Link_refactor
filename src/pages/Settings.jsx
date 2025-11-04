@@ -1,25 +1,55 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import Button from '../components/ui/Button.jsx'
 import { Card, CardContent } from '../components/ui/Card.jsx'
 import { useBackofficeStore } from '../store/useBackofficeStore.js'
+import { useToast } from '../hooks/useToast.js'
 
 export default function SettingsPage() {
-  const { baseCosts, voucherPrices, updateBaseCosts, updateVoucherPrices } = useBackofficeStore((state) => ({
-    baseCosts: state.baseCosts,
-    voucherPrices: state.voucherPrices,
-    updateBaseCosts: state.updateBaseCosts,
-    updateVoucherPrices: state.updateVoucherPrices,
-  }))
+  const { baseCosts, voucherPrices, updateBaseCosts, updateVoucherPrices, metricsStatus } =
+    useBackofficeStore((state) => ({
+      baseCosts: state.baseCosts,
+      voucherPrices: state.voucherPrices,
+      updateBaseCosts: state.updateBaseCosts,
+      updateVoucherPrices: state.updateVoucherPrices,
+      metricsStatus: state.status.metrics,
+    }))
 
-  const [baseForm, setBaseForm] = useState(baseCosts)
+  const { showToast } = useToast()
+
+  const [baseForm, setBaseForm] = useState(() => ({
+    base1: baseCosts?.base1 ?? '',
+    base2: baseCosts?.base2 ?? '',
+  }))
   const [voucherForm, setVoucherForm] = useState(voucherPrices)
 
-  const handleSubmitBase = (event) => {
-    event.preventDefault()
-    updateBaseCosts({
-      base1: Number(baseForm.base1) || 0,
-      base2: Number(baseForm.base2) || 0,
+  useEffect(() => {
+    setBaseForm({
+      base1: baseCosts?.base1 ?? '',
+      base2: baseCosts?.base2 ?? '',
     })
+  }, [baseCosts?.base1, baseCosts?.base2])
+
+  const isSavingBaseCosts = metricsStatus?.isMutating ?? false
+
+  const handleSubmitBase = async (event) => {
+    event.preventDefault()
+    try {
+      await updateBaseCosts({
+        base1: Number(baseForm.base1) || 0,
+        base2: Number(baseForm.base2) || 0,
+      })
+      showToast({
+        type: 'success',
+        title: 'Costos guardados',
+        description: 'Los costos de operación se actualizaron correctamente.',
+      })
+    } catch (error) {
+      showToast({
+        type: 'error',
+        title: 'No se pudieron guardar los costos',
+        description: error?.message ?? 'Intenta nuevamente más tarde.',
+      })
+    }
   }
 
   const handleSubmitVoucher = (event) => {
@@ -66,7 +96,9 @@ export default function SettingsPage() {
                 />
               </label>
               <div className="md:col-span-2 flex justify-end">
-                <Button type="submit">Guardar costos</Button>
+                <Button type="submit" disabled={isSavingBaseCosts}>
+                  {isSavingBaseCosts ? 'Guardando…' : 'Guardar costos'}
+                </Button>
               </div>
             </form>
           </CardContent>

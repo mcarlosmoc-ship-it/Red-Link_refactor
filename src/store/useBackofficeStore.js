@@ -808,7 +808,39 @@ export const useBackofficeStore = create((set, get) => ({
 
     await get().loadInventory({ force: true, retries: 1 })
   },
-  updateBaseCosts: (partial) => set((state) => ({ baseCosts: { ...state.baseCosts, ...partial } })),
+  updateBaseCosts: async (partial) => {
+    const state = get()
+    const merged = { ...state.baseCosts, ...partial }
+    const periodKey = state.periods?.selected ?? state.periods?.current ?? getCurrentPeriodKey()
+
+    const payloadCosts = Object.entries(merged).reduce((acc, [key, value]) => {
+      const match = /^base(\d+)$/.exec(key)
+      if (!match) {
+        return acc
+      }
+      const numeric = normalizeDecimal(value, 0)
+      const rounded = Math.round(numeric * 100) / 100
+      acc[match[1]] = rounded
+      return acc
+    }, {})
+
+    const response = await runMutation({
+      set,
+      resources: 'metrics',
+      action: async () => {
+        const { data } = await apiClient.put('/metrics/base-costs', {
+          period_key: periodKey,
+          costs: payloadCosts,
+        })
+        return data
+      },
+    })
+
+    const normalizedBaseCosts = convertBaseCosts(response?.costs ?? {})
+    set({ baseCosts: normalizedBaseCosts })
+
+    await get().loadMetrics({ force: true, retries: 1, periodKey })
+  },
   updateVoucherPrices: (partial) =>
     set((state) => ({ voucherPrices: { ...state.voucherPrices, ...partial } })),
 }))

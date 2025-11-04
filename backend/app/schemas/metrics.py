@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import List
+from typing import Dict, List, Mapping
 
 from enum import Enum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class MetricsOverview(BaseModel):
@@ -75,3 +75,41 @@ class DashboardMetricsResponse(BaseModel):
     summary: DashboardMetricsSummary
     clients: List[DashboardClient]
     base_costs: dict[str, Decimal] = Field(default_factory=dict)
+
+
+class BaseCostUpdateRequest(BaseModel):
+    """Payload used to update base operating costs for a billing period."""
+
+    period_key: str = Field(..., pattern=r"^\d{4}-\d{2}$")
+    costs: Dict[int, Decimal] = Field(default_factory=dict)
+
+    @field_validator("costs", mode="before")
+    @classmethod
+    def _normalize_cost_keys(cls, value: Mapping[str, Decimal] | None) -> Mapping[int, Decimal]:
+        if value is None:
+            return {}
+
+        normalized: Dict[int, Decimal] = {}
+        for raw_key, amount in value.items():
+            if raw_key is None:
+                continue
+
+            key_str = str(raw_key)
+            if key_str.startswith("base"):
+                key_str = key_str[4:]
+
+            try:
+                base_id = int(key_str)
+            except (TypeError, ValueError):  # pragma: no cover - defensive
+                continue
+
+            normalized[base_id] = amount
+
+        return normalized
+
+
+class BaseCostUpdateResponse(BaseModel):
+    """Response returned after persisting base operating costs."""
+
+    period_key: str
+    costs: dict[str, Decimal] = Field(default_factory=dict)
