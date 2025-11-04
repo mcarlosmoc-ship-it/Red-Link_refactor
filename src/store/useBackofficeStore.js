@@ -90,12 +90,14 @@ const mapInventoryItem = (item) => ({
   installedAt: item.installed_at,
 })
 
-const mapReseller = (reseller) => ({
-  id: reseller.id,
-  name: reseller.full_name,
-  base: reseller.base_id,
-  location: reseller.location,
-  deliveries: (reseller.deliveries ?? []).map((delivery) => ({
+const parseDecimalOrNull = (value) => {
+  if (value === undefined || value === null || value === '') return null
+  const numeric = Number(value)
+  return Number.isFinite(numeric) ? numeric : null
+}
+
+const mapReseller = (reseller) => {
+  const deliveries = (reseller.deliveries ?? []).map((delivery) => ({
     id: delivery.id,
     date: delivery.delivered_on,
     settled: delivery.settlement_status === 'settled',
@@ -105,15 +107,76 @@ const mapReseller = (reseller) => ({
       acc[voucherKey] = item.quantity
       return acc
     }, {}),
-  })),
-  settlements: (reseller.settlements ?? []).map((settlement) => ({
-    id: settlement.id,
-    date: settlement.settled_on,
-    amount: normalizeDecimal(settlement.amount),
-    note: settlement.notes ?? '',
-    myGain: normalizeDecimal(settlement.my_gain ?? settlement.amount),
-  })),
-})
+  }))
+
+  const deliveriesById = new Map(deliveries.map((delivery) => [delivery.id, delivery]))
+
+  const settlements = (reseller.settlements ?? []).map((settlement) => {
+    const amount = normalizeDecimal(settlement.amount)
+    const myGain = normalizeDecimal(settlement.my_gain ?? settlement.amount)
+
+    const relatedDeliveryId = settlement.delivery_id ?? settlement.deliveryId ?? null
+    const relatedDelivery = relatedDeliveryId ? deliveriesById.get(relatedDeliveryId) ?? null : null
+
+    const totalFromApi =
+      parseDecimalOrNull(settlement.total) ??
+      parseDecimalOrNull(settlement.total_value) ??
+      parseDecimalOrNull(settlement.expected_total)
+
+    const receivedFromApi =
+      parseDecimalOrNull(settlement.received) ??
+      parseDecimalOrNull(settlement.received_amount) ??
+      parseDecimalOrNull(settlement.amount_received)
+
+    const diffFromApi =
+      parseDecimalOrNull(settlement.diff) ??
+      parseDecimalOrNull(settlement.difference) ??
+      parseDecimalOrNull(settlement.balance)
+
+    const totalSoldFromApi =
+      parseDecimalOrNull(settlement.totalSold) ??
+      parseDecimalOrNull(settlement.total_sold) ??
+      parseDecimalOrNull(settlement.vouchers_sold) ??
+      parseDecimalOrNull(settlement.sold)
+
+    const settlementItemsTotal = Array.isArray(settlement.items)
+      ? settlement.items.reduce((acc, item) => acc + (parseDecimalOrNull(item?.quantity) ?? 0), 0)
+      : null
+
+    const deliveryQtyTotal = relatedDelivery
+      ? Object.values(relatedDelivery.qty ?? {}).reduce(
+          (acc, qty) => acc + (parseDecimalOrNull(qty) ?? 0),
+          0,
+        )
+      : null
+
+    const total = totalFromApi ?? relatedDelivery?.totalValue ?? amount
+    const received = receivedFromApi ?? amount
+    const totalSold = totalSoldFromApi ?? settlementItemsTotal ?? deliveryQtyTotal ?? 0
+    const diff = diffFromApi ?? received - total
+
+    return {
+      id: settlement.id,
+      date: settlement.settled_on,
+      amount,
+      note: settlement.notes ?? '',
+      myGain,
+      total,
+      totalSold,
+      received,
+      diff,
+    }
+  })
+
+  return {
+    id: reseller.id,
+    name: reseller.full_name,
+    base: reseller.base_id,
+    location: reseller.location,
+    deliveries,
+    settlements,
+  }
+}
 
 const convertBaseCosts = (baseCosts = {}) =>
   Object.entries(baseCosts).reduce((acc, [baseId, value]) => {
