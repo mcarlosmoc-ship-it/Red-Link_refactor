@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { DollarSign, Plus, Users, Wifi } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import StatCard from '../components/dashboard/StatCard.jsx'
+import EarningsCard from '../components/dashboard/EarningsCard.jsx'
 import Button from '../components/ui/Button.jsx'
 import { peso, formatPeriodLabel, diffPeriods } from '../utils/formatters.js'
 import { useDashboardMetrics } from '../hooks/useDashboardMetrics.js'
@@ -39,6 +40,7 @@ export default function DashboardPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [paymentForm, setPaymentForm] = useState(createEmptyPaymentForm)
   const [isRetryingSync, setIsRetryingSync] = useState(false)
+  const [showEarningsBreakdown, setShowEarningsBreakdown] = useState(false)
   const lastMetricsFiltersRef = useRef({ statusFilter: 'pending', searchTerm: '' })
 
   const { showToast } = useToast()
@@ -68,6 +70,7 @@ export default function DashboardPage() {
   } = useClients()
 
   const {
+    expenses,
     status: dashboardStatus,
     reloadMetrics,
     reloadResellers,
@@ -77,7 +80,7 @@ export default function DashboardPage() {
     filters: { statusFilter, searchTerm },
   })
 
-  const { metrics, filteredClients } = useDashboardMetrics({ statusFilter })
+  const { metrics, filteredClients, baseCosts } = useDashboardMetrics({ statusFilter })
 
   const periodLabel = formatPeriodLabel(selectedPeriod ?? currentPeriod)
   const currentPeriodLabel = formatPeriodLabel(currentPeriod ?? selectedPeriod)
@@ -85,6 +88,11 @@ export default function DashboardPage() {
   const canGoNext = diffPeriods(selectedPeriod ?? currentPeriod, currentPeriod ?? selectedPeriod) > 0
   const isCurrentPeriod = (selectedPeriod ?? currentPeriod) === (currentPeriod ?? selectedPeriod)
   const isSubmittingPayment = Boolean(paymentsStatus?.isMutating)
+  const earningsSectionId = 'earnings-breakdown'
+  const isEarningsLoading =
+    Boolean(dashboardStatus.metrics?.isLoading) ||
+    Boolean(dashboardStatus.resellers?.isLoading) ||
+    Boolean(dashboardStatus.expenses?.isLoading)
   const isDataLoading =
     Boolean(clientsStatus?.isLoading) ||
     Boolean(dashboardStatus.metrics?.isLoading) ||
@@ -150,6 +158,12 @@ export default function DashboardPage() {
     reloadMetrics,
     dashboardStatus.metrics?.isLoading,
   ])
+
+  useEffect(() => {
+    if (statusFilter !== 'all' && showEarningsBreakdown) {
+      setShowEarningsBreakdown(false)
+    }
+  }, [statusFilter, showEarningsBreakdown])
 
   const filterDescription = useMemo(() => {
     if (statusFilter === 'paid') {
@@ -472,11 +486,50 @@ export default function DashboardPage() {
             value={peso(metrics.clientIncome + metrics.resellerIncome)}
             icon={Wifi}
             trend={`Gastos: ${peso(metrics.internetCosts + metrics.totalExpenses)}`}
-            onClick={() => setStatusFilter('all')}
-            aria-pressed={statusFilter === 'all'}
-            className={`${statusFilter === 'all' ? 'ring-2 ring-slate-200' : ''}`}
+            onClick={() => {
+              setStatusFilter('all')
+              setShowEarningsBreakdown((prev) => !prev)
+            }}
+            aria-pressed={showEarningsBreakdown}
+            aria-controls={earningsSectionId}
+            className={`${
+              showEarningsBreakdown
+                ? 'ring-2 ring-emerald-200'
+                : statusFilter === 'all'
+                  ? 'ring-2 ring-slate-200'
+                  : ''
+            }`}
           />
         </div>
+        {showEarningsBreakdown && (
+          <div
+            id={earningsSectionId}
+            className="relative mt-2"
+          >
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowEarningsBreakdown(false)}
+              className="absolute right-4 top-4 z-10 text-xs font-semibold text-slate-500 hover:text-slate-700"
+            >
+              Cerrar
+            </Button>
+            {isEarningsLoading ? (
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-6 text-sm text-slate-500">
+                Calculando ingresos y egresos…
+              </div>
+            ) : (
+              <EarningsCard
+                earningsDemo={metrics.netEarnings}
+                clientIncomeDemo={metrics.clientIncome}
+                resellerIncomeDemo={metrics.resellerIncome}
+                baseCosts={baseCosts}
+                expenses={expenses}
+              />
+            )}
+          </div>
+        )}
       </section>
 
       <section aria-labelledby="clientes" className="space-y-4">
