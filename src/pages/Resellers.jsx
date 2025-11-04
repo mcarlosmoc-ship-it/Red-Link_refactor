@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import Button from '../components/ui/Button.jsx'
 import { Card, CardContent } from '../components/ui/Card.jsx'
 import { peso, today } from '../utils/formatters.js'
@@ -16,12 +16,14 @@ const VOUCHER_TYPES = [
 const createEmptyQty = () => VOUCHER_TYPES.reduce((acc, item) => ({ ...acc, [item.key]: 0 }), {})
 
 export default function ResellersPage() {
-  const { resellers, voucherPrices, addResellerDelivery, settleResellerDelivery } = useBackofficeStore((state) => ({
-    resellers: state.resellers,
-    voucherPrices: state.voucherPrices,
-    addResellerDelivery: state.addResellerDelivery,
-    settleResellerDelivery: state.settleResellerDelivery,
-  }))
+  const { resellers, voucherPrices, addResellerDelivery, settleResellerDelivery, createReseller } =
+    useBackofficeStore((state) => ({
+      resellers: state.resellers,
+      voucherPrices: state.voucherPrices,
+      addResellerDelivery: state.addResellerDelivery,
+      settleResellerDelivery: state.settleResellerDelivery,
+      createReseller: state.createReseller,
+    }))
 
   const initialResellerId = resellers[0]?.id ?? ''
   const [selectedReseller, setSelectedReseller] = useState(initialResellerId)
@@ -33,7 +35,32 @@ export default function ResellersPage() {
     received: '',
     leftovers: createEmptyQty(),
   })
+  const [resellerForm, setResellerForm] = useState({ name: '', location: '', base: '1' })
+  const [isCreatingReseller, setIsCreatingReseller] = useState(false)
   const [feedback, setFeedback] = useState(null)
+
+  useEffect(() => {
+    if (resellers.length === 0) {
+      if (selectedReseller !== '') {
+        setSelectedReseller('')
+      }
+      setDeliveryForm((prev) => (prev.resellerId === '' ? prev : { ...prev, resellerId: '' }))
+      setSettlementForm((prev) =>
+        prev.resellerId === '' && prev.deliveryId === ''
+          ? prev
+          : { ...prev, resellerId: '', deliveryId: '', leftovers: createEmptyQty() },
+      )
+      return
+    }
+
+    const exists = resellers.some((reseller) => reseller.id === selectedReseller)
+    if (!exists) {
+      const nextId = resellers[0].id
+      setSelectedReseller(nextId)
+      setDeliveryForm((prev) => ({ ...prev, resellerId: nextId }))
+      setSettlementForm((prev) => ({ ...prev, resellerId: nextId, deliveryId: '', leftovers: createEmptyQty() }))
+    }
+  }, [resellers, selectedReseller])
 
   const currentReseller = useMemo(
     () => resellers.find((reseller) => reseller.id === selectedReseller) ?? null,
@@ -97,6 +124,31 @@ export default function ResellersPage() {
       (total, item) => total + (Number(qty[item.key]) || 0) * (voucherPrices[item.key] ?? 0),
       0,
     )
+
+  const handleResellerSubmit = async (event) => {
+    event.preventDefault()
+    const name = resellerForm.name.trim()
+    const location = resellerForm.location.trim()
+
+    if (!name || !location) {
+      setFeedback({ type: 'error', message: 'Ingresa el nombre y la ubicación del revendedor.' })
+      return
+    }
+
+    setIsCreatingReseller(true)
+    try {
+      await createReseller({ name, base: resellerForm.base, location })
+      setFeedback({ type: 'success', message: 'Revendedor agregado correctamente.' })
+      setResellerForm((prev) => ({ ...prev, name: '', location: '' }))
+    } catch (error) {
+      setFeedback({
+        type: 'error',
+        message: error?.message ?? 'No se pudo registrar el revendedor. Intenta nuevamente.',
+      })
+    } finally {
+      setIsCreatingReseller(false)
+    }
+  }
 
   const handleDeliverySubmit = async (event) => {
     event.preventDefault()
@@ -175,6 +227,72 @@ export default function ResellersPage() {
 
   return (
     <div className="space-y-8">
+      {feedback && (
+        <div
+          role="alert"
+          className={`rounded-md border px-3 py-2 text-sm ${
+            feedback.type === 'error'
+              ? 'border-red-200 bg-red-50 text-red-700'
+              : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+          }`}
+        >
+          {feedback.message}
+        </div>
+      )}
+
+      <section aria-labelledby="registrar-revendedor" className="space-y-4">
+        <div>
+          <h2 id="registrar-revendedor" className="text-lg font-semibold text-slate-900">
+            Registrar revendedor
+          </h2>
+          <p className="text-sm text-slate-500">
+            Agrega nuevos revendedores para habilitar entregas y liquidaciones desde el panel.
+          </p>
+        </div>
+
+        <form className="grid gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm" onSubmit={handleResellerSubmit}>
+          <div className="grid gap-4 md:grid-cols-3">
+            <label className="grid gap-1 text-xs font-medium text-slate-600">
+              Nombre completo
+              <input
+                value={resellerForm.name}
+                onChange={(event) => setResellerForm((prev) => ({ ...prev, name: event.target.value }))}
+                className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+                placeholder="Juan Pérez"
+                autoComplete="off"
+              />
+            </label>
+            <label className="grid gap-1 text-xs font-medium text-slate-600">
+              Ubicación
+              <input
+                value={resellerForm.location}
+                onChange={(event) => setResellerForm((prev) => ({ ...prev, location: event.target.value }))}
+                className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+                placeholder="Colonia Centro"
+                autoComplete="off"
+              />
+            </label>
+            <label className="grid gap-1 text-xs font-medium text-slate-600">
+              Base asignada
+              <select
+                value={resellerForm.base}
+                onChange={(event) => setResellerForm((prev) => ({ ...prev, base: event.target.value }))}
+                className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+              >
+                <option value="1">Base 1</option>
+                <option value="2">Base 2</option>
+              </select>
+            </label>
+          </div>
+
+          <div className="flex justify-end">
+            <Button type="submit" disabled={isCreatingReseller}>
+              {isCreatingReseller ? 'Guardando…' : 'Guardar revendedor'}
+            </Button>
+          </div>
+        </form>
+      </section>
+
       <section aria-labelledby="registrar-entrega" className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
@@ -211,19 +329,6 @@ export default function ResellersPage() {
             </select>
           </label>
         </div>
-
-        {feedback && (
-          <div
-            role="alert"
-            className={`rounded-md border px-3 py-2 text-sm ${
-              feedback.type === 'error'
-                ? 'border-red-200 bg-red-50 text-red-700'
-                : 'border-emerald-200 bg-emerald-50 text-emerald-700'
-            }`}
-          >
-            {feedback.message}
-          </div>
-        )}
 
         <form className="grid gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm" onSubmit={handleDeliverySubmit}>
           <div className="rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-600">

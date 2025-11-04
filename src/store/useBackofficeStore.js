@@ -40,6 +40,15 @@ const normalizeDecimal = (value, fallback = 0) => {
   return Number.isFinite(numeric) ? numeric : fallback
 }
 
+const normalizeTextOrNull = (value) => {
+  if (value === undefined || value === null) {
+    return null
+  }
+
+  const trimmed = String(value).trim()
+  return trimmed === '' ? null : trimmed
+}
+
 const mapClient = (client) => ({
   id: client.id,
   type: client.client_type,
@@ -598,6 +607,24 @@ export const useBackofficeStore = create((set, get) => ({
       get().loadMetrics({ force: true, retries: 1 }),
     ])
   },
+  createReseller: async ({ name, base, location }) => {
+    await runMutation({
+      set,
+      resources: 'resellers',
+      action: async () => {
+        await apiClient.post('/resellers', {
+          full_name: name.trim(),
+          base_id: Number(base) || 1,
+          location: location.trim(),
+        })
+      },
+    })
+
+    await Promise.all([
+      get().loadResellers({ force: true, retries: 1 }),
+      get().loadMetrics({ force: true, retries: 1 }),
+    ])
+  },
   toggleClientService: async (clientId) => {
     const client = get().clients.find((item) => item.id === clientId)
     if (!client) {
@@ -730,17 +757,17 @@ export const useBackofficeStore = create((set, get) => ({
       resources: 'inventory',
       action: async () => {
         await apiClient.post('/inventory', {
-          brand: payload.brand,
-          model: payload.model,
-          serial_number: payload.serial,
-          asset_tag: payload.assetTag,
+          brand: payload.brand.trim(),
+          model: normalizeTextOrNull(payload.model),
+          serial_number: normalizeTextOrNull(payload.serial),
+          asset_tag: normalizeTextOrNull(payload.assetTag),
           base_id: payload.base,
-          ip_address: payload.ip,
+          ip_address: normalizeTextOrNull(payload.ip),
           status: payload.status,
-          location: payload.location,
-          client_id: payload.client,
-          notes: payload.notes,
-          installed_at: payload.installedAt,
+          location: payload.location.trim(),
+          client_id: payload.client ?? null,
+          notes: normalizeTextOrNull(payload.notes),
+          installed_at: payload.installedAt || null,
         })
       },
     })
@@ -753,17 +780,17 @@ export const useBackofficeStore = create((set, get) => ({
       resources: 'inventory',
       action: async () => {
         await apiClient.put(`/inventory/${id}`, {
-          brand: changes.brand,
-          model: changes.model,
-          serial_number: changes.serial,
-          asset_tag: changes.assetTag,
+          brand: changes.brand.trim(),
+          model: normalizeTextOrNull(changes.model),
+          serial_number: normalizeTextOrNull(changes.serial),
+          asset_tag: normalizeTextOrNull(changes.assetTag),
           base_id: changes.base,
-          ip_address: changes.ip,
+          ip_address: normalizeTextOrNull(changes.ip),
           status: changes.status,
-          location: changes.location,
-          client_id: changes.client,
-          notes: changes.notes,
-          installed_at: changes.installedAt,
+          location: changes.location.trim(),
+          client_id: changes.client ?? null,
+          notes: normalizeTextOrNull(changes.notes),
+          installed_at: changes.installedAt || null,
         })
       },
     })
