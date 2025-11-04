@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from alembic import op
+from alembic import context, op
 import sqlalchemy as sa
-from sqlalchemy.sql import table, column
+from sqlalchemy.dialects import postgresql
+from sqlalchemy.sql import column, table
 
 
 revision = "20240315_0001"
@@ -13,7 +14,7 @@ branch_labels = None
 depends_on = None
 
 
-UUID_DEFAULT = sa.text(
+SQLITE_UUID_DEFAULT = sa.text(
     "lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' || "
     "substr(hex(randomblob(2)), 2) || '-' || substr('89ab', abs(random()) % 4 + 1, 1) || "
     "substr(hex(randomblob(2)), 2) || '-' || hex(randomblob(6)))"
@@ -21,6 +22,24 @@ UUID_DEFAULT = sa.text(
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
+    if bind is not None:
+        dialect_name = bind.dialect.name
+    else:
+        ctx = context.get_context()
+        dialect_name = ctx.dialect.name if ctx is not None else ""
+
+    uuid_type = sa.String(length=36)
+    uuid_default = SQLITE_UUID_DEFAULT
+    inet_type = sa.String(length=45)
+
+    if dialect_name == "postgresql":
+        uuid_type = postgresql.UUID(as_uuid=True)
+        uuid_default = sa.text("gen_random_uuid()")
+        inet_type = postgresql.INET()
+        op.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto")
+        op.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
+
     op.create_table(
         "base_stations",
         sa.Column("base_id", sa.Integer(), primary_key=True, autoincrement=True),
@@ -44,7 +63,7 @@ def upgrade() -> None:
 
     op.create_table(
         "clients",
-        sa.Column("client_id", sa.String(length=36), primary_key=True, server_default=UUID_DEFAULT),
+        sa.Column("client_id", uuid_type, primary_key=True, server_default=uuid_default),
         sa.Column("external_code", sa.String(), nullable=True, unique=True),
         sa.Column("client_type", sa.String(), nullable=False),
         sa.Column("full_name", sa.String(), nullable=False),
@@ -55,9 +74,9 @@ def upgrade() -> None:
             sa.ForeignKey("base_stations.base_id", onupdate="CASCADE"),
             nullable=False,
         ),
-        sa.Column("ip_address", sa.String(length=45), nullable=True),
-        sa.Column("antenna_ip", sa.String(length=45), nullable=True),
-        sa.Column("modem_ip", sa.String(length=45), nullable=True),
+        sa.Column("ip_address", inet_type, nullable=True),
+        sa.Column("antenna_ip", inet_type, nullable=True),
+        sa.Column("modem_ip", inet_type, nullable=True),
         sa.Column("antenna_model", sa.String(), nullable=True),
         sa.Column("modem_model", sa.String(), nullable=True),
         sa.Column("monthly_fee", sa.Numeric(10, 2), nullable=False, server_default="0"),
@@ -88,10 +107,10 @@ def upgrade() -> None:
 
     op.create_table(
         "payments",
-        sa.Column("payment_id", sa.String(length=36), primary_key=True, server_default=UUID_DEFAULT),
+        sa.Column("payment_id", uuid_type, primary_key=True, server_default=uuid_default),
         sa.Column(
             "client_id",
-            sa.String(length=36),
+            uuid_type,
             sa.ForeignKey("clients.client_id", ondelete="CASCADE"),
             nullable=False,
         ),
@@ -139,7 +158,7 @@ def upgrade() -> None:
 
     op.create_table(
         "resellers",
-        sa.Column("reseller_id", sa.String(length=36), primary_key=True, server_default=UUID_DEFAULT),
+        sa.Column("reseller_id", uuid_type, primary_key=True, server_default=uuid_default),
         sa.Column("full_name", sa.String(), nullable=False),
         sa.Column(
             "base_id",
@@ -152,10 +171,10 @@ def upgrade() -> None:
 
     op.create_table(
         "reseller_deliveries",
-        sa.Column("delivery_id", sa.String(length=36), primary_key=True, server_default=UUID_DEFAULT),
+        sa.Column("delivery_id", uuid_type, primary_key=True, server_default=uuid_default),
         sa.Column(
             "reseller_id",
-            sa.String(length=36),
+            uuid_type,
             sa.ForeignKey("resellers.reseller_id", ondelete="CASCADE"),
             nullable=False,
         ),
@@ -174,7 +193,7 @@ def upgrade() -> None:
         sa.Column("delivery_item_id", sa.Integer(), primary_key=True, autoincrement=True),
         sa.Column(
             "delivery_id",
-            sa.String(length=36),
+            uuid_type,
             sa.ForeignKey("reseller_deliveries.delivery_id", ondelete="CASCADE"),
             nullable=False,
         ),
@@ -190,16 +209,16 @@ def upgrade() -> None:
 
     op.create_table(
         "reseller_settlements",
-        sa.Column("settlement_id", sa.String(length=36), primary_key=True, server_default=UUID_DEFAULT),
+        sa.Column("settlement_id", uuid_type, primary_key=True, server_default=uuid_default),
         sa.Column(
             "reseller_id",
-            sa.String(length=36),
+            uuid_type,
             sa.ForeignKey("resellers.reseller_id", ondelete="CASCADE"),
             nullable=False,
         ),
         sa.Column(
             "delivery_id",
-            sa.String(length=36),
+            uuid_type,
             sa.ForeignKey("reseller_deliveries.delivery_id", ondelete="SET NULL"),
             nullable=True,
         ),
@@ -210,7 +229,7 @@ def upgrade() -> None:
 
     op.create_table(
         "inventory_items",
-        sa.Column("inventory_id", sa.String(length=36), primary_key=True, server_default=UUID_DEFAULT),
+        sa.Column("inventory_id", uuid_type, primary_key=True, server_default=uuid_default),
         sa.Column("asset_tag", sa.String(), nullable=True, unique=True),
         sa.Column("brand", sa.String(), nullable=False),
         sa.Column("model", sa.String(), nullable=True),
@@ -221,12 +240,12 @@ def upgrade() -> None:
             sa.ForeignKey("base_stations.base_id", onupdate="CASCADE"),
             nullable=False,
         ),
-        sa.Column("ip_address", sa.String(length=45), nullable=True),
+        sa.Column("ip_address", inet_type, nullable=True),
         sa.Column("status", sa.String(), nullable=False),
         sa.Column("location", sa.String(), nullable=False),
         sa.Column(
             "client_id",
-            sa.String(length=36),
+            uuid_type,
             sa.ForeignKey("clients.client_id", ondelete="SET NULL"),
             nullable=True,
         ),
@@ -244,7 +263,7 @@ def upgrade() -> None:
 
     op.create_table(
         "expenses",
-        sa.Column("expense_id", sa.String(length=36), primary_key=True, server_default=UUID_DEFAULT),
+        sa.Column("expense_id", uuid_type, primary_key=True, server_default=uuid_default),
         sa.Column(
             "base_id",
             sa.Integer(),
@@ -262,7 +281,7 @@ def upgrade() -> None:
 
     op.create_table(
         "base_operating_costs",
-        sa.Column("cost_id", sa.String(length=36), primary_key=True, server_default=UUID_DEFAULT),
+        sa.Column("cost_id", uuid_type, primary_key=True, server_default=uuid_default),
         sa.Column(
             "base_id",
             sa.Integer(),

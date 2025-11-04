@@ -21,6 +21,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 
 from ..database import Base
+from ..db_types import GUID
 
 
 class VoucherType(Base):
@@ -75,7 +76,7 @@ class Voucher(Base):
 
     __tablename__ = "vouchers"
 
-    id = Column("voucher_id", String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column("voucher_id", GUID(), primary_key=True, default=uuid.uuid4)
     voucher_code = Column(String(64), nullable=False, unique=True)
     voucher_type_id = Column(
         Integer,
@@ -88,7 +89,7 @@ class Voucher(Base):
         nullable=True,
     )
     activated_by_client_id = Column(
-        String(36),
+        GUID(),
         ForeignKey("clients.client_id", ondelete="SET NULL"),
         nullable=True,
     )

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.sql import expression
 
 
@@ -17,6 +18,12 @@ def upgrade() -> None:
     bind = op.get_bind()
     inspector = sa.inspect(bind)
     dialect_name = bind.dialect.name
+
+    uuid_type = sa.String(length=36)
+    if dialect_name == "postgresql":
+        uuid_type = postgresql.UUID(as_uuid=True)
+        op.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto")
+        op.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
 
     def table_exists(name: str) -> bool:
         return inspector.has_table(name)
@@ -53,8 +60,8 @@ def upgrade() -> None:
     if not table_exists("client_plans"):
         op.create_table(
             "client_plans",
-            sa.Column("client_plan_id", sa.String(length=36), primary_key=True),
-            sa.Column("client_id", sa.String(length=36), nullable=False),
+            sa.Column("client_plan_id", uuid_type, primary_key=True),
+            sa.Column("client_id", uuid_type, nullable=False),
             sa.Column("service_plan_id", sa.Integer(), nullable=False),
             sa.Column("effective_from", sa.Date(), nullable=False),
             sa.Column("effective_to", sa.Date(), nullable=True),
@@ -77,7 +84,7 @@ def upgrade() -> None:
     if not column_exists("clients", "active_client_plan_id"):
         op.add_column(
             "clients",
-            sa.Column("active_client_plan_id", sa.String(length=36), nullable=True),
+            sa.Column("active_client_plan_id", uuid_type, nullable=True),
         )
         added_active_plan_column = True
     if not index_exists("clients", "clients_active_plan_idx"):
@@ -99,8 +106,8 @@ def upgrade() -> None:
     if not table_exists("client_contacts"):
         op.create_table(
             "client_contacts",
-            sa.Column("contact_id", sa.String(length=36), primary_key=True),
-            sa.Column("client_id", sa.String(length=36), nullable=False),
+            sa.Column("contact_id", uuid_type, primary_key=True),
+            sa.Column("client_id", uuid_type, nullable=False),
             sa.Column("contact_type", sa.String(), nullable=False),
             sa.Column("value", sa.String(length=255), nullable=False),
             sa.Column("is_primary", sa.Boolean(), nullable=False, server_default=expression.false()),
@@ -124,8 +131,8 @@ def upgrade() -> None:
     if not table_exists("client_status_history"):
         op.create_table(
             "client_status_history",
-            sa.Column("status_history_id", sa.String(length=36), primary_key=True),
-            sa.Column("client_id", sa.String(length=36), nullable=False),
+            sa.Column("status_history_id", uuid_type, primary_key=True),
+            sa.Column("client_id", uuid_type, nullable=False),
             sa.Column("status", sa.String(), nullable=False),
             sa.Column("changed_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
             sa.Column("changed_by", sa.String(length=100), nullable=True),
@@ -146,8 +153,8 @@ def upgrade() -> None:
     if not table_exists("client_ledger_entries"):
         op.create_table(
             "client_ledger_entries",
-            sa.Column("ledger_entry_id", sa.String(length=36), primary_key=True),
-            sa.Column("client_id", sa.String(length=36), nullable=False),
+            sa.Column("ledger_entry_id", uuid_type, primary_key=True),
+            sa.Column("client_id", uuid_type, nullable=False),
             sa.Column("period_key", sa.String(), nullable=True),
             sa.Column("entry_type", sa.String(), nullable=False),
             sa.Column("entry_date", sa.Date(), nullable=False),
@@ -232,10 +239,10 @@ def upgrade() -> None:
     if not table_exists("support_tickets"):
         op.create_table(
             "support_tickets",
-            sa.Column("ticket_id", sa.String(length=36), primary_key=True),
-            sa.Column("client_id", sa.String(length=36), nullable=True),
+            sa.Column("ticket_id", uuid_type, primary_key=True),
+            sa.Column("client_id", uuid_type, nullable=True),
             sa.Column("base_id", sa.Integer(), nullable=True),
-            sa.Column("inventory_id", sa.String(length=36), nullable=True),
+            sa.Column("inventory_id", uuid_type, nullable=True),
             sa.Column("subject", sa.String(length=255), nullable=False),
             sa.Column("description", sa.Text(), nullable=True),
             sa.Column("status", sa.String(), nullable=False, server_default="open"),
@@ -279,13 +286,13 @@ def upgrade() -> None:
     if not table_exists("inventory_movements"):
         op.create_table(
             "inventory_movements",
-            sa.Column("movement_id", sa.String(length=36), primary_key=True),
-            sa.Column("inventory_id", sa.String(length=36), nullable=False),
+            sa.Column("movement_id", uuid_type, primary_key=True),
+            sa.Column("inventory_id", uuid_type, nullable=False),
             sa.Column("movement_type", sa.String(), nullable=False),
             sa.Column("from_base_id", sa.Integer(), nullable=True),
             sa.Column("to_base_id", sa.Integer(), nullable=True),
-            sa.Column("from_client_id", sa.String(length=36), nullable=True),
-            sa.Column("to_client_id", sa.String(length=36), nullable=True),
+            sa.Column("from_client_id", uuid_type, nullable=True),
+            sa.Column("to_client_id", uuid_type, nullable=True),
             sa.Column("performed_by", sa.String(length=120), nullable=True),
             sa.Column("moved_on", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
             sa.Column("notes", sa.Text(), nullable=True),
@@ -321,11 +328,11 @@ def upgrade() -> None:
     if not table_exists("vouchers"):
         op.create_table(
             "vouchers",
-            sa.Column("voucher_id", sa.String(length=36), primary_key=True),
+            sa.Column("voucher_id", uuid_type, primary_key=True),
             sa.Column("voucher_code", sa.String(length=64), nullable=False, unique=True),
             sa.Column("voucher_type_id", sa.Integer(), nullable=False),
             sa.Column("delivery_item_id", sa.Integer(), nullable=True),
-            sa.Column("activated_by_client_id", sa.String(length=36), nullable=True),
+            sa.Column("activated_by_client_id", uuid_type, nullable=True),
             sa.Column("status", sa.String(), nullable=False, server_default="available"),
             sa.Column("delivered_on", sa.DateTime(timezone=True), nullable=True),
             sa.Column("activated_on", sa.DateTime(timezone=True), nullable=True),

@@ -9,6 +9,7 @@ from sqlalchemy import Boolean, Column, DateTime, Enum as SAEnum, ForeignKey, St
 from sqlalchemy.orm import relationship
 
 from ..database import Base
+from ..db_types import GUID
 from .client import ServiceStatus
 
 
@@ -35,9 +36,9 @@ class ClientContact(Base):
 
     __tablename__ = "client_contacts"
 
-    id = Column("contact_id", String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column("contact_id", GUID(), primary_key=True, default=uuid.uuid4)
     client_id = Column(
-        String(36),
+        GUID(),
         ForeignKey("clients.client_id", ondelete="CASCADE"),
         nullable=False,
     )
@@ -65,14 +66,9 @@ class ClientStatusHistory(Base):
 
     __tablename__ = "client_status_history"
 
-    id = Column(
-        "status_history_id",
-        String(36),
-        primary_key=True,
-        default=lambda: str(uuid.uuid4()),
-    )
+    id = Column("status_history_id", GUID(), primary_key=True, default=uuid.uuid4)
     client_id = Column(
-        String(36),
+        GUID(),
         ForeignKey("clients.client_id", ondelete="CASCADE"),
         nullable=False,
     )

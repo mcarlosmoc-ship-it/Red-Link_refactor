@@ -18,6 +18,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 
 from ..database import Base
+from ..db_types import GUID
 
 
 class InventoryMovementType(str, enum.Enum):
@@ -44,9 +45,9 @@ class InventoryMovement(Base):
 
     __tablename__ = "inventory_movements"
 
-    id = Column("movement_id", String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column("movement_id", GUID(), primary_key=True, default=uuid.uuid4)
     inventory_id = Column(
-        String(36),
+        GUID(),
         ForeignKey("inventory_items.inventory_id", ondelete="CASCADE"),
         nullable=False,
     )
@@ -54,12 +55,12 @@ class InventoryMovement(Base):
     from_base_id = Column(Integer, ForeignKey("base_stations.base_id", ondelete="SET NULL"), nullable=True)
     to_base_id = Column(Integer, ForeignKey("base_stations.base_id", ondelete="SET NULL"), nullable=True)
     from_client_id = Column(
-        String(36),
+        GUID(),
         ForeignKey("clients.client_id", ondelete="SET NULL"),
         nullable=True,
     )
     to_client_id = Column(
-        String(36),
+        GUID(),
         ForeignKey("clients.client_id", ondelete="SET NULL"),
         nullable=True,
     )

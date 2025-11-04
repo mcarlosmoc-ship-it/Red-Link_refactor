@@ -19,6 +19,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 
 from ..database import Base
+from ..db_types import GUID
 
 
 class LedgerEntryType(str, enum.Enum):
@@ -44,9 +45,9 @@ class ClientLedgerEntry(Base):
 
     __tablename__ = "client_ledger_entries"
 
-    id = Column("ledger_entry_id", String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column("ledger_entry_id", GUID(), primary_key=True, default=uuid.uuid4)
     client_id = Column(
-        String(36),
+        GUID(),
         ForeignKey("clients.client_id", ondelete="CASCADE"),
         nullable=False,
     )

@@ -20,6 +20,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 
 from ..database import Base
+from ..db_types import GUID
 
 
 class ServicePlan(Base):
@@ -48,14 +49,9 @@ class ClientPlan(Base):
         UniqueConstraint("client_id", "effective_from", name="client_plans_unique_start"),
     )
 
-    id = Column(
-        "client_plan_id",
-        String(36),
-        primary_key=True,
-        default=lambda: str(uuid.uuid4()),
-    )
+    id = Column("client_plan_id", GUID(), primary_key=True, default=uuid.uuid4)
     client_id = Column(
-        String(36),
+        GUID(),
         ForeignKey("clients.client_id", ondelete="CASCADE"),
         nullable=False,
     )

@@ -21,6 +21,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 
 from ..database import Base
+from ..db_types import GUID
 
 
 class ExpenseCategory(Base):
@@ -42,12 +43,7 @@ class Expense(Base):
 
     __tablename__ = "expenses"
 
-    id = Column(
-        "expense_id",
-        String(36),
-        primary_key=True,
-        default=lambda: str(uuid.uuid4()),
-    )
+    id = Column("expense_id", GUID(), primary_key=True, default=uuid.uuid4)
     base_id = Column(
         Integer,
         ForeignKey("base_stations.base_id", onupdate="CASCADE"),

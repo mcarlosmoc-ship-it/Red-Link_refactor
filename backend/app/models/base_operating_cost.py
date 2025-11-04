@@ -8,6 +8,7 @@ from sqlalchemy import Column, ForeignKey, Integer, Numeric, String, UniqueConst
 from sqlalchemy.orm import relationship
 
 from ..database import Base
+from ..db_types import GUID
 
 
 class BaseOperatingCost(Base):
@@ -16,12 +17,7 @@ class BaseOperatingCost(Base):
     __tablename__ = "base_operating_costs"
     __table_args__ = (UniqueConstraint("base_id", "period_key", name="base_operating_costs_unique"),)
 
-    id = Column(
-        "cost_id",
-        String(36),
-        primary_key=True,
-        default=lambda: str(uuid.uuid4()),
-    )
+    id = Column("cost_id", GUID(), primary_key=True, default=uuid.uuid4)
     base_id = Column(Integer, ForeignKey("base_stations.base_id", ondelete="CASCADE"), nullable=False)
     period_key = Column(String, ForeignKey("billing_periods.period_key", ondelete="CASCADE"), nullable=False)
     total_cost = Column(Numeric(12, 2), nullable=False)
