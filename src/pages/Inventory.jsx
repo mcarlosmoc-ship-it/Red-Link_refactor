@@ -143,6 +143,12 @@ export default function InventoryPage() {
     })
   }, [tokenClients, normalizedTokenSearch])
 
+  const filteredTokenClientsCountLabel = useMemo(() => {
+    const count = filteredTokenClients.length
+    const noun = count === 1 ? 'registro' : 'registros'
+    return `${count} ${noun}`
+  }, [filteredTokenClients.length])
+
   const clientOptions = useMemo(
     () =>
       [...clients]
@@ -821,7 +827,7 @@ export default function InventoryPage() {
             </p>
           </div>
           <span className="text-xs text-slate-500" role="status">
-            {filteredTokenClients.length} registro(s)
+            {filteredTokenClientsCountLabel}
           </span>
         </div>
 
