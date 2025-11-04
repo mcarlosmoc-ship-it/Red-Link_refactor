@@ -19,7 +19,7 @@ if exist ..\.venv\Scripts\activate.bat (
 
 echo.
 echo [INFO] Aplicando migraciones de base de datos con Alembic...
-python -m alembic -c alembic.ini upgrade head
+alembic -c alembic.ini upgrade head
 if errorlevel 1 goto :error
 
 echo.
