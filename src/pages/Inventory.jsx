@@ -44,6 +44,11 @@ const defaultEquipmentForm = {
   installedAt: '',
 }
 
+const normalizeOptionalText = (value = '') => {
+  const trimmed = value.trim()
+  return trimmed === '' ? null : trimmed
+}
+
 export default function InventoryPage() {
   const {
     inventory,
@@ -252,6 +257,9 @@ export default function InventoryPage() {
     if (!equipmentForm.status) {
       errors.status = 'Selecciona el estado del equipo.'
     }
+    if (!equipmentForm.location.trim()) {
+      errors.location = 'Ingresa la ubicación del equipo.'
+    }
 
     const ipValue = equipmentForm.ip.trim()
     if (ipValue) {
@@ -282,14 +290,14 @@ export default function InventoryPage() {
     const payload = {
       brand: equipmentForm.brand.trim(),
       model: equipmentForm.model.trim(),
-      serial: equipmentForm.serial.trim(),
-      assetTag: equipmentForm.assetTag.trim(),
+      serial: normalizeOptionalText(equipmentForm.serial),
+      assetTag: normalizeOptionalText(equipmentForm.assetTag),
       base: Number(equipmentForm.base) || 1,
-      ip: equipmentForm.ip.trim(),
+      ip: normalizeOptionalText(equipmentForm.ip),
       status: equipmentForm.status,
       location: equipmentForm.location.trim(),
-      client: equipmentForm.client ? Number(equipmentForm.client) : null,
-      notes: equipmentForm.notes.trim(),
+      client: equipmentForm.client ? equipmentForm.client : null,
+      notes: normalizeOptionalText(equipmentForm.notes),
       installedAt: equipmentForm.installedAt || null,
     }
 
@@ -589,10 +597,17 @@ export default function InventoryPage() {
                 onChange={(event) =>
                   setEquipmentForm((prev) => ({ ...prev, location: event.target.value }))
                 }
-                className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+                className={`rounded-md border px-3 py-2 text-sm ${
+                  equipmentErrors.location
+                    ? 'border-red-400 focus:border-red-400 focus:ring-red-200'
+                    : 'border-slate-300'
+                }`}
                 placeholder="Torre Base 1"
                 autoComplete="off"
               />
+              {equipmentErrors.location && (
+                <span className="text-xs font-medium text-red-600">{equipmentErrors.location}</span>
+              )}
             </label>
           </div>
 
