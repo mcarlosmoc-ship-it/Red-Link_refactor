@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { DollarSign, Plus, Users, Wifi } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import StatCard from '../components/dashboard/StatCard.jsx'
@@ -77,8 +77,6 @@ export default function DashboardPage() {
   })
 
   const { metrics, filteredClients } = useDashboardMetrics({ statusFilter })
-
-  const lastMetricsFiltersRef = useRef({ statusFilter, searchTerm })
 
   const periodLabel = formatPeriodLabel(selectedPeriod ?? currentPeriod)
   const currentPeriodLabel = formatPeriodLabel(currentPeriod ?? selectedPeriod)
