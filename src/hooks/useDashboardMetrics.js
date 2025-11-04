@@ -29,6 +29,8 @@ export const useDashboardMetrics = ({ statusFilter: overrideStatusFilter } = {})
         totalExpenses: 0,
         internetCosts: (baseCosts?.base1 ?? 0) + (baseCosts?.base2 ?? 0),
         netEarnings: 0,
+        paymentsForPeriod: 0,
+        paymentsToday: 0,
       }
     }
 
@@ -44,6 +46,8 @@ export const useDashboardMetrics = ({ statusFilter: overrideStatusFilter } = {})
       totalExpenses: normalizeMetricValue(metricsSummary.total_expenses),
       internetCosts,
       netEarnings: normalizeMetricValue(metricsSummary.net_earnings),
+      paymentsForPeriod: normalizeMetricValue(metricsSummary.payments_for_period),
+      paymentsToday: normalizeMetricValue(metricsSummary.payments_today),
     }
   }, [metricsSummary, baseCosts])
 

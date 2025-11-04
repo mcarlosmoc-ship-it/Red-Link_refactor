@@ -29,7 +29,7 @@ def test_metrics_overview_returns_totals(client, db_session, seed_basic_data):
     payment_payload = {
         "client_id": client_model.id,
         "period_key": period_key,
-        "paid_on": date(2025, 1, 20).isoformat(),
+        "paid_on": date.today().isoformat(),
         "amount": "600.00",
         "months_paid": "2",
         "method": models.PaymentMethod.TRANSFERENCIA.value,
@@ -52,6 +52,8 @@ def test_metrics_overview_returns_totals(client, db_session, seed_basic_data):
     assert Decimal(str(overview["total_expenses"])) == Decimal("100")
     assert Decimal(str(overview["internet_costs"])) == Decimal("200")
     assert Decimal(str(overview["net_earnings"])) == Decimal("450")
+    assert Decimal(str(overview["payments_for_period"])) == Decimal("600.00")
+    assert Decimal(str(overview["payments_today"])) == Decimal("600.00")
 
     communities = metrics["communities"]
     assert len(communities) == 1
@@ -84,6 +86,8 @@ def test_dashboard_metrics_endpoint_returns_filtered_clients(client, seed_basic_
     assert summary["total_clients"] == 1
     assert summary["pending_clients"] == 1
     assert Decimal(str(summary["total_debt_amount"])) > 0
+    assert "payments_for_period" in summary
+    assert "payments_today" in summary
 
     clients = payload["clients"]
     assert len(clients) == 1

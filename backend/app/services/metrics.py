@@ -50,14 +50,18 @@ class MetricsService:
             reseller_income = ResellerService.total_settlements_for_period(db, period_key)
             expenses_total = MetricsService._total_expenses_for_period(db, period_key)
             internet_costs, base_cost_breakdown = MetricsService._total_operating_costs_for_period(db, period_key)
+            payments_for_period = client_income
         else:
-            client_income = sum(Decimal(payment.amount or 0) for payment in db.query(models.Payment).all())
+            payments_for_period = sum(Decimal(payment.amount or 0) for payment in db.query(models.Payment).all())
+            client_income = payments_for_period
             reseller_income = ResellerService.total_settlements_for_period(db, period_key=None)
             expenses_total = sum(Decimal(expense.amount or 0) for expense in db.query(models.Expense).all())
             costs = db.query(models.BaseOperatingCost).all()
             for cost in costs:
                 base_cost_breakdown[str(cost.base_id)] = base_cost_breakdown.get(str(cost.base_id), Decimal("0")) + Decimal(cost.total_cost or 0)
             internet_costs = sum(base_cost_breakdown.values())
+
+        payments_today = PaymentService.total_amount_for_day(db, date.today())
 
         net_earnings = client_income + reseller_income - expenses_total - internet_costs
 
@@ -71,6 +75,8 @@ class MetricsService:
             "total_expenses": expenses_total,
             "internet_costs": internet_costs,
             "net_earnings": net_earnings,
+            "payments_for_period": payments_for_period,
+            "payments_today": payments_today,
             "base_cost_breakdown": base_cost_breakdown,
         }
 
@@ -163,6 +169,7 @@ class MetricsService:
             db,
             projected_clients,
             target_period,
+            current_period_key=actual_current,
         )
 
         return {
@@ -267,6 +274,8 @@ class MetricsService:
         db: Session,
         clients: Iterable[_DashboardClient],
         period_key: str,
+        *,
+        current_period_key: str,
     ) -> tuple[dict, Dict[str, Decimal]]:
         clients_list = list(clients)
 
@@ -288,6 +297,11 @@ class MetricsService:
         expenses_total = MetricsService._total_expenses_for_period(db, period_key)
         internet_costs, base_costs = MetricsService._total_operating_costs_for_period(db, period_key)
 
+        payments_for_period = PaymentService.total_amount_for_period(db, period_key)
+        payments_today = Decimal("0")
+        if period_key == current_period_key:
+            payments_today = PaymentService.total_amount_for_day(db, date.today())
+
         net_earnings = client_income + reseller_income - expenses_total - internet_costs
 
         summary = {
@@ -300,6 +314,8 @@ class MetricsService:
             "total_expenses": expenses_total,
             "internet_costs": internet_costs,
             "net_earnings": net_earnings,
+            "payments_for_period": payments_for_period,
+            "payments_today": payments_today,
         }
 
         return summary, base_costs

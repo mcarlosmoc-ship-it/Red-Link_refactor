@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { DollarSign, Plus, Users, Wifi } from 'lucide-react'
+import { CalendarDays, DollarSign, Plus, Wifi } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import StatCard from '../components/dashboard/StatCard.jsx'
 import EarningsCard from '../components/dashboard/EarningsCard.jsx'
@@ -522,15 +522,16 @@ export default function DashboardPage() {
 
         <div className="grid gap-4 md:grid-cols-3">
           <StatCard
-            title="Clientes activos"
-            value={`${metrics.totalClients} activos`}
-            icon={Users}
-            trend={`${metrics.paidClients} al día`}
-            valueClassName="text-sm font-medium text-slate-500"
-            trendClassName="text-3xl font-semibold text-slate-900"
-            onClick={() => setStatusFilter((current) => (current === 'paid' ? 'all' : 'paid'))}
-            aria-pressed={statusFilter === 'paid'}
-            className={`${statusFilter === 'paid' ? 'ring-2 ring-emerald-200' : ''}`}
+            title="Pagos del servicio"
+            value={peso(metrics.paymentsForPeriod)}
+            icon={CalendarDays}
+            trend={
+              metrics.paymentsToday > 0
+                ? `Hoy: ${peso(metrics.paymentsToday)}`
+                : 'Hoy: sin pagos registrados'
+            }
+            trendClassName="text-sm font-medium text-slate-500"
+            valueClassName="text-3xl font-semibold text-slate-900"
           />
           <StatCard
             title="Pendientes de pago"
