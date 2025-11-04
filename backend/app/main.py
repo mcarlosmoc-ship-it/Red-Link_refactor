@@ -1,6 +1,8 @@
 """Expose the Red-Link backend FastAPI app with clients, payments, resellers, expenses, inventory, and metrics routers."""
 
 import logging
+import os
+from typing import Iterable
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,13 +17,49 @@ from .routers import (
     resellers_router,
 )
 
+DEFAULT_ALLOWED_ORIGINS = {
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://0.0.0.0:5173",
+    "http://localhost:4173",
+    "http://127.0.0.1:4173",
+    "http://0.0.0.0:4173",
+}
+
+
+def _normalize_origin(origin: str) -> str | None:
+    stripped = origin.strip()
+    if not stripped:
+        return None
+    return stripped.rstrip("/")
+
+
+def _read_allowed_origins(raw_origins: Iterable[str]) -> list[str]:
+    normalized = {_normalize_origin(origin) for origin in raw_origins}
+    return sorted({origin for origin in normalized if origin})
+
+
+def _load_allowed_origins_from_env() -> list[str]:
+    raw_value = os.getenv("BACKEND_ALLOWED_ORIGINS")
+    if not raw_value:
+        return []
+    return _read_allowed_origins(raw_value.split(","))
+
+
+def _resolve_allowed_origins() -> list[str]:
+    env_origins = _load_allowed_origins_from_env()
+    if env_origins:
+        return env_origins
+    return _read_allowed_origins(DEFAULT_ALLOWED_ORIGINS)
+
+
 app = FastAPI(title="Red-Link Backoffice API")
 
 LOGGER = logging.getLogger(__name__)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=_resolve_allowed_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -6,6 +6,7 @@ from .resellers import ResellerService
 from .expenses import ExpenseService
 from .inventory import InventoryService
 from .metrics import MetricsService
+from .billing_periods import BillingPeriodService
 
 __all__ = [
     "ClientService",
@@ -14,4 +15,5 @@ __all__ = [
     "ExpenseService",
     "InventoryService",
     "MetricsService",
+    "BillingPeriodService",
 ]
