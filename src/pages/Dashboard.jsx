@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react'
-import { DollarSign, Users, Wifi } from 'lucide-react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { DollarSign, Plus, Users, Wifi } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import StatCard from '../components/dashboard/StatCard.jsx'
 import Button from '../components/ui/Button.jsx'
@@ -76,7 +76,9 @@ export default function DashboardPage() {
     filters: { statusFilter, searchTerm },
   })
 
-  const { metrics, filteredClients } = useDashboardMetrics()
+  const { metrics, filteredClients } = useDashboardMetrics({ statusFilter })
+
+  const lastMetricsFiltersRef = useRef({ statusFilter, searchTerm })
 
   const periodLabel = formatPeriodLabel(selectedPeriod ?? currentPeriod)
   const currentPeriodLabel = formatPeriodLabel(currentPeriod ?? selectedPeriod)
@@ -125,6 +127,30 @@ export default function DashboardPage() {
       setPaymentForm(createEmptyPaymentForm())
     }
   }, [isCurrentPeriod, setPaymentForm])
+
+  useEffect(() => {
+    const previousFilters = lastMetricsFiltersRef.current
+    const filtersChanged =
+      previousFilters?.statusFilter !== statusFilter || previousFilters?.searchTerm !== searchTerm
+
+    if (!filtersChanged) {
+      lastMetricsFiltersRef.current = { statusFilter, searchTerm }
+      return
+    }
+
+    if (dashboardStatus.metrics?.isLoading) {
+      return
+    }
+
+    reloadMetrics().catch(() => {})
+
+    lastMetricsFiltersRef.current = { statusFilter, searchTerm }
+  }, [
+    statusFilter,
+    searchTerm,
+    reloadMetrics,
+    dashboardStatus.metrics?.isLoading,
+  ])
 
   const filterDescription = useMemo(() => {
     if (statusFilter === 'paid') {
@@ -388,12 +414,21 @@ export default function DashboardPage() {
             </div>
           </div>
           <div className="flex flex-col items-end gap-2">
-            <Link
-              to="/clients"
-              className="text-sm font-medium text-blue-600 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40"
-            >
-              Administrar clientes →
-            </Link>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <Link
+                to="/clients#nuevo"
+                className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40"
+              >
+                <Plus aria-hidden="true" className="h-4 w-4" />
+                Agregar nuevo cliente
+              </Link>
+              <Link
+                to="/clients"
+                className="text-sm font-medium text-blue-600 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40"
+              >
+                Administrar clientes →
+              </Link>
+            </div>
             <span className="text-xs text-slate-500">Periodo actual: {currentPeriodLabel}</span>
           </div>
         </div>
@@ -414,7 +449,15 @@ export default function DashboardPage() {
             title="Pendientes de pago"
             value={metrics.pendingClients}
             icon={DollarSign}
-            trend={metrics.pendingClients > 0 ? `-${metrics.pendingClients} por cobrar` : 'Todo al día'}
+            trend={
+              metrics.pendingClients > 0
+                ? `${
+                    metrics.pendingClients === 1
+                      ? '1 cliente con pago pendiente'
+                      : `${metrics.pendingClients} clientes con pago pendiente`
+                  }`
+                : 'Sin pagos pendientes'
+            }
             onClick={() => setStatusFilter((current) => (current === 'pending' ? 'all' : 'pending'))}
             aria-pressed={statusFilter === 'pending'}
             className={`${
@@ -512,10 +555,11 @@ export default function DashboardPage() {
                         return (
                           <div className="flex flex-col gap-1">
                             <span
-                              className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
+                              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${
                                 hasDebt ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'
                               }`}
                             >
+                              {hasDebt ? '⚠️' : '✅'}
                               {hasDebt
                                 ? `Debe ${formatPeriods(debtMonths)} ${
                                     isApproximatelyOne(debtMonths) ? 'periodo' : 'periodos'
@@ -523,8 +567,11 @@ export default function DashboardPage() {
                                 : 'Al día'}
                             </span>
                             {hasDebt && (
-                              <span className="text-xs font-medium text-red-600">
-                                Total: {peso(totalDue)}
+                              <span className="inline-flex items-center gap-1 text-xs font-semibold text-red-600">
+                                <span aria-hidden="true">🛑</span>
+                                <span>
+                                  Total adeudado: <span className="font-bold">{peso(totalDue)}</span>
+                                </span>
                               </span>
                             )}
                           </div>
