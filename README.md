@@ -134,6 +134,18 @@ Recuerda detener los servicios cerrando las ventanas que se abren al final.
   necesarios para SQLite (tipos y restricciones equivalentes). Si usas
   PostgreSQL puedes adaptar la migración para recuperar tipos especializados
   como `INET` o `UUID`.
+- Si distribuyes un `backend/clients.db` precargado (por ejemplo, con datos de
+  demostración) y necesitas regenerarlo desde cero, elimina el archivo y vuelve
+  a ejecutar `alembic upgrade head` (o simplemente `./backend/start.sh`, que
+  incluye ese paso). También puedes recrear rápidamente la base aplicando el
+  script de bootstrap provisto:
+
+  ```bash
+  sqlite3 backend/clients.db < db/schema.sql
+  ```
+
+  Tras regenerarla, vuelve a iniciar la API para que ejecute las migraciones y
+  asegúrate de copiar nuevamente el archivo si necesitas distribuirlo.
 
 ## Verificación y pruebas
 
