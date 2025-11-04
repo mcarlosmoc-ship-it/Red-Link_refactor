@@ -146,7 +146,7 @@ class MetricsService:
         status_filter: schemas.StatusFilter = schemas.StatusFilter.ALL,
         search: str | None = None,
     ) -> dict:
-        """Aggregate dashboard metrics and project client states."""
+        """Aggregate dashboard metrics, the `base_costs` breakdown, and project client states."""
 
         actual_current = current_period or MetricsService._current_period_key()
         target_period = period_key or actual_current
