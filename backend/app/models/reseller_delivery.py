@@ -83,6 +83,11 @@ class ResellerDeliveryItem(Base):
 
     delivery = relationship("ResellerDelivery", back_populates="items")
     voucher_type = relationship("VoucherType", back_populates="delivery_items")
+    vouchers = relationship(
+        "Voucher",
+        back_populates="delivery_item",
+        cascade="all, delete-orphan",
+    )
 
 
 class ResellerSettlement(Base):
