@@ -9,11 +9,12 @@ const normalizeMetricValue = (value, fallback = 0) => {
   return Number.isFinite(numeric) ? numeric : fallback
 }
 
-export const useDashboardMetrics = () => {
-  const { metricsSummary, dashboardClients, baseCosts } = useBackofficeStore((state) => ({
+export const useDashboardMetrics = ({ statusFilter: overrideStatusFilter } = {}) => {
+  const { metricsSummary, dashboardClients, baseCosts, metricsFilters } = useBackofficeStore((state) => ({
     metricsSummary: state.metrics,
     dashboardClients: state.dashboardClients ?? [],
     baseCosts: state.baseCosts ?? {},
+    metricsFilters: state.metricsFilters ?? { statusFilter: 'all', searchTerm: '' },
   }))
 
   const metrics = useMemo(() => {
@@ -46,7 +47,7 @@ export const useDashboardMetrics = () => {
     }
   }, [metricsSummary, baseCosts])
 
-  const filteredClients = useMemo(
+  const normalizedClients = useMemo(
     () =>
       dashboardClients.map((client) => ({
         id: client.id,
@@ -61,5 +62,19 @@ export const useDashboardMetrics = () => {
     [dashboardClients],
   )
 
-  return { metrics, filteredClients, projectedClients: filteredClients }
+  const activeStatusFilter = overrideStatusFilter ?? metricsFilters?.statusFilter ?? 'all'
+
+  const filteredClients = useMemo(() => {
+    if (activeStatusFilter === 'pending') {
+      return normalizedClients.filter((client) => Number(client.debtMonths ?? 0) > 0.0001)
+    }
+
+    if (activeStatusFilter === 'paid') {
+      return normalizedClients.filter((client) => Number(client.debtMonths ?? 0) <= 0.0001)
+    }
+
+    return normalizedClients
+  }, [normalizedClients, activeStatusFilter])
+
+  return { metrics, filteredClients, projectedClients: normalizedClients }
 }

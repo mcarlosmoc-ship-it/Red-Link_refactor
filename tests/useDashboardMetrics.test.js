@@ -64,6 +64,7 @@ beforeEach(() => {
       },
     ],
     baseCosts: { base1: 100, base2: 50 },
+    metricsFilters: { statusFilter: 'all', searchTerm: '' },
   }
 })
 
@@ -83,5 +84,23 @@ it('returns backend-provided metrics and normalized clients', () => {
     debtMonths: 2,
     monthlyFee: 150,
   })
+})
+
+it('filters clients based on the stored status filter when available', () => {
+  mockState.metricsFilters = { statusFilter: 'pending', searchTerm: '' }
+
+  const result = renderHook()
+
+  expect(result.filteredClients).toHaveLength(1)
+  expect(result.filteredClients[0]).toMatchObject({ name: 'Alice' })
+})
+
+it('allows overriding the status filter when invoking the hook', () => {
+  mockState.metricsFilters = { statusFilter: 'pending', searchTerm: '' }
+
+  const result = renderHook({ statusFilter: 'paid' })
+
+  expect(result.filteredClients).toHaveLength(1)
+  expect(result.filteredClients[0]).toMatchObject({ name: 'Bob' })
 })
 })
