@@ -70,6 +70,11 @@ class Client(Base):
     monthly_fee = Column(Numeric(10, 2), nullable=False, default=0)
     paid_months_ahead = Column(Numeric(6, 2), nullable=False, default=0)
     debt_months = Column(Numeric(6, 2), nullable=False, default=0)
+    active_client_plan_id = Column(
+        String(36),
+        ForeignKey("client_plans.client_plan_id", ondelete="SET NULL"),
+        nullable=True,
+    )
     service_status = Column(
         Enum(
             ServiceStatus,
@@ -95,8 +100,37 @@ class Client(Base):
         passive_deletes=True,
     )
     inventory_items = relationship("InventoryItem", back_populates="client")
+    contacts = relationship(
+        "ClientContact",
+        back_populates="client",
+        cascade="all, delete-orphan",
+    )
+    status_history = relationship(
+        "ClientStatusHistory",
+        back_populates="client",
+        cascade="all, delete-orphan",
+    )
+    plan_history = relationship(
+        "ClientPlan",
+        back_populates="client",
+        cascade="all, delete-orphan",
+        foreign_keys="ClientPlan.client_id",
+    )
+    active_plan = relationship(
+        "ClientPlan",
+        foreign_keys=[active_client_plan_id],
+        uselist=False,
+        post_update=True,
+    )
+    ledger_entries = relationship(
+        "ClientLedgerEntry",
+        back_populates="client",
+        cascade="all, delete-orphan",
+    )
+    support_tickets = relationship("SupportTicket", back_populates="client")
 
 
 Index("clients_full_name_idx", Client.full_name)
 Index("clients_location_idx", Client.location)
 Index("clients_base_idx", Client.base_id)
+Index("clients_active_plan_idx", Client.active_client_plan_id)

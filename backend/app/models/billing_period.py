@@ -20,3 +20,4 @@ class BillingPeriod(Base):
 
     payments = relationship("Payment", back_populates="billing_period")
     operating_costs = relationship("BaseOperatingCost", back_populates="billing_period")
+    ledger_entries = relationship("ClientLedgerEntry", back_populates="billing_period")

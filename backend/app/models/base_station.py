@@ -24,3 +24,14 @@ class BaseStation(Base):
     expenses = relationship("Expense", back_populates="base")
     inventory_items = relationship("InventoryItem", back_populates="base")
     operating_costs = relationship("BaseOperatingCost", back_populates="base")
+    support_tickets = relationship("SupportTicket", back_populates="base")
+    inventory_movements_from = relationship(
+        "InventoryMovement",
+        back_populates="from_base",
+        foreign_keys="InventoryMovement.from_base_id",
+    )
+    inventory_movements_to = relationship(
+        "InventoryMovement",
+        back_populates="to_base",
+        foreign_keys="InventoryMovement.to_base_id",
+    )

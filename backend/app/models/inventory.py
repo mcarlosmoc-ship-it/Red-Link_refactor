@@ -12,6 +12,7 @@ from sqlalchemy import (
     Enum as SAEnum,
     ForeignKey,
     Integer,
+    Numeric,
     String,
     Text,
     func,
@@ -53,6 +54,7 @@ class InventoryItem(Base):
     brand = Column(String, nullable=False)
     model = Column(String, nullable=True)
     serial_number = Column(String, nullable=True)
+    category = Column(String, nullable=True)
     base_id = Column(Integer, ForeignKey("base_stations.base_id", onupdate="CASCADE"), nullable=False)
     ip_address = Column(String(45), nullable=True)
     status = Column(INVENTORY_STATUS_ENUM, nullable=False)
@@ -60,7 +62,15 @@ class InventoryItem(Base):
     client_id = Column(String(36), ForeignKey("clients.client_id", ondelete="SET NULL"), nullable=True)
     notes = Column(Text, nullable=True)
     installed_at = Column(Date, nullable=True)
+    purchase_date = Column(Date, nullable=True)
+    purchase_cost = Column(Numeric(12, 2), nullable=True)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     base = relationship("BaseStation", back_populates="inventory_items")
     client = relationship("Client", back_populates="inventory_items")
+    movements = relationship(
+        "InventoryMovement",
+        back_populates="inventory_item",
+        cascade="all, delete-orphan",
+    )
+    support_tickets = relationship("SupportTicket", back_populates="inventory_item")
