@@ -7,7 +7,13 @@ migraciones de Alembic y un esquema inicial derivado de `db/schema.sql`.
 
 - La URL de conexión se comparte con la aplicación a través de la variable de
   entorno `DATABASE_URL`. Si no está definida, se usa SQLite en
-  `sqlite:///./clients.db`.
+  `sqlite:///./clients.db` y el archivo se crea automáticamente dentro de
+  `backend/`.
+- Si defines un `DATABASE_URL` con PostgreSQL (por ejemplo
+  `postgresql+psycopg://usuario:clave@localhost/redlink`), SQLAlchemy activa
+  automáticamente el chequeo de conexiones (`pool_pre_ping`) y las migraciones
+  aprovechan los tipos nativos (`UUID`, `INET`) además de habilitar las
+  extensiones `pgcrypto` y `pg_trgm`.
 - El motor de SQLAlchemy y Alembic reutilizan este valor, por lo que modificar
   `DATABASE_URL` en el entorno afecta tanto a la API como a las migraciones.
 
@@ -35,8 +41,9 @@ ajustes:
 - Las restricciones `CHECK` con expresiones regulares se sustituyeron por una
   comprobación `GLOB` equivalente (`ck_billing_periods_period_key`).
 
-Si usas PostgreSQL, puedes adaptar la migración para recuperar los tipos
-especializados (`INET`, `UUID`, índices GIN, etc.).
+Si usas PostgreSQL, las migraciones activan los tipos especializados (`UUID`,
+`INET`) y habilitan las extensiones `pgcrypto`/`pg_trgm` para que puedas crear
+índices `GIN` más adelante (por ejemplo con `gin_trgm_ops`).
 
 ## Inicio de desarrollo
 

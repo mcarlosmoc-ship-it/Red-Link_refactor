@@ -18,6 +18,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 
 from ..database import Base
+from ..db_types import GUID
 
 
 class TicketStatus(str, enum.Enum):
@@ -60,11 +61,11 @@ class SupportTicket(Base):
 
     __tablename__ = "support_tickets"
 
-    id = Column("ticket_id", String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    client_id = Column(String(36), ForeignKey("clients.client_id", ondelete="SET NULL"), nullable=True)
+    id = Column("ticket_id", GUID(), primary_key=True, default=uuid.uuid4)
+    client_id = Column(GUID(), ForeignKey("clients.client_id", ondelete="SET NULL"), nullable=True)
     base_id = Column(Integer, ForeignKey("base_stations.base_id", ondelete="SET NULL"), nullable=True)
     inventory_id = Column(
-        String(36),
+        GUID(),
         ForeignKey("inventory_items.inventory_id", ondelete="SET NULL"),
         nullable=True,
     )

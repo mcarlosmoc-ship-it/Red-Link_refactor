@@ -18,6 +18,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 
 from ..database import Base
+from ..db_types import GUID
 
 
 class DeliverySettlementStatus(str, enum.Enum):
@@ -42,13 +43,8 @@ class ResellerDelivery(Base):
 
     __tablename__ = "reseller_deliveries"
 
-    id = Column(
-        "delivery_id",
-        String(36),
-        primary_key=True,
-        default=lambda: str(uuid.uuid4()),
-    )
-    reseller_id = Column(String(36), ForeignKey("resellers.reseller_id", ondelete="CASCADE"), nullable=False)
+    id = Column("delivery_id", GUID(), primary_key=True, default=uuid.uuid4)
+    reseller_id = Column(GUID(), ForeignKey("resellers.reseller_id", ondelete="CASCADE"), nullable=False)
     delivered_on = Column(Date, nullable=False)
     settlement_status = Column(
         DELIVERY_STATUS_ENUM,
@@ -73,7 +69,7 @@ class ResellerDeliveryItem(Base):
     __tablename__ = "reseller_delivery_items"
 
     id = Column("delivery_item_id", Integer, primary_key=True, autoincrement=True)
-    delivery_id = Column(String(36), ForeignKey("reseller_deliveries.delivery_id", ondelete="CASCADE"), nullable=False)
+    delivery_id = Column(GUID(), ForeignKey("reseller_deliveries.delivery_id", ondelete="CASCADE"), nullable=False)
     voucher_type_id = Column(
         Integer,
         ForeignKey("voucher_types.voucher_type_id", ondelete="RESTRICT"),
@@ -95,14 +91,9 @@ class ResellerSettlement(Base):
 
     __tablename__ = "reseller_settlements"
 
-    id = Column(
-        "settlement_id",
-        String(36),
-        primary_key=True,
-        default=lambda: str(uuid.uuid4()),
-    )
-    reseller_id = Column(String(36), ForeignKey("resellers.reseller_id", ondelete="CASCADE"), nullable=False)
-    delivery_id = Column(String(36), ForeignKey("reseller_deliveries.delivery_id", ondelete="SET NULL"), nullable=True)
+    id = Column("settlement_id", GUID(), primary_key=True, default=uuid.uuid4)
+    reseller_id = Column(GUID(), ForeignKey("resellers.reseller_id", ondelete="CASCADE"), nullable=False)
+    delivery_id = Column(GUID(), ForeignKey("reseller_deliveries.delivery_id", ondelete="SET NULL"), nullable=True)
     settled_on = Column(Date, nullable=False)
     amount = Column(Numeric(12, 2), nullable=False)
     notes = Column(Text, nullable=True)

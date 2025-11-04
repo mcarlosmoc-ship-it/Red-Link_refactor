@@ -20,6 +20,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 
 from ..database import Base
+from ..db_types import GUID
 
 
 class PaymentMethod(str, enum.Enum):
@@ -46,14 +47,9 @@ class Payment(Base):
 
     __tablename__ = "payments"
 
-    id = Column(
-        "payment_id",
-        String(36),
-        primary_key=True,
-        default=lambda: str(uuid.uuid4()),
-    )
+    id = Column("payment_id", GUID(), primary_key=True, default=uuid.uuid4)
     client_id = Column(
-        String(36),
+        GUID(),
         ForeignKey("clients.client_id", ondelete="CASCADE"),
         nullable=False,
     )

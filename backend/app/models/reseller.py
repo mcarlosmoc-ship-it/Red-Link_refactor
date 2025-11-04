@@ -8,6 +8,7 @@ from sqlalchemy import Column, ForeignKey, Integer, String
 from sqlalchemy.orm import relationship
 
 from ..database import Base
+from ..db_types import GUID
 
 
 class Reseller(Base):
@@ -15,12 +16,7 @@ class Reseller(Base):
 
     __tablename__ = "resellers"
 
-    id = Column(
-        "reseller_id",
-        String(36),
-        primary_key=True,
-        default=lambda: str(uuid.uuid4()),
-    )
+    id = Column("reseller_id", GUID(), primary_key=True, default=uuid.uuid4)
     full_name = Column(String, nullable=False)
     base_id = Column(
         Integer,

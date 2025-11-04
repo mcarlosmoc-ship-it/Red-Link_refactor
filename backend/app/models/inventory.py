@@ -20,6 +20,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 
 from ..database import Base
+from ..db_types import GUID, INET
 
 
 class InventoryStatus(str, enum.Enum):
@@ -44,22 +45,17 @@ class InventoryItem(Base):
 
     __tablename__ = "inventory_items"
 
-    id = Column(
-        "inventory_id",
-        String(36),
-        primary_key=True,
-        default=lambda: str(uuid.uuid4()),
-    )
+    id = Column("inventory_id", GUID(), primary_key=True, default=uuid.uuid4)
     asset_tag = Column(String, unique=True, nullable=True)
     brand = Column(String, nullable=False)
     model = Column(String, nullable=True)
     serial_number = Column(String, nullable=True)
     category = Column(String, nullable=True)
     base_id = Column(Integer, ForeignKey("base_stations.base_id", onupdate="CASCADE"), nullable=False)
-    ip_address = Column(String(45), nullable=True)
+    ip_address = Column(INET(), nullable=True)
     status = Column(INVENTORY_STATUS_ENUM, nullable=False)
     location = Column(String, nullable=False)
-    client_id = Column(String(36), ForeignKey("clients.client_id", ondelete="SET NULL"), nullable=True)
+    client_id = Column(GUID(), ForeignKey("clients.client_id", ondelete="SET NULL"), nullable=True)
     notes = Column(Text, nullable=True)
     installed_at = Column(Date, nullable=True)
     purchase_date = Column(Date, nullable=True)

@@ -19,6 +19,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 
 from ..database import Base
+from ..db_types import GUID, INET
 
 
 class ClientType(str, enum.Enum):
@@ -40,12 +41,7 @@ class Client(Base):
 
     __tablename__ = "clients"
 
-    id = Column(
-        "client_id",
-        String(36),
-        primary_key=True,
-        default=lambda: str(uuid.uuid4()),
-    )
+    id = Column("client_id", GUID(), primary_key=True, default=uuid.uuid4)
     external_code = Column(String, unique=True, nullable=True)
     client_type = Column(
         Enum(
@@ -62,16 +58,16 @@ class Client(Base):
         ForeignKey("base_stations.base_id", onupdate="CASCADE"),
         nullable=False,
     )
-    ip_address = Column(String(45), nullable=True)
-    antenna_ip = Column(String(45), nullable=True)
-    modem_ip = Column(String(45), nullable=True)
+    ip_address = Column(INET(), nullable=True)
+    antenna_ip = Column(INET(), nullable=True)
+    modem_ip = Column(INET(), nullable=True)
     antenna_model = Column(String, nullable=True)
     modem_model = Column(String, nullable=True)
     monthly_fee = Column(Numeric(10, 2), nullable=False, default=0)
     paid_months_ahead = Column(Numeric(6, 2), nullable=False, default=0)
     debt_months = Column(Numeric(6, 2), nullable=False, default=0)
     active_client_plan_id = Column(
-        String(36),
+        GUID(),
         ForeignKey("client_plans.client_plan_id", ondelete="SET NULL"),
         nullable=True,
     )
