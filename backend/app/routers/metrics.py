@@ -38,7 +38,7 @@ def get_dashboard_metrics(
     search: str | None = Query(default=None, description="Free text search applied to client name or location"),
     db: Session = Depends(get_db),
 ) -> schemas.DashboardMetricsResponse:
-    """Return the dashboard metrics and filtered client list."""
+    """Return dashboard metrics, the `base_costs` breakdown, and the filtered client list."""
 
     payload = MetricsService.dashboard(
         db,
