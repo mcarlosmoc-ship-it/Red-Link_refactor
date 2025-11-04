@@ -7,10 +7,15 @@ from decimal import Decimal
 from typing import Iterable, Optional
 
 from sqlalchemy import func
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 
 from .. import models, schemas
 from .billing_periods import BillingPeriodService
+
+
+class PaymentServiceError(RuntimeError):
+    """Raised when payment operations cannot be completed."""
 
 
 class PaymentService:
@@ -66,7 +71,13 @@ class PaymentService:
         payment = models.Payment(**payment_data)
         db.add(payment)
         db.add(client)
-        db.commit()
+
+        try:
+            db.commit()
+        except SQLAlchemyError as exc:
+            db.rollback()
+            raise PaymentServiceError("Unable to record payment at this time.") from exc
+
         db.refresh(payment)
         db.refresh(client)
         return payment
@@ -74,7 +85,11 @@ class PaymentService:
     @staticmethod
     def delete_payment(db: Session, payment: models.Payment) -> None:
         db.delete(payment)
-        db.commit()
+        try:
+            db.commit()
+        except SQLAlchemyError as exc:
+            db.rollback()
+            raise PaymentServiceError("Unable to delete payment at this time.") from exc
 
     @staticmethod
     def get_payment(db: Session, payment_id: str) -> Optional[models.Payment]:

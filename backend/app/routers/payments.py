@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from .. import schemas
 from ..database import get_db
-from ..services import PaymentService
+from ..services import PaymentService, PaymentServiceError
 
 router = APIRouter()
 
@@ -29,7 +29,7 @@ def create_payment(payment_in: schemas.PaymentCreate, db: Session = Depends(get_
     """Record a new payment and update client balances."""
     try:
         return PaymentService.create_payment(db, payment_in)
-    except ValueError as exc:
+    except (ValueError, PaymentServiceError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
@@ -46,4 +46,7 @@ def delete_payment(payment_id: str, db: Session = Depends(get_db)) -> None:
     payment = PaymentService.get_payment(db, payment_id)
     if payment is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Payment not found")
-    PaymentService.delete_payment(db, payment)
+    try:
+        PaymentService.delete_payment(db, payment)
+    except PaymentServiceError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
