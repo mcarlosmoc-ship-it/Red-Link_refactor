@@ -1,4 +1,4 @@
-"""Entry point for the clients FastAPI backend."""
+"""Expose the Red-Link backend FastAPI app with clients, payments, resellers, expenses, inventory, and metrics routers."""
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
