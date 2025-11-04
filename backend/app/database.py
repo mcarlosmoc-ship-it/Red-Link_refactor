@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import os
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Generator
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./clients.db")
+_DEFAULT_DB_PATH = Path(__file__).resolve().parent.parent / "clients.db"
+_DEFAULT_DATABASE_URL = f"sqlite:///{_DEFAULT_DB_PATH.as_posix()}"
+
+SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", _DEFAULT_DATABASE_URL)
 
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL,
