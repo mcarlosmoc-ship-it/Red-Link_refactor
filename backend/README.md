@@ -48,5 +48,23 @@ cd backend
 ./start.sh
 ```
 
-El script ejecuta `alembic upgrade head` y después lanza Uvicorn en
+En Windows puedes lograr lo mismo con `backend\start_backend.bat`; basta con
+hacer doble clic sobre el archivo o ejecutarlo desde `cmd.exe`/PowerShell:
+
+```bat
+cd backend
+start_backend.bat
+```
+
+Ambos scripts aplican `alembic upgrade head` y después lanzan Uvicorn en
 `http://0.0.0.0:8000`.
+
+> **Nota:** si el script de Windows muestra "No se encontró el comando
+> Alembic", asegúrate de haber instalado las dependencias del backend con
+> `pip install -r requirements.txt` (preferiblemente dentro de un entorno
+> virtual) y vuelve a ejecutarlo.
+
+> **Consejo:** si prefieres trabajar en una terminal tipo Unix en Windows,
+> instala [Git Bash](https://git-scm.com/download/win) o habilita el Subsistema
+> de Windows para Linux (WSL). Con cualquiera de estas opciones podrás ejecutar
+> el script `./start.sh` directamente.
