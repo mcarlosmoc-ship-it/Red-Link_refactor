@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { DollarSign, Plus, Users, Wifi } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import StatCard from '../components/dashboard/StatCard.jsx'
@@ -39,6 +39,7 @@ export default function DashboardPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [paymentForm, setPaymentForm] = useState(createEmptyPaymentForm)
   const [isRetryingSync, setIsRetryingSync] = useState(false)
+  const lastMetricsFiltersRef = useRef({ statusFilter: 'pending', searchTerm: '' })
 
   const { showToast } = useToast()
 
