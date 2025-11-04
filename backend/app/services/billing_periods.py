@@ -29,8 +29,25 @@ class BillingPeriodService:
             .filter(models.BillingPeriod.period_key == normalized_key)
             .first()
         )
+        if not period:
+            # Historic data may store the same period with an alternative key such
+            # as ``2024-1``. Reuse those rows instead of attempting to create a
+            # duplicate, which would violate the unique constraint on
+            # ``starts_on``/``ends_on``.
+            period = (
+                db.query(models.BillingPeriod)
+                .filter(
+                    models.BillingPeriod.starts_on == starts_on,
+                    models.BillingPeriod.ends_on == ends_on,
+                )
+                .first()
+            )
+
         if period:
             updated = False
+            if period.period_key != normalized_key:
+                period.period_key = normalized_key
+                updated = True
             if period.starts_on != starts_on:
                 period.starts_on = starts_on
                 updated = True
