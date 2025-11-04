@@ -5,7 +5,17 @@ from __future__ import annotations
 import enum
 import uuid
 
-from sqlalchemy import Column, Date, DateTime, Enum as SAEnum, ForeignKey, Integer, String, Text, func
+from sqlalchemy import (
+    Column,
+    Date,
+    DateTime,
+    Enum as SAEnum,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    func,
+)
 from sqlalchemy.orm import relationship
 
 from ..database import Base
@@ -17,6 +27,15 @@ class InventoryStatus(str, enum.Enum):
     ASSIGNED = "assigned"
     AVAILABLE = "available"
     MAINTENANCE = "maintenance"
+
+
+INVENTORY_STATUS_ENUM = SAEnum(
+    InventoryStatus,
+    name="inventory_status_enum",
+    values_callable=lambda enum_cls: [member.value for member in enum_cls],
+    native_enum=False,
+    validate_strings=True,
+)
 
 
 class InventoryItem(Base):
@@ -36,7 +55,7 @@ class InventoryItem(Base):
     serial_number = Column(String, nullable=True)
     base_id = Column(Integer, ForeignKey("base_stations.base_id", onupdate="CASCADE"), nullable=False)
     ip_address = Column(String(45), nullable=True)
-    status = Column(SAEnum(InventoryStatus, name="inventory_status_enum"), nullable=False)
+    status = Column(INVENTORY_STATUS_ENUM, nullable=False)
     location = Column(String, nullable=False)
     client_id = Column(String(36), ForeignKey("clients.client_id", ondelete="SET NULL"), nullable=True)
     notes = Column(Text, nullable=True)
