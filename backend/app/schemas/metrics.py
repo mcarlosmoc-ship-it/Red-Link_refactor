@@ -18,6 +18,8 @@ class MetricsOverview(BaseModel):
     total_expenses: Decimal = Field(..., ge=0)
     internet_costs: Decimal = Field(..., ge=0)
     net_earnings: Decimal
+    payments_for_period: Decimal = Field(..., ge=0)
+    payments_today: Decimal = Field(..., ge=0)
 
 
 class CommunityMetrics(BaseModel):
@@ -67,6 +69,8 @@ class DashboardMetricsSummary(BaseModel):
     total_expenses: Decimal = Field(..., ge=0)
     internet_costs: Decimal = Field(..., ge=0)
     net_earnings: Decimal
+    payments_for_period: Decimal = Field(..., ge=0)
+    payments_today: Decimal = Field(..., ge=0)
 
 
 class DashboardMetricsResponse(BaseModel):

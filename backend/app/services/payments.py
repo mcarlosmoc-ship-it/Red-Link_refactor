@@ -111,3 +111,12 @@ class PaymentService:
             .scalar()
         )
         return Decimal(total or 0)
+
+    @staticmethod
+    def total_amount_for_day(db: Session, target_date: date) -> Decimal:
+        total = (
+            db.query(func.coalesce(func.sum(models.Payment.amount), 0))
+            .filter(models.Payment.paid_on == target_date)
+            .scalar()
+        )
+        return Decimal(total or 0)
