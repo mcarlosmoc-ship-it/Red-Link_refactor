@@ -47,7 +47,14 @@ class Client(Base):
         default=lambda: str(uuid.uuid4()),
     )
     external_code = Column(String, unique=True, nullable=True)
-    client_type = Column(Enum(ClientType, name="client_type_enum"), nullable=False)
+    client_type = Column(
+        Enum(
+            ClientType,
+            name="client_type_enum",
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+        ),
+        nullable=False,
+    )
     full_name = Column(String, nullable=False)
     location = Column(String, nullable=False)
     base_id = Column(
@@ -64,7 +71,11 @@ class Client(Base):
     paid_months_ahead = Column(Numeric(6, 2), nullable=False, default=0)
     debt_months = Column(Numeric(6, 2), nullable=False, default=0)
     service_status = Column(
-        Enum(ServiceStatus, name="client_service_status_enum"),
+        Enum(
+            ServiceStatus,
+            name="client_service_status_enum",
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+        ),
         nullable=False,
         default=ServiceStatus.ACTIVE,
     )
