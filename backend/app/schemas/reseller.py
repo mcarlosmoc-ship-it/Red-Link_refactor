@@ -71,7 +71,7 @@ class ResellerSettlementRead(ResellerSettlementBase):
 
 class ResellerRead(ResellerBase):
     id: str
-    deliveries: List[ResellerDeliveryRead] = []
-    settlements: List[ResellerSettlementRead] = []
+    deliveries: List[ResellerDeliveryRead] = Field(default_factory=list)
+    settlements: List[ResellerSettlementRead] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
