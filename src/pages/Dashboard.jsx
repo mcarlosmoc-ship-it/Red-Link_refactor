@@ -4,7 +4,12 @@ import { Link } from 'react-router-dom'
 import StatCard from '../components/dashboard/StatCard.jsx'
 import EarningsCard from '../components/dashboard/EarningsCard.jsx'
 import Button from '../components/ui/Button.jsx'
-import { peso, formatPeriodLabel, diffPeriods } from '../utils/formatters.js'
+import {
+  peso,
+  formatPeriodLabel,
+  diffPeriods,
+  addMonthsToPeriod,
+} from '../utils/formatters.js'
 import { useDashboardMetrics } from '../hooks/useDashboardMetrics.js'
 import { useClients } from '../hooks/useClients.js'
 import { useDashboardData } from '../hooks/useDashboardData.js'
@@ -35,12 +40,47 @@ const createEmptyPaymentForm = () => ({
   note: '',
 })
 
+const CLIENT_TYPE_LABELS = {
+  residential: 'Cliente residencial',
+  token: 'Punto con antena pública',
+}
+
+const getOutstandingPeriodKeys = (anchorPeriod, debtMonths) => {
+  const normalizedAnchor = typeof anchorPeriod === 'string' ? anchorPeriod : null
+  const numericDebt = Number(debtMonths ?? 0)
+
+  if (!normalizedAnchor || !Number.isFinite(numericDebt) || numericDebt <= 0.0001) {
+    return []
+  }
+
+  const completeMonths = Math.max(Math.floor(numericDebt), 0)
+  const keys = []
+
+  for (let index = 0; index < completeMonths; index += 1) {
+    keys.push(addMonthsToPeriod(normalizedAnchor, -index))
+  }
+
+  return keys
+}
+
+const getFractionalDebt = (debtMonths) => {
+  const numericDebt = Number(debtMonths ?? 0)
+
+  if (!Number.isFinite(numericDebt)) {
+    return 0
+  }
+
+  const fractional = Math.abs(numericDebt - Math.floor(numericDebt))
+  return fractional > 0.0001 ? fractional : 0
+}
+
 export default function DashboardPage() {
   const [statusFilter, setStatusFilter] = useState('pending')
   const [searchTerm, setSearchTerm] = useState('')
   const [paymentForm, setPaymentForm] = useState(createEmptyPaymentForm)
   const [isRetryingSync, setIsRetryingSync] = useState(false)
   const [showEarningsBreakdown, setShowEarningsBreakdown] = useState(false)
+  const [expandedClientId, setExpandedClientId] = useState(null)
   const lastMetricsFiltersRef = useRef({ statusFilter: 'pending', searchTerm: '' })
 
   const { showToast } = useToast()
@@ -165,6 +205,28 @@ export default function DashboardPage() {
     }
   }, [statusFilter, showEarningsBreakdown])
 
+  const handleToggleClientDetails = (clientId) => {
+    setExpandedClientId((current) => (current === clientId ? null : clientId))
+  }
+
+  const handleOpenPaymentForm = (client) => {
+    if (!isCurrentPeriod) return
+
+    const debtMonths = Number(client.debtMonths ?? 0)
+    const monthlyFee = client.monthlyFee ?? CLIENT_PRICE
+    const baseMonths = debtMonths > 0 ? debtMonths : 1
+
+    setPaymentForm({
+      open: true,
+      clientId: client.id,
+      mode: 'months',
+      months: toInputValue(baseMonths, 4) || '1',
+      amount: toInputValue(baseMonths * monthlyFee, 2),
+      method: 'Efectivo',
+      note: '',
+    })
+  }
+
   const filterDescription = useMemo(() => {
     if (statusFilter === 'paid') {
       return `Mostrando clientes al día en ${periodLabel}`
@@ -194,6 +256,18 @@ export default function DashboardPage() {
       : Number(paymentForm.months) || 0
   const remainingBalance = Math.max(0, outstandingAmount - plannedAmount)
   const additionalAhead = Math.max(0, plannedMonths - (activeClient?.debtMonths ?? 0))
+  const detailAnchorPeriod = selectedPeriod ?? currentPeriod ?? null
+
+  useEffect(() => {
+    if (!expandedClientId) {
+      return
+    }
+
+    const stillVisible = filteredClients.some((client) => client.id === expandedClientId)
+    if (!stillVisible) {
+      setExpandedClientId(null)
+    }
+  }, [expandedClientId, filteredClients])
 
   const handleSubmitPayment = async (event) => {
     event.preventDefault()
@@ -592,72 +666,206 @@ export default function DashboardPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredClients.map((client) => (
-                  <tr key={client.id}>
-                    <td className="px-3 py-2 font-medium text-slate-900">{client.name}</td>
-                    <td className="px-3 py-2 text-slate-600">{client.location}</td>
-                    <td className="px-3 py-2 text-slate-600">{peso(client.monthlyFee ?? CLIENT_PRICE)}</td>
-                    <td className="px-3 py-2">
-                      {(() => {
-                        const debtMonths = Number(client.debtMonths ?? 0)
-                        const hasDebt = debtMonths > 0.0001
-                        const monthlyFee = client.monthlyFee ?? CLIENT_PRICE
-                        const totalDue = debtMonths * monthlyFee
-
-                        return (
-                          <div className="flex flex-col gap-1">
-                            <span
-                              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${
-                                hasDebt ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'
-                              }`}
-                            >
-                              {hasDebt ? '⚠️' : '✅'}
-                              {hasDebt
-                                ? `Debe ${formatPeriods(debtMonths)} ${
-                                    isApproximatelyOne(debtMonths) ? 'periodo' : 'periodos'
-                                  }`
-                                : 'Al día'}
+                {filteredClients.map((client) => {
+                  const isExpanded = expandedClientId === client.id
+                  return (
+                    <React.Fragment key={client.id}>
+                      <tr>
+                        <td className="px-3 py-2">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleClientDetails(client.id)}
+                            aria-expanded={isExpanded}
+                            aria-controls={`client-details-${client.id}`}
+                            className="flex w-full flex-col text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40"
+                          >
+                            <span className="font-medium text-slate-900">{client.name}</span>
+                            <span className="text-xs text-blue-600">
+                              {isExpanded ? 'Ocultar detalle' : 'Ver detalle rápido'}
                             </span>
-                            {hasDebt && (
-                              <span className="inline-flex items-center gap-1 text-xs font-semibold text-red-600">
-                                <span aria-hidden="true">🛑</span>
-                                <span>
-                                  Total adeudado: <span className="font-bold">{peso(totalDue)}</span>
-                                </span>
-                              </span>
-                            )}
-                          </div>
-                        )
-                      })()}
-                    </td>
-                    <td className="px-3 py-2 text-right">
-                      <Button
-                        type="button"
-                        size="sm"
-                        disabled={!isCurrentPeriod || isSubmittingPayment}
-                        className="disabled:cursor-not-allowed disabled:opacity-50"
-                        onClick={() => {
-                          if (!isCurrentPeriod) return
+                          </button>
+                        </td>
+                        <td className="px-3 py-2 text-slate-600">
+                          <button
+                            type="button"
+                            onClick={() => setSearchTerm(client.location ?? '')}
+                            className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold text-blue-600 transition hover:bg-blue-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40"
+                          >
+                            {client.location || 'Sin localidad'}
+                          </button>
+                        </td>
+                        <td className="px-3 py-2 text-slate-600">{peso(client.monthlyFee ?? CLIENT_PRICE)}</td>
+                        <td className="px-3 py-2">
+                          {(() => {
+                            const debtMonths = Number(client.debtMonths ?? 0)
+                            const hasDebt = debtMonths > 0.0001
+                            const monthlyFee = client.monthlyFee ?? CLIENT_PRICE
+                            const totalDue = debtMonths * monthlyFee
 
-                          const debtMonths = Number(client.debtMonths ?? 0)
-                          const monthlyFee = client.monthlyFee ?? CLIENT_PRICE
-                          const baseMonths = debtMonths > 0 ? debtMonths : 1
-                          setPaymentForm({
-                            open: true,
-                            clientId: client.id,
-                            mode: 'months',
-                            months: toInputValue(baseMonths, 4) || '1',
-                            amount: toInputValue(baseMonths * monthlyFee, 2),
-                            method: 'Efectivo',
-                            note: '',
-                          })
-                        }}
-                      >
-                        Registrar pago
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
+                            return (
+                              <div className="flex flex-col gap-1">
+                                <span
+                                  className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${
+                                    hasDebt ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'
+                                  }`}
+                                >
+                                  {hasDebt ? '⚠️' : '✅'}
+                                  {hasDebt
+                                    ? `Debe ${formatPeriods(debtMonths)} ${
+                                        isApproximatelyOne(debtMonths) ? 'periodo' : 'periodos'
+                                      }`
+                                    : 'Al día'}
+                                </span>
+                                {hasDebt && (
+                                  <span className="inline-flex items-center gap-1 text-xs font-semibold text-red-600">
+                                    <span aria-hidden="true">🛑</span>
+                                    <span>
+                                      Total adeudado: <span className="font-bold">{peso(totalDue)}</span>
+                                    </span>
+                                  </span>
+                                )}
+                              </div>
+                            )
+                          })()}
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          <Button
+                            type="button"
+                            size="sm"
+                            disabled={!isCurrentPeriod || isSubmittingPayment}
+                            className="disabled:cursor-not-allowed disabled:opacity-50"
+                            onClick={() => handleOpenPaymentForm(client)}
+                          >
+                            Registrar pago
+                          </Button>
+                        </td>
+                      </tr>
+                      {isExpanded && (
+                        <tr id={`client-details-${client.id}`}>
+                          <td colSpan={5} className="bg-slate-50 px-3 py-3">
+                            {(() => {
+                              const debtMonths = Number(client.debtMonths ?? 0)
+                              const monthlyFee = client.monthlyFee ?? CLIENT_PRICE
+                              const totalDue = debtMonths * monthlyFee
+                              const outstandingPeriodKeys = getOutstandingPeriodKeys(
+                                detailAnchorPeriod,
+                                debtMonths,
+                              )
+                              const outstandingPeriodLabels = outstandingPeriodKeys.map((periodKey) =>
+                                formatPeriodLabel(periodKey),
+                              )
+                              const fractionalDebt = getFractionalDebt(debtMonths)
+                              const paidMonthsAhead = Number(client.paidMonthsAhead ?? 0)
+                              const clientTypeLabel = CLIENT_TYPE_LABELS[client.type] ?? 'Sin especificar'
+
+                              return (
+                                <div className="space-y-3">
+                                  <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <h4 className="text-sm font-semibold text-slate-800">
+                                      Información detallada del cliente
+                                    </h4>
+                                    <button
+                                      type="button"
+                                      onClick={() => setExpandedClientId(null)}
+                                      className="text-xs font-medium text-blue-600 hover:text-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40"
+                                    >
+                                      Cerrar
+                                    </button>
+                                  </div>
+                                  <div className="grid gap-4 lg:grid-cols-3">
+                                    <div className="space-y-2">
+                                      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                                        Adeudos en {periodLabel}
+                                      </p>
+                                      {debtMonths > 0.0001 ? (
+                                        <>
+                                          <p className="text-sm text-slate-600">
+                                            Debe {formatPeriods(debtMonths)}{' '}
+                                            {isApproximatelyOne(debtMonths) ? 'periodo' : 'periodos'} ({peso(totalDue)}).
+                                          </p>
+                                          {outstandingPeriodLabels.length > 0 && (
+                                            <div className="flex flex-wrap gap-2">
+                                              {outstandingPeriodLabels.map((label) => (
+                                                <span
+                                                  key={label}
+                                                  className="inline-flex items-center rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-700"
+                                                >
+                                                  {label}
+                                                </span>
+                                              ))}
+                                            </div>
+                                          )}
+                                          {fractionalDebt > 0 && (
+                                            <p className="text-xs text-amber-700">
+                                              Incluye un periodo parcial de {formatPeriods(fractionalDebt)}.
+                                            </p>
+                                          )}
+                                        </>
+                                      ) : (
+                                        <p className="text-sm text-emerald-600">Sin adeudos en este periodo.</p>
+                                      )}
+                                    </div>
+                                    <div className="space-y-2">
+                                      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                                        Estado del servicio
+                                      </p>
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <span
+                                          className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${
+                                            client.service === 'Activo'
+                                              ? 'bg-emerald-50 text-emerald-700'
+                                              : 'bg-red-50 text-red-700'
+                                          }`}
+                                        >
+                                          Estado: {client.service}
+                                        </span>
+                                        <span className="inline-flex items-center rounded-full bg-slate-200/70 px-2.5 py-1 text-xs font-semibold text-slate-700">
+                                          Tipo: {clientTypeLabel}
+                                        </span>
+                                        {paidMonthsAhead > 0.0001 && (
+                                          <span className="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                                            Adelantó {formatPeriods(paidMonthsAhead)}{' '}
+                                            {isApproximatelyOne(paidMonthsAhead) ? 'periodo' : 'periodos'}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                    <div className="space-y-2">
+                                      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                                        Accesos rápidos
+                                      </p>
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <Link
+                                          to={`/clients#client-${client.id}`}
+                                          className="inline-flex items-center gap-1 rounded-md border border-blue-100 px-3 py-1.5 text-xs font-semibold text-blue-600 transition hover:bg-blue-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40"
+                                        >
+                                          Abrir en clientes →
+                                        </Link>
+                                        <Button
+                                          type="button"
+                                          size="sm"
+                                          disabled={!isCurrentPeriod || isSubmittingPayment}
+                                          className="disabled:cursor-not-allowed disabled:opacity-50"
+                                          onClick={() => handleOpenPaymentForm(client)}
+                                        >
+                                          Registrar pago
+                                        </Button>
+                                      </div>
+                                      <p className="text-xs text-slate-500">
+                                        Periodo consultado: {periodLabel}.{' '}
+                                        {isCurrentPeriod ? '' : `Vista histórica respecto a ${currentPeriodLabel}.`}
+                                      </p>
+                                    </div>
+                                  </div>
+                                </div>
+                              )
+                            })()}
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  )
+                })}
                 {filteredClients.length === 0 && (
                   <tr>
                     <td colSpan={5} className="px-3 py-6 text-center text-sm text-slate-500">

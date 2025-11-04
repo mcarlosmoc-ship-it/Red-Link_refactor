@@ -1,4 +1,5 @@
-import React, { useCallback, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import Button from '../components/ui/Button.jsx'
 import { Card, CardContent } from '../components/ui/Card.jsx'
 import { CLIENT_PRICE } from '../store/useBackofficeStore.js'
@@ -53,16 +54,49 @@ export default function ClientsPage() {
     toggleClientService,
   } = useClients()
   const { showToast } = useToast()
+  const location = useLocation()
   const [searchTerm, setSearchTerm] = useState('')
   const [locationFilter, setLocationFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
   const [formState, setFormState] = useState({ ...defaultForm })
   const [formErrors, setFormErrors] = useState({})
   const [isRetrying, setIsRetrying] = useState(false)
+  const [highlightedClientId, setHighlightedClientId] = useState(null)
   const isMutatingClients = Boolean(clientsStatus?.isMutating)
   const isSyncingClients = Boolean(clientsStatus?.isLoading)
   const isLoadingClients = Boolean(clientsStatus?.isLoading && clients.length === 0)
   const hasClientsError = Boolean(clientsStatus?.error)
+
+  useEffect(() => {
+    if (!location?.hash) {
+      setHighlightedClientId(null)
+      return
+    }
+
+    if (!location.hash.startsWith('#client-')) {
+      setHighlightedClientId(null)
+      return
+    }
+
+    const clientId = location.hash.slice('#client-'.length)
+    if (!clientId) {
+      setHighlightedClientId(null)
+      return
+    }
+
+    const exists = clients.some((client) => client.id === clientId)
+    if (!exists) {
+      setHighlightedClientId(null)
+      return
+    }
+
+    setHighlightedClientId(clientId)
+
+    const row = document.getElementById(`client-${clientId}`)
+    if (row) {
+      row.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }, [location?.hash, clients])
 
   const handleRetryLoad = async () => {
     setIsRetrying(true)
@@ -684,7 +718,15 @@ export default function ClientsPage() {
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {filteredResidentialClients.map((client) => (
-                        <tr key={client.id}>
+                        <tr
+                          key={client.id}
+                          id={`client-${client.id}`}
+                          className={
+                            highlightedClientId === client.id
+                              ? 'bg-blue-50/70 transition-colors'
+                              : undefined
+                          }
+                        >
                           <td className="px-3 py-2 font-medium text-slate-900">
                             <div className="flex flex-col">
                               <span>{client.name}</span>
