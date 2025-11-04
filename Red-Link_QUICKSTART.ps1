@@ -40,7 +40,7 @@ $venvDir    = Join-Path $backendDir '.venv'
 $venvPython = Join-Path $venvDir 'Scripts\python.exe'
 $requirements = Join-Path $backendDir 'requirements.txt'
 
-Set-Location $repoRoot
+Set-Location -LiteralPath $repoRoot
 
 Write-Host 'Red-Link — Lanzamiento rapido (PowerShell)' -ForegroundColor Green
 
@@ -95,10 +95,10 @@ try {
     }
 
     Invoke-Step 'Iniciando backend y frontend' {
-        $backendCommand = "Set-Location `"$backendDir`"; if (Test-Path '.venv\\Scripts\\Activate.ps1') { . .\\.venv\\Scripts\\Activate.ps1 }; uvicorn app.main:app --reload --host 0.0.0.0 --port 8000"
+        $backendCommand = "Set-Location -LiteralPath `"$backendDir`"; if (Test-Path '.venv\\Scripts\\Activate.ps1') { . .\\.venv\\Scripts\\Activate.ps1 }; uvicorn app.main:app --reload --host 0.0.0.0 --port 8000"
         Start-Process powershell -ArgumentList '-NoExit', '-Command', $backendCommand -WindowStyle Normal
 
-        $frontendCommand = "Set-Location `"$repoRoot`"; npm run dev"
+        $frontendCommand = "Set-Location -LiteralPath `"$repoRoot`"; npm run dev"
         Start-Process powershell -ArgumentList '-NoExit', '-Command', $frontendCommand -WindowStyle Normal
 
         Start-Process 'http://localhost:5173/' | Out-Null
@@ -114,5 +114,5 @@ catch {
     exit 1
 }
 finally {
-    Set-Location $repoRoot
+    Set-Location -LiteralPath $repoRoot
 }
