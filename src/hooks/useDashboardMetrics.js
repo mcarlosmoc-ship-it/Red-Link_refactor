@@ -76,5 +76,5 @@ export const useDashboardMetrics = ({ statusFilter: overrideStatusFilter } = {})
     return normalizedClients
   }, [normalizedClients, activeStatusFilter])
 
-  return { metrics, filteredClients, projectedClients: normalizedClients }
+  return { metrics, filteredClients, projectedClients: normalizedClients, baseCosts }
 }

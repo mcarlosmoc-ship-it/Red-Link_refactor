@@ -313,7 +313,9 @@ class MetricsService:
                     continue
                 if settlement.settled_on.strftime("%Y-%m") != period_key:
                     continue
-                total += Decimal(settlement.my_gain or settlement.amount or 0)
+                gain_value = getattr(settlement, "my_gain", None)
+                amount_value = gain_value if gain_value is not None else settlement.amount
+                total += Decimal(amount_value or 0)
         return total
 
     @staticmethod
