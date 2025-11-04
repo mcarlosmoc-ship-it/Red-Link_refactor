@@ -22,6 +22,30 @@ npm --version
 python3 --version
 ```
 
+## Inicio rápido en Windows (PowerShell)
+
+Si estás en Windows y el lanzador `.bat` no funciona en tu equipo, puedes usar el nuevo script `Red-Link_QUICKSTART.ps1`. Este script automatiza la instalación mínima y levanta ambos servicios en ventanas separadas.
+
+1. Haz clic derecho sobre `Red-Link_QUICKSTART.ps1` y elige **Run with PowerShell**.
+   - También puedes ejecutarlo desde una terminal con:
+     ```powershell
+     powershell -ExecutionPolicy Bypass -File .\Red-Link_QUICKSTART.ps1
+     ```
+2. El asistente verificará que tengas `npm` y `python` instalados, preparará el entorno virtual del backend, instalará dependencias si hacen falta y correrá `alembic upgrade head`.
+3. Al finalizar abrirá dos ventanas nuevas de PowerShell: una con el backend (`uvicorn`) y otra con el frontend (`npm run dev`), además de lanzar `http://localhost:5173/` en tu navegador.
+
+Si ya tienes las dependencias instaladas puedes acelerar el proceso usando los parámetros opcionales:
+
+```powershell
+# Omitir npm install
+powershell -ExecutionPolicy Bypass -File .\Red-Link_QUICKSTART.ps1 -SkipFrontendInstall
+
+# Omitir pip install
+powershell -ExecutionPolicy Bypass -File .\Red-Link_QUICKSTART.ps1 -SkipBackendInstall
+```
+
+Recuerda detener los servicios cerrando las ventanas que se abren al final.
+
 ## Configuración del frontend (Vite + React)
 
 1. Instala las dependencias de Node:
