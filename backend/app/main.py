@@ -2,6 +2,7 @@
 
 import logging
 import os
+import re
 from typing import Iterable
 
 from fastapi import FastAPI
@@ -39,11 +40,24 @@ def _read_allowed_origins(raw_origins: Iterable[str]) -> list[str]:
     return sorted({origin for origin in normalized if origin})
 
 
+def _split_raw_origins(raw_value: str) -> list[str]:
+    """Split a raw origin string using commas or whitespace as separators."""
+
+    # Developers sometimes provide environment variables separated only by
+    # spaces (e.g. ``"http://localhost:5173 http://127.0.0.1:5173"``). The
+    # previous implementation only recognised commas which caused the entire
+    # string to be treated as a single origin and, consequently, FastAPI did
+    # not emit the ``Access-Control-Allow-Origin`` header. Accepting both
+    # commas and whitespace makes the configuration more forgiving while
+    # keeping explicit control of the allowed origins.
+    return [origin for origin in re.split(r"[\s,]+", raw_value) if origin]
+
+
 def _load_allowed_origins_from_env() -> list[str]:
     raw_value = os.getenv("BACKEND_ALLOWED_ORIGINS")
     if not raw_value:
         return []
-    return _read_allowed_origins(raw_value.split(","))
+    return _read_allowed_origins(_split_raw_origins(raw_value))
 
 
 def _resolve_allowed_origins() -> list[str]:
