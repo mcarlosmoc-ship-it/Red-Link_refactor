@@ -17,15 +17,9 @@ if exist ..\.venv\Scripts\activate.bat (
     call ..\venv\Scripts\activate.bat
 )
 
-where alembic >nul 2>&1
-if errorlevel 1 (
-    echo [ERROR] No se encontró el comando Alembic. Ejecuta "pip install -r requirements.txt" dentro de backend o activa el entorno virtual correcto.
-    goto :error
-)
-
 echo.
 echo [INFO] Aplicando migraciones de base de datos con Alembic...
-alembic -c alembic.ini upgrade head
+python -m alembic -c alembic.ini upgrade head
 if errorlevel 1 goto :error
 
 echo.
