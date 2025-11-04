@@ -34,6 +34,13 @@ def test_create_payment_updates_client_balance(client, db_session, seed_basic_da
     data = response.json()
     assert data["client_id"] == client_model.id
     assert data["period_key"] == billing_period.period_key
+    assert data["paid_on"] == payload["paid_on"]
+    assert Decimal(str(data["amount"])) == Decimal("300.00")
+    assert Decimal(str(data["months_paid"])) == Decimal("1")
+    assert data["method"] == models.PaymentMethod.EFECTIVO.value
+    assert data["note"] == "Pago parcial"
+    assert data["client"]["id"] == client_model.id
+    assert data["client"]["full_name"] == client_model.full_name
 
     db_session.expire_all()
     updated_client = (
@@ -67,6 +74,13 @@ def test_payment_clears_debt_and_sets_service_active(client, db_session, seed_ba
     data = response.json()
     assert data["client_id"] == client_model.id
     assert data["period_key"] == billing_period.period_key
+    assert data["paid_on"] == payload["paid_on"]
+    assert Decimal(str(data["amount"])) == Decimal("900.00")
+    assert Decimal(str(data["months_paid"])) == Decimal("3")
+    assert data["method"] == models.PaymentMethod.TRANSFERENCIA.value
+    assert data["note"] == "Pago completo y adelantado"
+    assert data["client"]["id"] == client_model.id
+    assert data["client"]["full_name"] == client_model.full_name
 
     db_session.expire_all()
     updated_client = (
