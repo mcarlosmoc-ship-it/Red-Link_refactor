@@ -110,7 +110,14 @@ const applySearchParams = (url, searchParams) => {
   if (!searchString) {
     return url
   }
-  return `${url}?${searchString}`
+
+  const [base, hashFragment] = url.split('#', 2)
+  const needsQuestionMark = !base.includes('?')
+  const hasTerminalSeparator = /[?&]$/.test(base)
+  const separator = needsQuestionMark ? '?' : hasTerminalSeparator ? '' : '&'
+  const combined = `${base}${separator}${searchString}`
+
+  return hashFragment !== undefined ? `${combined}#${hashFragment}` : combined
 }
 
 const buildUrl = (path, searchParams) => {
