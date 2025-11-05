@@ -18,6 +18,7 @@ from .reseller_delivery import (
     ResellerDelivery,
     ResellerDeliveryItem,
     ResellerSettlement,
+    ResellerSettlementStatus,
 )
 from .voucher import Voucher, VoucherPrice, VoucherStatus, VoucherType
 
@@ -47,6 +48,7 @@ __all__ = [
     "ResellerDeliveryItem",
     "ResellerSettlement",
     "DeliverySettlementStatus",
+    "ResellerSettlementStatus",
     "BaseOperatingCost",
     "ClientPlan",
     "ServicePlan",

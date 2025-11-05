@@ -1,14 +1,15 @@
 from __future__ import annotations
 
-from __future__ import annotations
-
 from datetime import date
 from decimal import Decimal
 from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from ..models.reseller_delivery import DeliverySettlementStatus
+from ..models.reseller_delivery import (
+    DeliverySettlementStatus,
+    ResellerSettlementStatus,
+)
 
 
 class ResellerBase(BaseModel):
@@ -57,6 +58,7 @@ class ResellerSettlementBase(BaseModel):
     settled_on: date
     amount: Decimal = Field(..., ge=0)
     notes: Optional[str] = None
+    status: ResellerSettlementStatus = ResellerSettlementStatus.PENDING
 
 
 class ResellerSettlementCreate(ResellerSettlementBase):
