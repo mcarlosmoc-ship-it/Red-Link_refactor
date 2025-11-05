@@ -3,18 +3,34 @@ import Button from '../components/ui/Button.jsx'
 import { Card, CardContent } from '../components/ui/Card.jsx'
 import { useBackofficeStore } from '../store/useBackofficeStore.js'
 import { useToast } from '../hooks/useToast.js'
+import { useBackofficeRefresh } from '../contexts/BackofficeRefreshContext.jsx'
+import SettingsSkeleton from './SettingsSkeleton.jsx'
 
 export default function SettingsPage() {
-  const { baseCosts, voucherPrices, updateBaseCosts, updateVoucherPrices, metricsStatus } =
+  const {
+    baseCosts,
+    voucherPrices,
+    updateBaseCosts,
+    updateVoucherPrices,
+    metricsStatus,
+    initializeStatus,
+  } =
     useBackofficeStore((state) => ({
       baseCosts: state.baseCosts,
       voucherPrices: state.voucherPrices,
       updateBaseCosts: state.updateBaseCosts,
       updateVoucherPrices: state.updateVoucherPrices,
       metricsStatus: state.status.metrics,
+      initializeStatus: state.status.initialize,
     }))
 
   const { showToast } = useToast()
+  const { isRefreshing } = useBackofficeRefresh()
+  const shouldShowSkeleton = Boolean(initializeStatus?.isLoading) || isRefreshing
+
+  if (shouldShowSkeleton) {
+    return <SettingsSkeleton />
+  }
 
   const [baseForm, setBaseForm] = useState(() => ({
     base1: baseCosts?.base1 ?? '',

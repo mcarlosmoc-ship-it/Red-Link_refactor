@@ -6,18 +6,22 @@ import { useBackofficeStore } from '../store/useBackofficeStore.js'
 import { usePayments } from '../hooks/usePayments.js'
 import { useToast } from '../hooks/useToast.js'
 import { useClients } from '../hooks/useClients.js'
+import { useBackofficeRefresh } from '../contexts/BackofficeRefreshContext.jsx'
+import PaymentsSkeleton from './PaymentsSkeleton.jsx'
 
 const METHODS = ['Todos', 'Efectivo', 'Transferencia', 'Tarjeta', 'Revendedor']
 const METHOD_OPTIONS = METHODS.filter((method) => method !== 'Todos')
 
 export default function PaymentsPage() {
-  const { selectedPeriod, recordPayment } = useBackofficeStore((state) => ({
+  const { selectedPeriod, recordPayment, initializeStatus } = useBackofficeStore((state) => ({
     selectedPeriod: state.periods?.selected ?? state.periods?.current,
     recordPayment: state.recordPayment,
+    initializeStatus: state.status.initialize,
   }))
   const { payments, status: paymentsStatus, reload } = usePayments({ periodKey: selectedPeriod })
   const { showToast } = useToast()
   const { clients, status: clientsStatus } = useClients()
+  const { isRefreshing } = useBackofficeRefresh()
   const [methodFilter, setMethodFilter] = useState('Todos')
   const [searchTerm, setSearchTerm] = useState('')
   const [isRetrying, setIsRetrying] = useState(false)
@@ -36,6 +40,11 @@ export default function PaymentsPage() {
   const isSyncingPayments = Boolean(paymentsStatus?.isLoading)
   const hasPaymentsError = Boolean(paymentsStatus?.error)
   const isLoadingClients = Boolean(clientsStatus?.isLoading && clients.length === 0)
+  const shouldShowSkeleton = Boolean(initializeStatus?.isLoading) || isRefreshing
+
+  if (shouldShowSkeleton) {
+    return <PaymentsSkeleton />
+  }
 
   const clientOptions = useMemo(
     () =>
