@@ -306,9 +306,10 @@ export default function DashboardPage() {
       }
       th, td {
         border: 1px solid #cbd5f5;
-        padding: 10px 12px;
+        padding: 6px 10px;
         text-align: left;
-        font-size: 0.95rem;
+        font-size: 0.9rem;
+        line-height: 1.3;
       }
       tbody tr:nth-child(even) {
         background-color: #f8fafc;
@@ -805,9 +806,10 @@ export default function DashboardPage() {
               </label>
               <Button
                 type="button"
+                size="sm"
                 onClick={handlePrintPendingClients}
                 disabled={pendingClients.length === 0}
-                className="w-full sm:w-auto disabled:cursor-not-allowed disabled:opacity-60"
+                className="w-full sm:w-auto sm:self-start disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {pendingClients.length > 0
                   ? `Imprimir pendientes (${pendingClients.length})`
