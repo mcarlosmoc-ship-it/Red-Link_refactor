@@ -180,6 +180,50 @@ const extractResponseData = async (response) => {
   return null
 }
 
+const flattenErrorParts = (value, fallback = '') => {
+  if (value === null || value === undefined) {
+    return []
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    return trimmed ? [trimmed] : []
+  }
+
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return [String(value)]
+  }
+
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => flattenErrorParts(item, fallback))
+  }
+
+  if (typeof value === 'object') {
+    if (value.message || value.detail) {
+      return flattenErrorParts(value.message ?? value.detail, fallback)
+    }
+    return Object.values(value).flatMap((item) => flattenErrorParts(item, fallback))
+  }
+
+  try {
+    return [JSON.stringify(value)]
+  } catch (error) {
+    return fallback ? [fallback] : []
+  }
+}
+
+const resolveErrorMessage = (data, response) => {
+  const fallback = response?.statusText || 'Request failed'
+  const parts = flattenErrorParts(
+    data?.message ?? data?.detail ?? data?.error ?? data ?? fallback,
+    fallback,
+  )
+  if (parts.length === 0) {
+    return fallback
+  }
+  return parts.join('\n')
+}
+
 const request = async (method, path, { body, headers, query, signal, ...restOptions } = {}) => {
   const fetchFn = typeof globalThis !== 'undefined' && globalThis.fetch ? globalThis.fetch.bind(globalThis) : undefined
   if (!fetchFn) {
@@ -197,7 +241,7 @@ const request = async (method, path, { body, headers, query, signal, ...restOpti
   const data = await extractResponseData(response)
 
   if (!response.ok) {
-    const errorMessage = data?.message || data?.detail || response.statusText || 'Request failed'
+    const errorMessage = resolveErrorMessage(data, response)
     throw new ApiError(errorMessage, {
       status: response.status,
       data,
