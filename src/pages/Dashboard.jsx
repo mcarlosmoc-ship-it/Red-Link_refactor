@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CalendarDays, DollarSign, Plus, Wifi } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import StatCard from '../components/dashboard/StatCard.jsx'
@@ -19,6 +19,18 @@ import { useBackofficeRefresh } from '../contexts/BackofficeRefreshContext.jsx'
 import DashboardSkeleton from './DashboardSkeleton.jsx'
 
 const periodsFormatter = new Intl.NumberFormat('es-MX', { maximumFractionDigits: 2 })
+const printDateFormatter = new Intl.DateTimeFormat('es-MX', {
+  dateStyle: 'full',
+  timeStyle: 'short',
+})
+
+const escapeHtml = (value) =>
+  String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
 
 const formatPeriods = (value) => {
   const numericValue = Number(value) || 0
@@ -126,6 +138,12 @@ export default function DashboardPage() {
 
   const { metrics, filteredClients, baseCosts } = useDashboardMetrics({ statusFilter })
 
+  const pendingClients = useMemo(
+    () =>
+      clients.filter((client) => Number(client.debtMonths ?? 0) > 0.0001),
+    [clients],
+  )
+
   const periodLabel = formatPeriodLabel(selectedPeriod ?? currentPeriod)
   const currentPeriodLabel = formatPeriodLabel(currentPeriod ?? selectedPeriod)
   const canGoPrevious = diffPeriods(historyStart ?? selectedPeriod, selectedPeriod ?? currentPeriod) > 0
@@ -194,6 +212,148 @@ export default function DashboardPage() {
     }
     return `Mostrando todos los clientes activos en ${periodLabel}`
   }, [statusFilter, periodLabel])
+
+  const handlePrintPendingClients = useCallback(() => {
+    const summaries = pendingClients
+      .map((client) => {
+        const debtMonths = Number(client.debtMonths ?? 0)
+
+        if (!Number.isFinite(debtMonths) || debtMonths <= 0.0001) {
+          return null
+        }
+
+        const monthlyFee = client.monthlyFee ?? CLIENT_PRICE
+        const totalDue = debtMonths * monthlyFee
+
+        return {
+          name: client.name ?? 'Sin nombre',
+          location: client.location ?? 'Sin localidad',
+          debtMonths,
+          totalDue,
+        }
+      })
+      .filter(Boolean)
+
+    if (summaries.length === 0) {
+      showToast({
+        type: 'info',
+        title: 'No hay clientes con pagos pendientes',
+        description: 'Todos los clientes están al día.',
+      })
+      return
+    }
+
+    const totalDueAmount = summaries.reduce((sum, summary) => sum + summary.totalDue, 0)
+    const reportDate = printDateFormatter.format(new Date())
+    const tableRows = summaries
+      .map((summary, index) => {
+        const debtLabel = `${formatPeriods(summary.debtMonths)} ${
+          isApproximatelyOne(summary.debtMonths) ? 'periodo' : 'periodos'
+        }`
+        return `
+          <tr>
+            <td>${index + 1}</td>
+            <td>${escapeHtml(summary.name)}</td>
+            <td>${escapeHtml(summary.location)}</td>
+            <td>${escapeHtml(debtLabel)}</td>
+            <td>${escapeHtml(peso(summary.totalDue))}</td>
+          </tr>
+        `
+      })
+      .join('')
+
+    const printWindow = window.open('', '_blank', 'width=900,height=700')
+
+    if (!printWindow) {
+      showToast({
+        type: 'error',
+        title: 'No se pudo abrir la ventana de impresión',
+        description: 'Verifica que el navegador permita ventanas emergentes.',
+      })
+      return
+    }
+
+    printWindow.document.write(`<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <title>Clientes con pagos pendientes</title>
+    <style>
+      *, *::before, *::after { box-sizing: border-box; }
+      body {
+        font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        margin: 32px;
+        color: #0f172a;
+        background-color: #ffffff;
+      }
+      h1 {
+        font-size: 1.75rem;
+        margin: 0 0 0.5rem 0;
+      }
+      p.meta {
+        margin: 0 0 1.5rem 0;
+        color: #475569;
+        font-size: 0.95rem;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 0.5rem;
+      }
+      thead {
+        background-color: #e2e8f0;
+        color: #0f172a;
+      }
+      th, td {
+        border: 1px solid #cbd5f5;
+        padding: 10px 12px;
+        text-align: left;
+        font-size: 0.95rem;
+      }
+      tbody tr:nth-child(even) {
+        background-color: #f8fafc;
+      }
+      tfoot td {
+        font-weight: 600;
+        background-color: #f1f5f9;
+      }
+      @media print {
+        body {
+          margin: 0.5in;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Clientes con pagos pendientes</h1>
+    <p class="meta">Reporte generado el ${escapeHtml(reportDate)}. Se listan ${summaries.length} cliente(s) con adeudos.</p>
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">#</th>
+          <th scope="col">Nombre</th>
+          <th scope="col">Localidad</th>
+          <th scope="col">Periodos adeudados</th>
+          <th scope="col">Total adeudado</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${tableRows}
+      </tbody>
+      <tfoot>
+        <tr>
+          <td colspan="4">Total adeudado</td>
+          <td>${escapeHtml(peso(totalDueAmount))}</td>
+        </tr>
+      </tfoot>
+    </table>
+  </body>
+</html>`)
+
+    printWindow.document.close()
+    printWindow.focus()
+    printWindow.print()
+  }, [pendingClients, showToast])
 
   const activeClient = useMemo(
     () => clients.find((client) => client.id === paymentForm.clientId) ?? null,
@@ -631,17 +791,29 @@ export default function DashboardPage() {
 
         <div className="flex flex-col gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <label className="flex w-full items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 focus-within:ring-2 focus-within:ring-blue-500/40 sm:max-w-sm">
-              <span className="sr-only">Buscar cliente o localidad</span>
-              <input
-                value={searchTerm}
-                onChange={(event) => setSearchTerm(event.target.value)}
-                placeholder="Buscar cliente o localidad"
-                aria-label="Buscar cliente o localidad"
-                className="w-full border-none bg-transparent text-sm text-slate-700 outline-none"
-                type="search"
-              />
-            </label>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-2">
+              <label className="flex w-full items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 focus-within:ring-2 focus-within:ring-blue-500/40 sm:max-w-sm">
+                <span className="sr-only">Buscar cliente o localidad</span>
+                <input
+                  value={searchTerm}
+                  onChange={(event) => setSearchTerm(event.target.value)}
+                  placeholder="Buscar cliente o localidad"
+                  aria-label="Buscar cliente o localidad"
+                  className="w-full border-none bg-transparent text-sm text-slate-700 outline-none"
+                  type="search"
+                />
+              </label>
+              <Button
+                type="button"
+                onClick={handlePrintPendingClients}
+                disabled={pendingClients.length === 0}
+                className="w-full sm:w-auto disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {pendingClients.length > 0
+                  ? `Imprimir pendientes (${pendingClients.length})`
+                  : 'Imprimir pendientes'}
+              </Button>
+            </div>
             <p className="text-sm text-slate-500" role="status">
               {filteredClients.length} cliente(s) coinciden con el filtro en {periodLabel}.
             </p>
