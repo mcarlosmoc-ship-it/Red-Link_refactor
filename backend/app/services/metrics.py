@@ -96,9 +96,9 @@ class MetricsService:
             location_metrics["debt_amount"] += debt_months * Decimal(client.monthly_fee or 0)
 
         if period_key:
-            payments = PaymentService.list_payments(db, period_key=period_key)
+            payments, _payments_total = PaymentService.list_payments(db, period_key=period_key, limit=10_000)
         else:
-            payments = PaymentService.list_payments(db)
+            payments, _payments_total = PaymentService.list_payments(db, limit=10_000)
 
         for payment in payments:
             client = payment.client
@@ -158,7 +158,7 @@ class MetricsService:
         target_period = period_key or actual_current
         offset = MetricsService._diff_periods(actual_current, target_period)
 
-        clients = list(ClientService.list_clients(db))
+        clients, _total = ClientService.list_clients(db, limit=10_000)
         projected_clients = [
             MetricsService._project_client_for_offset(client, offset) for client in clients
         ]
