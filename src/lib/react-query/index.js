@@ -1,4 +1,12 @@
-import { createContext, useContext, useEffect, useMemo, useReducer, useState } from 'react'
+import {
+  createContext,
+  createElement,
+  useContext,
+  useEffect,
+  useMemo,
+  useReducer,
+  useState,
+} from 'react'
 
 const areDeepEqual = (a, b) => {
   if (a === b) return true
@@ -220,7 +228,7 @@ export const QueryClientProvider = ({ client, children }) => {
     throw new Error('QueryClientProvider requires a client instance')
   }
 
-  return <QueryClientContext.Provider value={client}>{children}</QueryClientContext.Provider>
+  return createElement(QueryClientContext.Provider, { value: client }, children)
 }
 
 export const useQueryClient = () => {
