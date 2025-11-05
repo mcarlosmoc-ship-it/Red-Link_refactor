@@ -1,8 +1,15 @@
 """Expose Pydantic schemas for convenient imports."""
 
-from .client import ClientBase, ClientCreate, ClientRead, ClientUpdate
-from .expense import ExpenseBase, ExpenseCreate, ExpenseRead
-from .inventory import InventoryBase, InventoryCreate, InventoryRead, InventoryUpdate
+from .common import PaginatedResponse
+from .client import ClientBase, ClientCreate, ClientListResponse, ClientRead, ClientUpdate
+from .expense import ExpenseBase, ExpenseCreate, ExpenseListResponse, ExpenseRead
+from .inventory import (
+    InventoryBase,
+    InventoryCreate,
+    InventoryListResponse,
+    InventoryRead,
+    InventoryUpdate,
+)
 from .metrics import (
     BaseCostUpdateRequest,
     BaseCostUpdateResponse,
@@ -14,7 +21,7 @@ from .metrics import (
     MetricsResponse,
     StatusFilter,
 )
-from .payment import PaymentBase, PaymentCreate, PaymentRead
+from .payment import PaymentBase, PaymentCreate, PaymentListResponse, PaymentRead
 from .reseller import (
     ResellerBase,
     ResellerCreate,
@@ -30,17 +37,22 @@ __all__ = [
     "ClientBase",
     "ClientCreate",
     "ClientRead",
+    "ClientListResponse",
     "ClientUpdate",
+    "PaginatedResponse",
     "PaymentBase",
     "PaymentCreate",
     "PaymentRead",
+    "PaymentListResponse",
     "ExpenseBase",
     "ExpenseCreate",
     "ExpenseRead",
+    "ExpenseListResponse",
     "InventoryBase",
     "InventoryCreate",
     "InventoryRead",
     "InventoryUpdate",
+    "InventoryListResponse",
     "ResellerBase",
     "ResellerCreate",
     "ResellerDeliveryCreate",

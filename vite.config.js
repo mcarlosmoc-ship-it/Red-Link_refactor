@@ -7,6 +7,7 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
+      '@tanstack/react-query': path.resolve(__dirname, 'src/lib/react-query/index.js'),
       '@testing-library/react': path.resolve(__dirname, 'tests/mocks/testing-library-react.js'),
     },
   },

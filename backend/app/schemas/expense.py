@@ -5,6 +5,8 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from .common import PaginatedResponse
+
 
 class ExpenseBase(BaseModel):
     base_id: int = Field(..., description="Identifier of the base station the expense belongs to")
@@ -27,3 +29,9 @@ class ExpenseRead(ExpenseBase):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ExpenseListResponse(PaginatedResponse[ExpenseRead]):
+    """Paginated expense listing."""
+
+    pass

@@ -6,6 +6,7 @@ from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..models.inventory import InventoryStatus
+from .common import PaginatedResponse
 
 
 class InventoryBase(BaseModel):
@@ -47,3 +48,9 @@ class InventoryRead(InventoryBase):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class InventoryListResponse(PaginatedResponse[InventoryRead]):
+    """Paginated inventory listing."""
+
+    pass

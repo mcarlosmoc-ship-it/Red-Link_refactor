@@ -109,6 +109,11 @@ class Client(Base):
         back_populates="client",
         cascade="all, delete-orphan",
     )
+    change_log = relationship(
+        "ClientChangeLog",
+        back_populates="client",
+        cascade="all, delete-orphan",
+    )
     status_history = relationship(
         "ClientStatusHistory",
         back_populates="client",
