@@ -6,11 +6,13 @@ import enum
 import uuid
 
 from sqlalchemy import (
+    CheckConstraint,
     Column,
     Date,
     DateTime,
     Enum as SAEnum,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
@@ -44,6 +46,17 @@ class InventoryItem(Base):
     """Represents a hardware asset tracked in inventory."""
 
     __tablename__ = "inventory_items"
+    __table_args__ = (
+        CheckConstraint(
+            "(status = 'assigned' AND client_id IS NOT NULL) OR "
+            "(status <> 'assigned' AND client_id IS NULL)",
+            name="ck_inventory_items_assignment_consistency",
+        ),
+        CheckConstraint(
+            "purchase_cost IS NULL OR purchase_cost >= 0",
+            name="ck_inventory_items_purchase_cost_non_negative",
+        ),
+    )
 
     id = Column("inventory_id", GUID(), primary_key=True, default=uuid.uuid4)
     asset_tag = Column(String, unique=True, nullable=True)
@@ -70,3 +83,13 @@ class InventoryItem(Base):
         cascade="all, delete-orphan",
     )
     support_tickets = relationship("SupportTicket", back_populates="inventory_item")
+
+
+Index("inventory_base_status_idx", InventoryItem.base_id, InventoryItem.status)
+Index(
+    "inventory_ip_address_unique_idx",
+    InventoryItem.ip_address,
+    unique=True,
+    postgresql_where=InventoryItem.ip_address.isnot(None),
+    sqlite_where=InventoryItem.ip_address.isnot(None),
+)

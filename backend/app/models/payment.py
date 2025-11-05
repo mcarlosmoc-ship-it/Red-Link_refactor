@@ -6,6 +6,7 @@ import enum
 import uuid
 
 from sqlalchemy import (
+    CheckConstraint,
     Column,
     Date,
     DateTime,
@@ -46,6 +47,10 @@ class Payment(Base):
     """Represents a payment made by a client for a billing period."""
 
     __tablename__ = "payments"
+    __table_args__ = (
+        CheckConstraint("amount >= 0", name="ck_payments_amount_non_negative"),
+        CheckConstraint("months_paid > 0", name="ck_payments_months_paid_positive"),
+    )
 
     id = Column("payment_id", GUID(), primary_key=True, default=uuid.uuid4)
     client_id = Column(
@@ -71,3 +76,6 @@ class Payment(Base):
 
 Index("payments_client_idx", Payment.client_id)
 Index("payments_period_idx", Payment.period_key)
+Index("payments_client_period_idx", Payment.client_id, Payment.period_key)
+Index("payments_client_paid_on_idx", Payment.client_id, Payment.paid_on)
+Index("payments_period_paid_on_idx", Payment.period_key, Payment.paid_on)

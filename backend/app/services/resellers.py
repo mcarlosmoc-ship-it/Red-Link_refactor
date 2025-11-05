@@ -84,6 +84,8 @@ class ResellerService:
             if delivery:
                 delivery.settlement_status = models.DeliverySettlementStatus.SETTLED
                 db.add(delivery)
+                if settlement.status == models.ResellerSettlementStatus.PENDING:
+                    settlement.status = models.ResellerSettlementStatus.APPLIED
 
         db.commit()
         db.refresh(settlement)

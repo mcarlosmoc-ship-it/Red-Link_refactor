@@ -6,6 +6,7 @@ import enum
 import uuid
 
 from sqlalchemy import (
+    CheckConstraint,
     Column,
     DateTime,
     Enum,
@@ -40,6 +41,13 @@ class Client(Base):
     """Represents a client record stored in the database."""
 
     __tablename__ = "clients"
+    __table_args__ = (
+        CheckConstraint("monthly_fee >= 0", name="ck_clients_monthly_fee_non_negative"),
+        CheckConstraint(
+            "paid_months_ahead >= 0", name="ck_clients_paid_months_non_negative"
+        ),
+        CheckConstraint("debt_months >= 0", name="ck_clients_debt_months_non_negative"),
+    )
 
     id = Column("client_id", GUID(), primary_key=True, default=uuid.uuid4)
     external_code = Column(String, unique=True, nullable=True)
@@ -126,7 +134,34 @@ class Client(Base):
     support_tickets = relationship("SupportTicket", back_populates="client")
 
 
-Index("clients_full_name_idx", Client.full_name)
+Index(
+    "clients_full_name_idx",
+    Client.full_name,
+    postgresql_using="gin",
+    postgresql_ops={"full_name": "gin_trgm_ops"},
+)
 Index("clients_location_idx", Client.location)
 Index("clients_base_idx", Client.base_id)
 Index("clients_active_plan_idx", Client.active_client_plan_id)
+Index("clients_base_status_idx", Client.base_id, Client.service_status)
+Index(
+    "clients_ip_address_unique_idx",
+    Client.ip_address,
+    unique=True,
+    postgresql_where=Client.ip_address.isnot(None),
+    sqlite_where=Client.ip_address.isnot(None),
+)
+Index(
+    "clients_antenna_ip_unique_idx",
+    Client.antenna_ip,
+    unique=True,
+    postgresql_where=Client.antenna_ip.isnot(None),
+    sqlite_where=Client.antenna_ip.isnot(None),
+)
+Index(
+    "clients_modem_ip_unique_idx",
+    Client.modem_ip,
+    unique=True,
+    postgresql_where=Client.modem_ip.isnot(None),
+    sqlite_where=Client.modem_ip.isnot(None),
+)
