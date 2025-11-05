@@ -30,7 +30,7 @@ Para un flujo completamente automatizado en entornos Unix, ejecuta `./dev.sh` de
 - Crea (si hace falta) el entorno virtual en `backend/.venv` e instala las dependencias del backend.
 - Ejecuta `npm install` cuando aún no existe `node_modules/`.
 - Aplica `alembic upgrade head` reutilizando la misma `DATABASE_URL` que usa la API.
-- Corre `npm run lint`, `npm run test -- --run` y `pytest` (puedes omitirlos con `--skip-checks`).
+- Corre `npm run lint`, `npm run test -- --run` y `pytest` (puedes omitirlos con `--skip-checks`). Si alguna comprobación falla, el script se detiene para que puedas corregir el problema antes de continuar.
 - Levanta FastAPI y Vite en paralelo; al terminar verás el backend en `http://localhost:8000` y el frontend en `http://localhost:5173`.
 
 Opcionalmente puedes acelerar la preparación con:
@@ -42,6 +42,16 @@ Opcionalmente puedes acelerar la preparación con:
 ```
 
 Detén los servicios con `Ctrl+C`; el script finaliza ambos procesos de forma segura.
+
+Si deseas ver cómo luce un fallo durante las comprobaciones automáticas, aquí tienes un ejemplo:
+
+```
+[INFO] Ejecutando npm run lint
+[ERROR] npm run lint reportó problemas
+[ERROR] Se detectaron fallos en las comprobaciones. Corrige los errores o ejecuta el script con --skip-checks.
+```
+
+En ese caso el asistente no iniciará los servicios hasta que corrijas los errores o lo ejecutes con `--skip-checks`.
 
 ## Inicio rápido en Windows (PowerShell)
 

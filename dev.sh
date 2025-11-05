@@ -137,20 +137,32 @@ run_checks() {
         return
     fi
 
+    local failures=0
+
     log INFO "Ejecutando npm run lint"
     if ! (cd "$PROJECT_DIR" && npm run lint); then
-        log WARN "npm run lint reportó problemas"
+        log ERROR "npm run lint reportó problemas"
+        failures=1
     fi
 
     log INFO "Ejecutando npm run test -- --run"
     if ! (cd "$PROJECT_DIR" && npm run test -- --run); then
-        log WARN "Las pruebas del frontend fallaron"
+        log ERROR "Las pruebas del frontend fallaron"
+        failures=1
     fi
 
     log INFO "Ejecutando pytest"
     if ! (cd "$PROJECT_DIR" && "$VENV_BIN/python" -m pytest backend); then
-        log WARN "Las pruebas del backend fallaron"
+        log ERROR "Las pruebas del backend fallaron"
+        failures=1
     fi
+
+    if [[ $failures -ne 0 ]]; then
+        log ERROR "Se detectaron fallos en las comprobaciones. Corrige los errores o ejecuta el script con --skip-checks."
+        exit 1
+    fi
+
+    log SUCCESS "Comprobaciones superadas"
 }
 
 start_services() {
