@@ -1,4 +1,32 @@
-const DEFAULT_BASE_URL = 'http://localhost:8000'
+const DEV_SERVER_PORTS = new Set(['5173', '4173'])
+
+const resolveBrowserDefaultBaseUrl = () => {
+  if (typeof globalThis === 'undefined') {
+    return null
+  }
+
+  const { location } = globalThis
+  if (!location?.origin) {
+    return null
+  }
+
+  const hostname = location.hostname?.toLowerCase()
+  const port = location.port ?? ''
+  const isLocalHost = ['localhost', '127.0.0.1', '0.0.0.0'].includes(hostname)
+
+  if (isLocalHost && DEV_SERVER_PORTS.has(port)) {
+    // When running the SPA locally through Vite we want to keep the
+    // historical behaviour of pointing the client to the FastAPI service
+    // listening on port 8000. This mirrors the default value suggested in
+    // the documentation and avoids accidental calls to the dev server.
+    const backendHost = hostname === '0.0.0.0' ? '127.0.0.1' : hostname
+    return `${location.protocol}//${backendHost}:8000`
+  }
+
+  return location.origin
+}
+
+const FALLBACK_BASE_URL = resolveBrowserDefaultBaseUrl() ?? 'http://localhost:8000'
 
 const readBaseUrlFromEnv = () => {
   if (typeof import.meta !== 'undefined' && import.meta?.env?.VITE_API_BASE_URL) {
@@ -12,11 +40,11 @@ const readBaseUrlFromEnv = () => {
 
 const sanitizeBaseUrl = (raw) => {
   if (!raw || typeof raw !== 'string') {
-    return DEFAULT_BASE_URL
+    return FALLBACK_BASE_URL
   }
   const trimmed = raw.trim()
   if (!trimmed) {
-    return DEFAULT_BASE_URL
+    return FALLBACK_BASE_URL
   }
   const withoutTrailingSlash = trimmed.replace(/\/+$/, '')
   if (/^https?:\/\//i.test(withoutTrailingSlash)) {
@@ -25,7 +53,7 @@ const sanitizeBaseUrl = (raw) => {
   if (typeof console !== 'undefined') {
     console.warn('[apiClient] Invalid VITE_API_BASE_URL provided, falling back to default:', raw)
   }
-  return DEFAULT_BASE_URL
+  return FALLBACK_BASE_URL
 }
 
 const BASE_URL = sanitizeBaseUrl(readBaseUrlFromEnv())
