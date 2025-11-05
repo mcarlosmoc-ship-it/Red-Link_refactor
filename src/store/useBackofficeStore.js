@@ -114,7 +114,7 @@ export const useBackofficeStore = create((set, get) => ({
           queryKey,
           queryFn: async () => {
             const response = await apiClient.get('/clients', {
-              query: { limit: 500 },
+              query: { limit: 200 },
             })
             const payload = response.data
             const items = Array.isArray(payload?.items)
@@ -158,7 +158,7 @@ export const useBackofficeStore = create((set, get) => ({
             const query = {
               query: {
                 ...(targetPeriod ? { period_key: targetPeriod } : {}),
-                limit: 500,
+                limit: 200,
               },
             }
             const response = await apiClient.get('/payments', query)
@@ -275,7 +275,7 @@ export const useBackofficeStore = create((set, get) => ({
           queryKey,
           queryFn: async () => {
             const response = await apiClient.get('/inventory', {
-              query: { limit: 250 },
+              query: { limit: 200 },
             })
             const payload = response.data
             const items = Array.isArray(payload?.items)
