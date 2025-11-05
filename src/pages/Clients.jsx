@@ -173,6 +173,93 @@ export default function ClientsPage() {
     }
   }
 
+  const handleExportClients = useCallback(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') {
+      return
+    }
+
+    if (!Array.isArray(clients) || clients.length === 0) {
+      showToast({
+        type: 'info',
+        title: 'Sin clientes para exportar',
+        description: 'Agrega clientes o sincroniza antes de generar el archivo CSV.',
+      })
+      return
+    }
+
+    const headers = [
+      'client_type',
+      'full_name',
+      'location',
+      'base_id',
+      'ip_address',
+      'antenna_ip',
+      'modem_ip',
+      'monthly_fee',
+      'paid_months_ahead',
+      'debt_months',
+      'service_status',
+    ]
+
+    const serializeRow = (row) =>
+      row
+        .map((value) => {
+          if (value === null || typeof value === 'undefined') {
+            return ''
+          }
+
+          const stringValue = String(value)
+          const escapedValue = stringValue.replace(/"/g, '""')
+          return /[",\n]/.test(stringValue) ? `"${escapedValue}"` : escapedValue
+        })
+        .join(',')
+
+    const rows = clients.map((client) => [
+      client.type ?? '',
+      client.name ?? '',
+      client.location ?? '',
+      client.base ?? '',
+      client.ip ?? '',
+      client.antennaIp ?? '',
+      client.modemIp ?? '',
+      client.monthlyFee ?? '',
+      client.paidMonthsAhead ?? '',
+      client.debtMonths ?? '',
+      client.service ?? '',
+    ])
+
+    const csvContent = [headers, ...rows].map(serializeRow).join('\r\n')
+
+    try {
+      const timestamp = new Date()
+        .toISOString()
+        .replace(/[:]/g, '-')
+        .replace('T', '_')
+        .split('.')[0]
+      const blob = new window.Blob([`\ufeff${csvContent}`], { type: 'text/csv;charset=utf-8;' })
+      const url = window.URL.createObjectURL(blob)
+      const link = window.document.createElement('a')
+      link.href = url
+      link.setAttribute('download', `clientes_${timestamp}.csv`)
+      window.document.body.appendChild(link)
+      link.click()
+      window.document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+
+      showToast({
+        type: 'success',
+        title: 'Exportación creada',
+        description: `Se exportaron ${clients.length} cliente(s) al archivo CSV.`,
+      })
+    } catch (error) {
+      showToast({
+        type: 'error',
+        title: 'No se pudo exportar',
+        description: 'Ocurrió un error al generar el archivo. Intenta nuevamente.',
+      })
+    }
+  }, [clients, showToast])
+
   const availableLocations = useMemo(() => {
     const unique = new Set(LOCATIONS)
     clients.forEach((client) => unique.add(client.location))
@@ -367,13 +454,23 @@ export default function ClientsPage() {
               Completa los campos requeridos. Los datos se guardan automáticamente en tu dispositivo.
             </p>
           </div>
-          <Button
-            type="button"
-            onClick={handleOpenImport}
-            className="w-full md:w-auto md:self-center"
-          >
-            Importar clientes
-          </Button>
+          <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row md:items-center md:justify-end">
+            <Button
+              type="button"
+              onClick={handleOpenImport}
+              className="w-full md:w-auto md:self-center"
+            >
+              Importar clientes
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={handleExportClients}
+              className="w-full border border-slate-200 bg-white text-slate-700 hover:border-blue-200 md:w-auto md:self-center"
+            >
+              Exportar clientes
+            </Button>
+          </div>
         </div>
 
         <form className="grid gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm" onSubmit={handleSubmit}>
