@@ -42,12 +42,12 @@ $requirements = Join-Path $backendDir 'requirements.txt'
 
 Set-Location -LiteralPath $repoRoot
 
-Write-Host 'Red-Link — Lanzamiento rapido (PowerShell)' -ForegroundColor Green
+Write-Host 'Red-Link — Lanzamiento rápido (PowerShell)' -ForegroundColor Green
 
 try {
-    Invoke-Step 'Verificando dependencias basicas' {
-        Assert-Command 'npm' 'No se encontro npm en el PATH. Instala Node.js desde https://nodejs.org/ antes de continuar.'
-        Assert-Command 'python' 'No se encontro Python en el PATH. Instala Python 3.10+ desde https://www.python.org/downloads/.'
+    Invoke-Step 'Verificando dependencias básicas' {
+        Assert-Command 'npm' 'No se encontró npm en el PATH. Instala Node.js desde https://nodejs.org/ antes de continuar.'
+        Assert-Command 'python' 'No se encontró Python en el PATH. Instala Python 3.10+ desde https://www.python.org/downloads/.'
     }
 
     if (-not (Test-Path (Join-Path $repoRoot '.env.local'))) {
@@ -55,11 +55,11 @@ try {
     }
 
     if (-not (Test-Path $backendDir)) {
-        throw 'No se encontro el directorio backend. Asegurate de ejecutar el script dentro del repositorio clonado.'
+        throw 'No se encontró el directorio backend. Asegúrate de ejecutar el script dentro del repositorio clonado.'
     }
 
     if (-not (Test-Path $requirements)) {
-        throw 'No se encontro backend\requirements.txt. Verifica que el repositorio este completo.'
+        throw 'No se encontró backend\requirements.txt. Verifica que el repositorio esté completo.'
     }
 
     Invoke-Step 'Preparando entorno virtual del backend' {
@@ -72,7 +72,7 @@ try {
     }
 
     if ($SkipBackendInstall) {
-        Write-Host 'Omitiendo instalacion del backend (-SkipBackendInstall habilitado).' -ForegroundColor DarkGray
+        Write-Host 'Omitiendo instalación del backend (-SkipBackendInstall habilitado).' -ForegroundColor DarkGray
     } else {
         Invoke-Step 'Instalando dependencias del backend' {
             & $venvPython -m pip install --upgrade pip
@@ -85,7 +85,7 @@ try {
     }
 
     if ($SkipFrontendInstall) {
-        Write-Host 'Omitiendo instalacion del frontend (-SkipFrontendInstall habilitado).' -ForegroundColor DarkGray
+        Write-Host 'Omitiendo instalación del frontend (-SkipFrontendInstall habilitado).' -ForegroundColor DarkGray
     } elseif (-not (Test-Path (Join-Path $repoRoot 'node_modules'))) {
         Invoke-Step 'Instalando dependencias del frontend (npm install)' {
             npm install
