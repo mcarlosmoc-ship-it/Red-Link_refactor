@@ -20,7 +20,6 @@ class BackofficeErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, errorInfo) {
-    // eslint-disable-next-line no-console
     console.error('Backoffice layout error:', error, errorInfo)
   }
 

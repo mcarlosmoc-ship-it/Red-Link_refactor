@@ -149,35 +149,6 @@ export default function DashboardPage() {
     Boolean(dashboardStatus.expenses?.error)
   const shouldShowSkeleton = Boolean(initializeStatus?.isLoading) || isRefreshing
 
-  if (shouldShowSkeleton) {
-    return <DashboardSkeleton />
-  }
-
-  const handleRetrySync = async () => {
-    setIsRetryingSync(true)
-    try {
-      await Promise.all([
-        reloadClients(),
-        reloadMetrics(),
-        reloadResellers(),
-        reloadExpenses(),
-      ])
-      showToast({
-        type: 'success',
-        title: 'Datos sincronizados',
-        description: 'La información se recargó correctamente.',
-      })
-    } catch (error) {
-      showToast({
-        type: 'error',
-        title: 'No se pudieron recargar los datos',
-        description: error?.message ?? 'Intenta nuevamente.',
-      })
-    } finally {
-      setIsRetryingSync(false)
-    }
-  }
-
   useEffect(() => {
     if (!isCurrentPeriod) {
       setPaymentForm(createEmptyPaymentForm())
@@ -214,6 +185,61 @@ export default function DashboardPage() {
     }
   }, [statusFilter, showEarningsBreakdown])
 
+  const filterDescription = useMemo(() => {
+    if (statusFilter === 'paid') {
+      return `Mostrando clientes al día en ${periodLabel}`
+    }
+    if (statusFilter === 'pending') {
+      return `Mostrando clientes con pagos pendientes en ${periodLabel}`
+    }
+    return `Mostrando todos los clientes activos en ${periodLabel}`
+  }, [statusFilter, periodLabel])
+
+  const activeClient = useMemo(
+    () => clients.find((client) => client.id === paymentForm.clientId) ?? null,
+    [clients, paymentForm.clientId],
+  )
+
+  useEffect(() => {
+    if (!expandedClientId) {
+      return
+    }
+
+    const stillVisible = filteredClients.some((client) => client.id === expandedClientId)
+    if (!stillVisible) {
+      setExpandedClientId(null)
+    }
+  }, [expandedClientId, filteredClients])
+
+  if (shouldShowSkeleton) {
+    return <DashboardSkeleton />
+  }
+
+  const handleRetrySync = async () => {
+    setIsRetryingSync(true)
+    try {
+      await Promise.all([
+        reloadClients(),
+        reloadMetrics(),
+        reloadResellers(),
+        reloadExpenses(),
+      ])
+      showToast({
+        type: 'success',
+        title: 'Datos sincronizados',
+        description: 'La información se recargó correctamente.',
+      })
+    } catch (error) {
+      showToast({
+        type: 'error',
+        title: 'No se pudieron recargar los datos',
+        description: error?.message ?? 'Intenta nuevamente.',
+      })
+    } finally {
+      setIsRetryingSync(false)
+    }
+  }
+
   const handleToggleClientDetails = (clientId) => {
     setExpandedClientId((current) => (current === clientId ? null : clientId))
   }
@@ -236,21 +262,6 @@ export default function DashboardPage() {
     })
   }
 
-  const filterDescription = useMemo(() => {
-    if (statusFilter === 'paid') {
-      return `Mostrando clientes al día en ${periodLabel}`
-    }
-    if (statusFilter === 'pending') {
-      return `Mostrando clientes con pagos pendientes en ${periodLabel}`
-    }
-    return `Mostrando todos los clientes activos en ${periodLabel}`
-  }, [statusFilter, periodLabel])
-
-  const activeClient = useMemo(
-    () => clients.find((client) => client.id === paymentForm.clientId) ?? null,
-    [clients, paymentForm.clientId],
-  )
-
   const activeMonthlyFee = activeClient?.monthlyFee ?? CLIENT_PRICE
   const outstandingAmount = (activeClient?.debtMonths ?? 0) * activeMonthlyFee
   const plannedAmount =
@@ -266,17 +277,6 @@ export default function DashboardPage() {
   const remainingBalance = Math.max(0, outstandingAmount - plannedAmount)
   const additionalAhead = Math.max(0, plannedMonths - (activeClient?.debtMonths ?? 0))
   const detailAnchorPeriod = selectedPeriod ?? currentPeriod ?? null
-
-  useEffect(() => {
-    if (!expandedClientId) {
-      return
-    }
-
-    const stillVisible = filteredClients.some((client) => client.id === expandedClientId)
-    if (!stillVisible) {
-      setExpandedClientId(null)
-    }
-  }, [expandedClientId, filteredClients])
 
   const handleSubmitPayment = async (event) => {
     event.preventDefault()
