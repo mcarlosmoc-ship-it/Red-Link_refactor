@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ..models.payment import PaymentMethod
 from .client import ClientRead
+from .common import PaginatedResponse
 
 
 class PaymentBase(BaseModel):
@@ -34,3 +35,9 @@ class PaymentRead(PaymentBase):
     client: Optional[ClientRead] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class PaymentListResponse(PaginatedResponse[PaymentRead]):
+    """Paginated payment listing."""
+
+    pass

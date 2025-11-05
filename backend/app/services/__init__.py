@@ -8,6 +8,7 @@ from .inventory import InventoryService
 from .metrics import MetricsService
 from .billing_periods import BillingPeriodService
 from .operating_costs import OperatingCostService
+from .financial_snapshots import FinancialSnapshotService
 
 __all__ = [
     "ClientService",
@@ -19,4 +20,5 @@ __all__ = [
     "MetricsService",
     "BillingPeriodService",
     "OperatingCostService",
+    "FinancialSnapshotService",
 ]

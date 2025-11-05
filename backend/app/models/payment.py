@@ -72,6 +72,11 @@ class Payment(Base):
 
     client = relationship("Client", back_populates="payments")
     billing_period = relationship("BillingPeriod", back_populates="payments")
+    audit_trail = relationship(
+        "PaymentAuditLog",
+        back_populates="payment",
+        cascade="all, delete-orphan",
+    )
 
 
 Index("payments_client_idx", Payment.client_id)

@@ -9,6 +9,7 @@ from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..models.client import ClientType, ServiceStatus
+from .common import PaginatedResponse
 
 
 class ClientBase(BaseModel):
@@ -63,3 +64,9 @@ class ClientRead(ClientBase):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ClientListResponse(PaginatedResponse[ClientRead]):
+    """Paginated client listing."""
+
+    pass

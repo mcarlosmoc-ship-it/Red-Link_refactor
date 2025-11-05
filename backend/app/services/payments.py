@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
-from typing import Iterable, Optional
+from typing import Iterable, Optional, Tuple
 
 from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from .. import models, schemas
 from .billing_periods import BillingPeriodService
+from .financial_snapshots import FinancialSnapshotService
 
 
 class PaymentServiceError(RuntimeError):
@@ -29,8 +30,14 @@ class PaymentService:
         period_key: Optional[str] = None,
         start_date: Optional[date] = None,
         end_date: Optional[date] = None,
-    ) -> Iterable[models.Payment]:
+        method: Optional[models.PaymentMethod] = None,
+        min_amount: Optional[Decimal] = None,
+        max_amount: Optional[Decimal] = None,
+        skip: int = 0,
+        limit: int = 100,
+    ) -> Tuple[Iterable[models.Payment], int]:
         query = db.query(models.Payment).options(selectinload(models.Payment.client))
+
         if client_id:
             query = query.filter(models.Payment.client_id == client_id)
         if period_key:
@@ -39,7 +46,21 @@ class PaymentService:
             query = query.filter(models.Payment.paid_on >= start_date)
         if end_date:
             query = query.filter(models.Payment.paid_on <= end_date)
-        return query.order_by(models.Payment.paid_on.desc()).all()
+        if method:
+            query = query.filter(models.Payment.method == method)
+        if min_amount is not None:
+            query = query.filter(models.Payment.amount >= min_amount)
+        if max_amount is not None:
+            query = query.filter(models.Payment.amount <= max_amount)
+
+        total = query.count()
+        items = (
+            query.order_by(models.Payment.paid_on.desc(), models.Payment.created_at.desc())
+            .offset(max(skip, 0))
+            .limit(max(limit, 1))
+            .all()
+        )
+        return items, total
 
     @staticmethod
     def create_payment(db: Session, data: schemas.PaymentCreate) -> models.Payment:
@@ -80,6 +101,19 @@ class PaymentService:
         db.add(payment)
         db.add(client)
 
+        FinancialSnapshotService.apply_payment(db, payment.period_key, amount)
+        audit_entry = models.PaymentAuditLog(
+            payment=payment,
+            action=models.PaymentAuditAction.CREATED,
+            snapshot={
+                "amount": str(amount),
+                "months_paid": str(months_paid),
+                "method": payment.method,
+                "paid_on": str(payment.paid_on),
+            },
+        )
+        db.add(audit_entry)
+
         try:
             db.commit()
         except SQLAlchemyError as exc:
@@ -92,7 +126,10 @@ class PaymentService:
 
     @staticmethod
     def delete_payment(db: Session, payment: models.Payment) -> None:
+        amount = Decimal(payment.amount)
+        period_key = payment.period_key
         db.delete(payment)
+        FinancialSnapshotService.remove_payment(db, period_key, amount)
         try:
             db.commit()
         except SQLAlchemyError as exc:
