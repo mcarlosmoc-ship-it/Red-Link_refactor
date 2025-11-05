@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react'
 import { peso, formatPeriodLabel, getPeriodFromDateString, today } from '../utils/formatters.js'
 import Button from '../components/ui/Button.jsx'
 import { Card, CardContent } from '../components/ui/Card.jsx'
-import { useBackofficeStore } from '../store/useBackofficeStore.js'
+import { CLIENT_PRICE, useBackofficeStore } from '../store/useBackofficeStore.js'
 import { usePayments } from '../hooks/usePayments.js'
 import { useToast } from '../hooks/useToast.js'
 import { useClients } from '../hooks/useClients.js'
@@ -68,9 +68,24 @@ export default function PaymentsPage() {
     const amountValue = Number(paymentForm.amount)
     const normalizedMonths = Number.isFinite(monthsValue) && monthsValue > 0 ? monthsValue : 0
     const normalizedAmount = Number.isFinite(amountValue) && amountValue > 0 ? amountValue : 0
+    const selectedClient = clients.find(
+      (client) => String(client.id) === String(paymentForm.clientId),
+    )
+    const parsedMonthlyFee = Number(selectedClient?.monthlyFee)
+    const clientMonthlyFee = Number.isFinite(parsedMonthlyFee)
+      ? parsedMonthlyFee
+      : CLIENT_PRICE
+    const requiresExplicitMonths = clientMonthlyFee <= 0
 
     if (normalizedMonths <= 0 && normalizedAmount <= 0) {
       setPaymentError('Ingresa meses pagados o un monto a registrar.')
+      return
+    }
+
+    if (requiresExplicitMonths && normalizedMonths <= 0) {
+      setPaymentError(
+        'Este cliente no tiene una tarifa mensual configurada. Ingresa los meses cubiertos.',
+      )
       return
     }
 

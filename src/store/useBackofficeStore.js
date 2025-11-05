@@ -445,12 +445,18 @@ export const useBackofficeStore = create((set, get) => ({
     const normalizedAmount = normalizeDecimal(amount, 0)
 
     const computedAmount = normalizedAmount > 0 ? normalizedAmount : normalizedMonths * monthlyFee
-    const computedMonths =
-      normalizedMonths > 0
-        ? normalizedMonths
-        : monthlyFee > 0
-          ? computedAmount / monthlyFee
-          : 0
+    const computedMonths = (() => {
+      if (normalizedMonths > 0) {
+        return normalizedMonths
+      }
+
+      if (monthlyFee > 0) {
+        const monthsFromAmount = computedAmount / monthlyFee
+        return monthsFromAmount > 0 ? monthsFromAmount : 0
+      }
+
+      return computedAmount > 0 ? 1 : 0
+    })()
 
     await runMutation({
       set,
