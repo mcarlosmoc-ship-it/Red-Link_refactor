@@ -27,6 +27,16 @@ cd backend
 alembic upgrade head
 ```
 
+Si vas a crear nuevas versiones, genera un borrador autogenerado con:
+
+```bash
+./scripts/new_migration.sh -m "descripcion breve"
+```
+
+El script se asegura de que el entorno virtual esté listo antes de invocar
+`alembic revision --autogenerate`. Después edita el archivo generado en
+`alembic/versions/` para ajustar defaults o movimientos de datos.
+
 La primera migración (`20240315_0001_initial_schema.py`) recrea las tablas,
 claves foráneas, índices e inserciones iniciales que aparecen en
 `db/schema.sql`. Debido a limitaciones de SQLite se aplicaron los siguientes
@@ -81,3 +91,21 @@ cd ..
 
 El comando creará/actualizará `backend/.venv`, instalará dependencias, aplicará
 las migraciones y abrirá tanto Uvicorn como `npm run dev` en paralelo.
+
+## Checklist para cambios de esquema
+
+Cuando necesites reestructurar la base de datos sigue el
+[flujo recomendado](../docs/database-workflow.md). A modo de resumen:
+
+1. Ajusta `db/schema.sql` o los modelos en `backend/app/models/` para reflejar
+   la nueva forma de los datos.
+2. Genera una migración con `./scripts/new_migration.sh -m "mensaje"` y edítala
+   según sea necesario.
+3. Aplica `alembic upgrade head` en tu entorno local y verifica que la API siga
+   funcionando.
+4. Actualiza esquemas Pydantic, seeds y componentes del frontend involucrados.
+5. Ejecuta `./dev.sh --skip-frontend-install --skip-backend-install` para correr
+   lint, pruebas y validaciones automáticas.
+
+Documentar cada migración y mantener sincronizados los fixtures de prueba hará
+que futuros cambios sean más rápidos y confiables.

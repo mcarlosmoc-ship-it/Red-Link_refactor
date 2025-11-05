@@ -156,6 +156,9 @@ Recuerda detener los servicios cerrando las ventanas que se abren al final.
 
   Tras regenerarla, vuelve a iniciar la API para que ejecute las migraciones y
   asegúrate de copiar nuevamente el archivo si necesitas distribuirlo.
+- Cuando planifiques una reestructuración importante, consulta el documento
+  [Flujo recomendado para cambios de base de datos](docs/database-workflow.md)
+  para seguir un checklist que cubre diseño, migraciones, seeds y validaciones.
 
 ## Verificación y pruebas
 
