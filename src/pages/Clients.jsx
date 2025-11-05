@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import Button from '../components/ui/Button.jsx'
+import ImportClientsModal from '../components/clients/ImportClientsModal.jsx'
 import { Card, CardContent } from '../components/ui/Card.jsx'
 import { CLIENT_PRICE, useBackofficeStore } from '../store/useBackofficeStore.js'
 import { useClients } from '../hooks/useClients.js'
@@ -56,6 +57,7 @@ export default function ClientsPage() {
     reload: reloadClients,
     createClient,
     toggleClientService,
+    importClients,
   } = useClients()
   const { showToast } = useToast()
   const location = useLocation()
@@ -66,6 +68,9 @@ export default function ClientsPage() {
   const [formErrors, setFormErrors] = useState({})
   const [isRetrying, setIsRetrying] = useState(false)
   const [highlightedClientId, setHighlightedClientId] = useState(null)
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false)
+  const [importSummary, setImportSummary] = useState(null)
+  const [isImportingClients, setIsImportingClients] = useState(false)
   const isMutatingClients = Boolean(clientsStatus?.isMutating)
   const isSyncingClients = Boolean(clientsStatus?.isLoading)
   const isLoadingClients = Boolean(clientsStatus?.isLoading && clients.length === 0)
@@ -124,6 +129,47 @@ export default function ClientsPage() {
       })
     } finally {
       setIsRetrying(false)
+    }
+  }
+
+  const handleOpenImport = () => {
+    setImportSummary(null)
+    setIsImportModalOpen(true)
+  }
+
+  const handleCloseImport = () => {
+    if (isImportingClients) {
+      return
+    }
+    setIsImportModalOpen(false)
+    setImportSummary(null)
+  }
+
+  const handleImportClients = async (file) => {
+    setIsImportingClients(true)
+    try {
+      const summary = await importClients(file)
+      setImportSummary(summary)
+      const createdCount = Number(summary?.created_count ?? 0)
+      const hasErrors = Number(summary?.failed_count ?? 0) > 0
+      const description = hasErrors
+        ? 'Revisa los detalles para corregir las filas con errores.'
+        : createdCount > 0
+          ? `Se agregaron ${createdCount} clientes correctamente.`
+          : 'El archivo no generó registros nuevos.'
+      showToast({
+        type: hasErrors ? 'warning' : 'success',
+        title: hasErrors ? 'Importación con advertencias' : 'Clientes importados',
+        description,
+      })
+    } catch (error) {
+      showToast({
+        type: 'error',
+        title: 'No se pudieron importar los clientes',
+        description: error?.message ?? 'Intenta nuevamente.',
+      })
+    } finally {
+      setIsImportingClients(false)
     }
   }
 
@@ -312,13 +358,22 @@ export default function ClientsPage() {
   return (
     <div className="space-y-8">
       <section aria-labelledby="nuevo" className="space-y-4">
-        <div>
-          <h2 id="nuevo" className="text-lg font-semibold text-slate-900">
-            Agregar nuevo cliente
-          </h2>
-          <p className="text-sm text-slate-500">
-            Completa los campos requeridos. Los datos se guardan automáticamente en tu dispositivo.
-          </p>
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <h2 id="nuevo" className="text-lg font-semibold text-slate-900">
+              Agregar nuevo cliente
+            </h2>
+            <p className="text-sm text-slate-500">
+              Completa los campos requeridos. Los datos se guardan automáticamente en tu dispositivo.
+            </p>
+          </div>
+          <Button
+            type="button"
+            onClick={handleOpenImport}
+            className="w-full md:w-auto md:self-center"
+          >
+            Importar clientes
+          </Button>
         </div>
 
         <form className="grid gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm" onSubmit={handleSubmit}>
@@ -581,6 +636,13 @@ export default function ClientsPage() {
           </div>
         </form>
       </section>
+      <ImportClientsModal
+        isOpen={isImportModalOpen}
+        onClose={handleCloseImport}
+        onSubmit={handleImportClients}
+        isProcessing={isImportingClients}
+        summary={importSummary}
+      />
 
       <section aria-labelledby="listado" className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-4">

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from .. import schemas
@@ -75,3 +76,38 @@ def update_client(
     if client is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client not found")
     return ClientService.update_client(db, client, client_in)
+
+
+@router.get("/import/template", response_class=StreamingResponse)
+def download_client_import_template() -> StreamingResponse:
+    """Provide a CSV template with the expected client columns."""
+
+    csv_content = ClientService.build_import_template()
+    headers = {
+        "Content-Disposition": "attachment; filename=client_import_template.csv",
+        "Cache-Control": "no-store",
+    }
+    return StreamingResponse(iter([csv_content]), media_type="text/csv", headers=headers)
+
+
+@router.post(
+    "/import",
+    response_model=schemas.ClientImportSummary,
+    status_code=status.HTTP_201_CREATED,
+)
+def import_clients(
+    payload: schemas.ClientImportRequest,
+    db: Session = Depends(get_db),
+) -> schemas.ClientImportSummary:
+    """Accept CSV content (as text) and create client records in bulk."""
+
+    if not payload.content or not payload.content.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El archivo está vacío.",
+        )
+
+    try:
+        return ClientService.import_clients_from_csv(db, payload.content)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
