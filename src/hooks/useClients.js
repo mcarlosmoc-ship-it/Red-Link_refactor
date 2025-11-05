@@ -10,6 +10,7 @@ export const useClients = ({ autoLoad = true, ttl = DEFAULT_TTL } = {}) => {
     loadClients,
     createClient,
     toggleClientService,
+    importClients,
     clearError,
   } = useBackofficeStore((state) => ({
     clients: state.clients,
@@ -17,6 +18,7 @@ export const useClients = ({ autoLoad = true, ttl = DEFAULT_TTL } = {}) => {
     loadClients: state.loadClients,
     createClient: state.createClient,
     toggleClientService: state.toggleClientService,
+    importClients: state.importClients,
     clearError: () => state.clearResourceError('clients'),
   }))
 
@@ -54,5 +56,6 @@ export const useClients = ({ autoLoad = true, ttl = DEFAULT_TTL } = {}) => {
     reload,
     createClient,
     toggleClientService,
+    importClients,
   }
 }

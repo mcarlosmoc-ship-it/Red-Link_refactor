@@ -396,6 +396,36 @@ export const useBackofficeStore = create((set, get) => ({
       get().loadMetrics({ force: true, retries: 1 }),
     ])
   },
+  importClients: async (file) => {
+    if (!file || typeof file.text !== 'function') {
+      throw new Error('Selecciona un archivo CSV válido.')
+    }
+
+    const content = await file.text()
+    const payload = {
+      filename: typeof file.name === 'string' ? file.name : undefined,
+      content,
+    }
+
+    const summary = await runMutation({
+      set,
+      resources: 'clients',
+      action: async () => {
+        const response = await apiClient.post('/clients/import', payload)
+        return response.data
+      },
+    })
+
+    invalidateQuery(queryKeys.clients())
+    invalidateQuery(['metrics'])
+
+    await Promise.all([
+      get().loadClients({ force: true, retries: 1 }),
+      get().loadMetrics({ force: true, retries: 1 }),
+    ])
+
+    return summary
+  },
   createReseller: async ({ name, base, location }) => {
     await runMutation({
       set,

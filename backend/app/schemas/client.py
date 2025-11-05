@@ -70,3 +70,27 @@ class ClientListResponse(PaginatedResponse[ClientRead]):
     """Paginated client listing."""
 
     pass
+
+
+class ClientImportError(BaseModel):
+    """Represents a validation or persistence error for a row in an import file."""
+
+    row_number: int = Field(..., ge=1)
+    message: str
+    field_errors: dict[str, str] = Field(default_factory=dict)
+
+
+class ClientImportRequest(BaseModel):
+    """Request payload expected when importing clients in bulk."""
+
+    filename: Optional[str] = None
+    content: str = Field(..., min_length=1)
+
+
+class ClientImportSummary(BaseModel):
+    """Summary returned after processing a bulk import."""
+
+    total_rows: int = Field(..., ge=0)
+    created_count: int = Field(..., ge=0)
+    failed_count: int = Field(..., ge=0)
+    errors: list[ClientImportError] = Field(default_factory=list)
