@@ -19,4 +19,24 @@ describe('buildApiUrl', () => {
     const urlWithHash = buildApiUrl('/clients?status=active#section', { page: 4 })
     expect(urlWithHash).toBe('http://localhost:8000/clients?status=active&page=4#section')
   })
+
+  it('omits nullish query parameter values', () => {
+    const url = buildApiUrl('/clients', {
+      page: 1,
+      status: null,
+      sort: undefined,
+      search: 'john'
+    })
+
+    expect(url).toBe('http://localhost:8000/clients?page=1&search=john')
+  })
+
+  it('expands array values into repeated parameters', () => {
+    const url = buildApiUrl('/clients', {
+      status: ['active', 'vip'],
+      sort: 'name'
+    })
+
+    expect(url).toBe('http://localhost:8000/clients?status=active&status=vip&sort=name')
+  })
 })
