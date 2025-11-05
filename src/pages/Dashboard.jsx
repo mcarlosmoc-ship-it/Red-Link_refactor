@@ -15,6 +15,8 @@ import { useClients } from '../hooks/useClients.js'
 import { useDashboardData } from '../hooks/useDashboardData.js'
 import { useToast } from '../hooks/useToast.js'
 import { CLIENT_PRICE, useBackofficeStore } from '../store/useBackofficeStore.js'
+import { useBackofficeRefresh } from '../contexts/BackofficeRefreshContext.jsx'
+import DashboardSkeleton from './DashboardSkeleton.jsx'
 
 const periodsFormatter = new Intl.NumberFormat('es-MX', { maximumFractionDigits: 2 })
 
@@ -75,6 +77,8 @@ const getFractionalDebt = (debtMonths) => {
 }
 
 export default function DashboardPage() {
+  const initializeStatus = useBackofficeStore((state) => state.status.initialize)
+  const { isRefreshing } = useBackofficeRefresh()
   const [statusFilter, setStatusFilter] = useState('pending')
   const [searchTerm, setSearchTerm] = useState('')
   const [paymentForm, setPaymentForm] = useState(createEmptyPaymentForm)
@@ -143,6 +147,11 @@ export default function DashboardPage() {
     Boolean(dashboardStatus.metrics?.error) ||
     Boolean(dashboardStatus.resellers?.error) ||
     Boolean(dashboardStatus.expenses?.error)
+  const shouldShowSkeleton = Boolean(initializeStatus?.isLoading) || isRefreshing
+
+  if (shouldShowSkeleton) {
+    return <DashboardSkeleton />
+  }
 
   const handleRetrySync = async () => {
     setIsRetryingSync(true)

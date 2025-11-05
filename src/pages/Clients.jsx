@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import Button from '../components/ui/Button.jsx'
 import { Card, CardContent } from '../components/ui/Card.jsx'
-import { CLIENT_PRICE } from '../store/useBackofficeStore.js'
+import { CLIENT_PRICE, useBackofficeStore } from '../store/useBackofficeStore.js'
 import { useClients } from '../hooks/useClients.js'
 import { useToast } from '../hooks/useToast.js'
 import { peso } from '../utils/formatters.js'
@@ -13,6 +13,8 @@ import {
   createAssignedIpIndex,
   getAvailableIpsByRange,
 } from '../utils/clientIpConfig.js'
+import { useBackofficeRefresh } from '../contexts/BackofficeRefreshContext.jsx'
+import ClientsSkeleton from './ClientsSkeleton.jsx'
 
 const periodsFormatter = new Intl.NumberFormat('es-MX', { maximumFractionDigits: 2 })
 
@@ -46,6 +48,8 @@ const defaultForm = {
 }
 
 export default function ClientsPage() {
+  const initializeStatus = useBackofficeStore((state) => state.status.initialize)
+  const { isRefreshing } = useBackofficeRefresh()
   const {
     clients,
     status: clientsStatus,
@@ -66,6 +70,11 @@ export default function ClientsPage() {
   const isSyncingClients = Boolean(clientsStatus?.isLoading)
   const isLoadingClients = Boolean(clientsStatus?.isLoading && clients.length === 0)
   const hasClientsError = Boolean(clientsStatus?.error)
+  const shouldShowSkeleton = Boolean(initializeStatus?.isLoading) || isRefreshing
+
+  if (shouldShowSkeleton) {
+    return <ClientsSkeleton />
+  }
 
   useEffect(() => {
     if (!location?.hash) {

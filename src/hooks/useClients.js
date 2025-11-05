@@ -1,6 +1,5 @@
 import { useEffect, useMemo } from 'react'
 import { useBackofficeStore } from '../store/useBackofficeStore.js'
-import { useToast } from './useToast.js'
 
 const DEFAULT_TTL = 60_000
 
@@ -20,19 +19,6 @@ export const useClients = ({ autoLoad = true, ttl = DEFAULT_TTL } = {}) => {
     toggleClientService: state.toggleClientService,
     clearError: () => state.clearResourceError('clients'),
   }))
-
-  const { showToast } = useToast()
-
-  useEffect(() => {
-    if (!status?.error) {
-      return
-    }
-    showToast({
-      type: 'error',
-      title: 'No se pudieron sincronizar los clientes',
-      description: status.error,
-    })
-  }, [status?.error, showToast])
 
   useEffect(() => {
     if (!autoLoad) {

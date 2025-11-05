@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { Outlet } from 'react-router-dom'
 import { Bell } from 'lucide-react'
 import Button from '../components/ui/Button.jsx'
@@ -6,19 +6,89 @@ import { AppSidebar } from '../components/layout/AppSidebar.jsx'
 import { formatDate } from '../utils/formatters.js'
 import { useBackofficeStore } from '../store/useBackofficeStore.js'
 import { useToast } from '../hooks/useToast.js'
+import { BackofficeRefreshProvider } from '../contexts/BackofficeRefreshContext.jsx'
+import { useInitializeBackoffice } from '../hooks/useInitializeBackoffice.js'
+
+class BackofficeErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props)
+    this.state = { error: null }
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error }
+  }
+
+  componentDidCatch(error, errorInfo) {
+    // eslint-disable-next-line no-console
+    console.error('Backoffice layout error:', error, errorInfo)
+  }
+
+  handleRetry = () => {
+    this.setState({ error: null })
+    if (this.props.onRetry) {
+      this.props.onRetry()
+    }
+  }
+
+  render() {
+    const { error } = this.state
+    if (error) {
+      return (
+        <div className="flex h-full flex-col items-center justify-center gap-4 p-6 text-center">
+          <div className="space-y-2">
+            <h2 className="text-xl font-semibold text-slate-900">Ocurrió un error inesperado</h2>
+            <p className="text-sm text-slate-600">
+              No se pudo cargar el panel en este momento. Intenta nuevamente.
+            </p>
+          </div>
+          <Button type="button" onClick={this.handleRetry}>
+            Reintentar
+          </Button>
+        </div>
+      )
+    }
+
+    return this.props.children
+  }
+}
 
 export default function BackofficeLayout() {
-  const initialize = useBackofficeStore((state) => state.initialize)
   const refreshData = useBackofficeStore((state) => state.refreshData)
-  const syncCurrentPeriod = useBackofficeStore((state) => state.syncCurrentPeriod)
   const initializeStatus = useBackofficeStore((state) => state.status.initialize)
+  const clientsStatus = useBackofficeStore((state) => state.status.clients)
+  const paymentsStatus = useBackofficeStore((state) => state.status.payments)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const { showToast } = useToast()
+  const { isLoading: isInitializing, retry } = useInitializeBackoffice()
+  const lastClientsErrorRef = useRef(null)
+  const lastPaymentsErrorRef = useRef(null)
 
   useEffect(() => {
-    initialize()
-    syncCurrentPeriod()
-  }, [initialize, syncCurrentPeriod])
+    if (clientsStatus?.error && lastClientsErrorRef.current !== clientsStatus.error) {
+      showToast({
+        type: 'error',
+        title: 'No se pudieron sincronizar los clientes',
+        description: clientsStatus.error,
+      })
+      lastClientsErrorRef.current = clientsStatus.error
+    } else if (!clientsStatus?.error) {
+      lastClientsErrorRef.current = null
+    }
+  }, [clientsStatus?.error, showToast])
+
+  useEffect(() => {
+    if (paymentsStatus?.error && lastPaymentsErrorRef.current !== paymentsStatus.error) {
+      showToast({
+        type: 'error',
+        title: 'No se pudieron cargar los pagos',
+        description: paymentsStatus.error,
+      })
+      lastPaymentsErrorRef.current = paymentsStatus.error
+    } else if (!paymentsStatus?.error) {
+      lastPaymentsErrorRef.current = null
+    }
+  }, [paymentsStatus?.error, showToast])
 
   const handleRefresh = async () => {
     setIsRefreshing(true)
@@ -65,9 +135,9 @@ export default function BackofficeLayout() {
                   variant="ghost"
                   className="border border-slate-200 bg-white text-slate-700 hover:border-blue-200"
                   onClick={handleRefresh}
-                  disabled={Boolean(initializeStatus?.isLoading) || isRefreshing}
+                  disabled={Boolean(isInitializing) || isRefreshing}
                 >
-                  {initializeStatus?.isLoading || isRefreshing ? 'Sincronizando…' : 'Actualizar datos'}
+                  {isInitializing || isRefreshing ? 'Sincronizando…' : 'Actualizar datos'}
                 </Button>
               </div>
             </div>
@@ -77,9 +147,13 @@ export default function BackofficeLayout() {
               </div>
             )}
           </header>
-          <main className="flex-1 overflow-y-auto bg-slate-50 px-4 py-6 sm:px-6">
-            <Outlet />
-          </main>
+          <BackofficeRefreshProvider value={{ isRefreshing }}>
+            <main className="flex-1 overflow-y-auto bg-slate-50 px-4 py-6 sm:px-6">
+              <BackofficeErrorBoundary onRetry={retry}>
+                <Outlet />
+              </BackofficeErrorBoundary>
+            </main>
+          </BackofficeRefreshProvider>
         </div>
       </div>
     </div>

@@ -1,6 +1,5 @@
 import { useEffect, useMemo } from 'react'
 import { useBackofficeStore } from '../store/useBackofficeStore.js'
-import { useToast } from './useToast.js'
 
 const DEFAULT_TTL = 60_000
 
@@ -21,19 +20,7 @@ export const usePayments = ({ autoLoad = true, ttl = DEFAULT_TTL, periodKey } = 
     selectedPeriod: state.periods?.selected ?? state.periods?.current ?? null,
   }))
 
-  const { showToast } = useToast()
   const targetPeriod = periodKey ?? selectedPeriod ?? null
-
-  useEffect(() => {
-    if (!status?.error) {
-      return
-    }
-    showToast({
-      type: 'error',
-      title: 'No se pudieron cargar los pagos',
-      description: status.error,
-    })
-  }, [status?.error, showToast])
 
   useEffect(() => {
     if (!autoLoad) {

@@ -9,6 +9,8 @@ import {
   createAssignedIpIndex,
   getAvailableIpsByRange,
 } from '../utils/clientIpConfig.js'
+import { useBackofficeRefresh } from '../contexts/BackofficeRefreshContext.jsx'
+import InventorySkeleton from './InventorySkeleton.jsx'
 
 const STATUS_LABELS = {
   assigned: 'Asignado',
@@ -55,14 +57,17 @@ export default function InventoryPage() {
     inventoryStatus,
     loadInventory,
     addInventoryItem,
+    initializeStatus,
   } = useBackofficeStore((state) => ({
     inventory: state.inventory,
     inventoryStatus: state.status.inventory,
     loadInventory: state.loadInventory,
     addInventoryItem: state.addInventoryItem,
+    initializeStatus: state.status.initialize,
   }))
   const { clients, status: clientsStatus, toggleClientService, reload: reloadClients } = useClients()
   const { showToast } = useToast()
+  const { isRefreshing } = useBackofficeRefresh()
   const [equipmentForm, setEquipmentForm] = useState({ ...defaultEquipmentForm })
   const [equipmentErrors, setEquipmentErrors] = useState({})
   const [isRetryingInventory, setIsRetryingInventory] = useState(false)
@@ -169,6 +174,11 @@ export default function InventoryPage() {
   const isLoadingInventory = Boolean(inventoryStatus?.isLoading && inventory.length === 0)
   const isSyncingInventory = Boolean(inventoryStatus?.isLoading && inventory.length > 0)
   const hasInventoryError = Boolean(inventoryStatus?.error)
+  const shouldShowSkeleton = Boolean(initializeStatus?.isLoading) || isRefreshing
+
+  if (shouldShowSkeleton) {
+    return <InventorySkeleton />
+  }
 
   const isLoadingTokenClients = Boolean(clientsStatus?.isLoading && tokenClients.length === 0)
   const isSyncingTokenClients = Boolean(clientsStatus?.isLoading && tokenClients.length > 0)

@@ -3,6 +3,8 @@ import Button from '../components/ui/Button.jsx'
 import { Card, CardContent } from '../components/ui/Card.jsx'
 import { peso, today } from '../utils/formatters.js'
 import { useBackofficeStore } from '../store/useBackofficeStore.js'
+import { useBackofficeRefresh } from '../contexts/BackofficeRefreshContext.jsx'
+import ResellersSkeleton from './ResellersSkeleton.jsx'
 
 const VOUCHER_TYPES = [
   { key: 'h1', label: '1 hora' },
@@ -16,14 +18,16 @@ const VOUCHER_TYPES = [
 const createEmptyQty = () => VOUCHER_TYPES.reduce((acc, item) => ({ ...acc, [item.key]: 0 }), {})
 
 export default function ResellersPage() {
-  const { resellers, voucherPrices, addResellerDelivery, settleResellerDelivery, createReseller } =
+  const { resellers, voucherPrices, addResellerDelivery, settleResellerDelivery, createReseller, initializeStatus } =
     useBackofficeStore((state) => ({
       resellers: state.resellers,
       voucherPrices: state.voucherPrices,
       addResellerDelivery: state.addResellerDelivery,
       settleResellerDelivery: state.settleResellerDelivery,
       createReseller: state.createReseller,
+      initializeStatus: state.status.initialize,
     }))
+  const { isRefreshing } = useBackofficeRefresh()
 
   const initialResellerId = resellers[0]?.id ?? ''
   const [selectedReseller, setSelectedReseller] = useState(initialResellerId)
@@ -38,6 +42,11 @@ export default function ResellersPage() {
   const [resellerForm, setResellerForm] = useState({ name: '', location: '', base: '1' })
   const [isCreatingReseller, setIsCreatingReseller] = useState(false)
   const [feedback, setFeedback] = useState(null)
+  const shouldShowSkeleton = Boolean(initializeStatus?.isLoading) || isRefreshing
+
+  if (shouldShowSkeleton) {
+    return <ResellersSkeleton />
+  }
 
   useEffect(() => {
     if (resellers.length === 0) {

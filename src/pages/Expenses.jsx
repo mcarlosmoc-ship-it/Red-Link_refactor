@@ -3,6 +3,8 @@ import { peso, today } from '../utils/formatters.js'
 import Button from '../components/ui/Button.jsx'
 import { Card, CardContent } from '../components/ui/Card.jsx'
 import { useBackofficeStore } from '../store/useBackofficeStore.js'
+import { useBackofficeRefresh } from '../contexts/BackofficeRefreshContext.jsx'
+import ExpensesSkeleton from './ExpensesSkeleton.jsx'
 
 const createDefaultExpense = () => ({
   date: today(),
@@ -13,10 +15,12 @@ const createDefaultExpense = () => ({
 })
 
 export default function ExpensesPage() {
-  const { expenses, addExpense } = useBackofficeStore((state) => ({
+  const { expenses, addExpense, initializeStatus } = useBackofficeStore((state) => ({
     expenses: state.expenses,
     addExpense: state.addExpense,
+    initializeStatus: state.status.initialize,
   }))
+  const { isRefreshing } = useBackofficeRefresh()
   const [form, setForm] = useState(() => createDefaultExpense())
   const [formErrors, setFormErrors] = useState({})
   const [categoryFilter, setCategoryFilter] = useState('Todos')
@@ -32,6 +36,11 @@ export default function ExpensesPage() {
   }, [expenses, categoryFilter])
 
   const totalExpenses = filteredExpenses.reduce((sum, expense) => sum + (expense.amount ?? 0), 0)
+  const shouldShowSkeleton = Boolean(initializeStatus?.isLoading) || isRefreshing
+
+  if (shouldShowSkeleton) {
+    return <ExpensesSkeleton />
+  }
 
   const validate = () => {
     const errors = {}
