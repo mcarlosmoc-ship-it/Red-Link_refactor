@@ -33,7 +33,7 @@
 - Establecer un sistema de espaciado consistente entre botones y campos para facilitar la exploración visual.
 
 ### 4. Ayuda contextual y educación del usuario
-- Incorporar tooltips o popovers con explicaciones breves en campos técnicos (IP fija, base, método de pago) activados al pasar el cursor o con un icono de información.
+- Incorporar tooltips o popovers con explicaciones breves en campos técnicos (IP fija, base, método de pago) activados al pasar el cursor o con un ícono de información.
 - Integrar enlaces a documentación rápida o tutoriales dentro de un panel de ayuda accesible desde todas las vistas.
 - Implementar mensajes de ayuda predeterminados que se muestren cuando un campo recibe foco por primera vez.
 
