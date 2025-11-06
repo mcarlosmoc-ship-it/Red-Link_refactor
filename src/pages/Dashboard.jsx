@@ -1,9 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState, useId } from 'react'
 import { CalendarDays, DollarSign, Plus, Wifi } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import StatCard from '../components/dashboard/StatCard.jsx'
 import EarningsCard from '../components/dashboard/EarningsCard.jsx'
 import Button from '../components/ui/Button.jsx'
+import InfoTooltip from '../components/ui/InfoTooltip.jsx'
 import {
   peso,
   formatPeriodLabel,
@@ -94,6 +95,7 @@ export default function DashboardPage() {
   const [statusFilter, setStatusFilter] = useState('pending')
   const [searchTerm, setSearchTerm] = useState('')
   const [paymentForm, setPaymentForm] = useState(createEmptyPaymentForm)
+  const [paymentErrors, setPaymentErrors] = useState({})
   const [isRetryingSync, setIsRetryingSync] = useState(false)
   const [showEarningsBreakdown, setShowEarningsBreakdown] = useState(false)
   const [expandedClientId, setExpandedClientId] = useState(null)
@@ -449,6 +451,7 @@ export default function DashboardPage() {
       method: 'Efectivo',
       note: '',
     })
+    setPaymentErrors({})
   }
 
   const activeMonthlyFee = activeClient?.monthlyFee ?? CLIENT_PRICE
@@ -469,21 +472,12 @@ export default function DashboardPage() {
 
   const handleSubmitPayment = async (event) => {
     event.preventDefault()
+    const errors = {}
     if (!paymentForm.clientId) {
-      showToast({
-        type: 'error',
-        title: 'Selecciona un cliente',
-        description: 'Elige un cliente para registrar el pago.',
-      })
-      return
+      errors.clientId = 'Selecciona un cliente para registrar el pago.'
     }
     if (!activeClient) {
-      showToast({
-        type: 'error',
-        title: 'Cliente no encontrado',
-        description: 'No se encontró información del cliente seleccionado.',
-      })
-      return
+      errors.client = 'No se encontró información del cliente seleccionado.'
     }
 
     const monthlyFeeRaw = Number(activeClient?.monthlyFee)
@@ -496,29 +490,27 @@ export default function DashboardPage() {
 
     if (isAmountMode) {
       if (!Number.isFinite(amountValue) || amountValue <= 0) {
-        showToast({
-          type: 'error',
-          title: 'Monto inválido',
-          description: 'Ingresa un monto mayor a cero.',
-        })
-        return
+        errors.amount = 'Ingresa un monto mayor a cero.'
       }
       if (!hasPositiveMonthlyFee) {
-        showToast({
-          type: 'error',
-          title: 'Tarifa no disponible',
-          description: 'Registra el pago por periodos porque el cliente no tiene una tarifa mensual.',
-        })
-        return
+        errors.mode = 'Registra el pago por periodos porque el cliente no tiene una tarifa mensual.'
       }
     } else if (!Number.isFinite(monthsValue) || monthsValue <= 0) {
+      errors.months = 'Ingresa un número de periodos mayor a cero.'
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setPaymentErrors(errors)
+      const firstError = Object.values(errors)[0]
       showToast({
         type: 'error',
-        title: 'Periodo inválido',
-        description: 'Ingresa un número de periodos mayor a cero.',
+        title: 'Revisa la información del pago',
+        description: firstError,
       })
       return
     }
+
+    setPaymentErrors({})
 
     const monthsToRegister = isAmountMode
       ? amountValue / monthlyFee
@@ -733,6 +725,13 @@ export default function DashboardPage() {
         amount: toInputValue(derivedAmount, 2),
       }
     })
+    setPaymentErrors((prev) => {
+      if (!prev.months && !prev.amount) return prev
+      const next = { ...prev }
+      delete next.months
+      delete next.amount
+      return next
+    })
   }
 
   const handleAmountInputChange = (value) => {
@@ -755,6 +754,13 @@ export default function DashboardPage() {
         amount: value,
         months: toInputValue(derivedMonths, 4),
       }
+    })
+    setPaymentErrors((prev) => {
+      if (!prev.amount && !prev.months) return prev
+      const next = { ...prev }
+      delete next.amount
+      delete next.months
+      return next
     })
   }
 
@@ -790,6 +796,12 @@ export default function DashboardPage() {
       }
 
       return { ...prev, mode }
+    })
+    setPaymentErrors((prev) => {
+      if (!prev.mode) return prev
+      const next = { ...prev }
+      delete next.mode
+      return next
     })
   }
 

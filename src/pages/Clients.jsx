@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import Button from '../components/ui/Button.jsx'
+import InfoTooltip from '../components/ui/InfoTooltip.jsx'
 import ImportClientsModal from '../components/clients/ImportClientsModal.jsx'
 import { Card, CardContent } from '../components/ui/Card.jsx'
 import { CLIENT_PRICE, useBackofficeStore } from '../store/useBackofficeStore.js'
@@ -649,8 +650,11 @@ export default function ClientsPage() {
 
         <form className="grid gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm" onSubmit={handleSubmit}>
           <div className="grid gap-4 md:grid-cols-2">
-            <label className="grid gap-1 text-xs font-medium text-slate-600">
-              Tipo de cliente
+            <label className="grid gap-1 text-xs font-semibold text-slate-700">
+              <span className="flex items-center gap-1">
+                Tipo de cliente
+                <InfoTooltip text="Elige si es un cliente residencial o un punto con antena pública para mostrar los campos correspondientes." />
+              </span>
               <select
                 value={formState.type}
                 onChange={(event) => {
@@ -690,7 +694,7 @@ export default function ClientsPage() {
                   })
                   setFormErrors({})
                 }}
-                className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+                className="rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200"
               >
                 {Object.entries(CLIENT_TYPE_LABELS).map(([value, label]) => (
                   <option key={value} value={value}>
@@ -699,13 +703,18 @@ export default function ClientsPage() {
                 ))}
               </select>
             </label>
-            <label className="grid gap-1 text-xs font-medium text-slate-600">
-              Nombre completo
+            <label className="grid gap-1 text-xs font-semibold text-slate-700">
+              <span className="flex items-center gap-1">
+                Nombre completo
+                <InfoTooltip text="Utiliza el nombre con el que aparece en los contratos o facturación para evitar confusiones." />
+              </span>
               <input
                 value={formState.name}
                 onChange={(event) => setFormState((prev) => ({ ...prev, name: event.target.value }))}
-                className={`rounded-md border px-3 py-2 text-sm ${
-                  formErrors.name ? 'border-red-400 focus:border-red-400 focus:ring-red-200' : 'border-slate-300'
+                className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
+                  formErrors.name
+                    ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
+                    : 'border-slate-300'
                 }`}
                 placeholder="Juan Pérez"
                 autoComplete="off"
@@ -717,12 +726,15 @@ export default function ClientsPage() {
           </div>
 
           <div className="grid gap-4 md:grid-cols-4">
-            <label className="grid gap-1 text-xs font-medium text-slate-600">
-              Localidad
+            <label className="grid gap-1 text-xs font-semibold text-slate-700">
+              <span className="flex items-center gap-1">
+                Localidad
+                <InfoTooltip text="Selecciona la localidad para segmentar reportes y facilitar visitas técnicas." />
+              </span>
               <select
                 value={formState.location}
                 onChange={(event) => setFormState((prev) => ({ ...prev, location: event.target.value }))}
-                className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+                className="rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200"
               >
                 {availableLocations.map((location) => (
                   <option key={location} value={location}>
@@ -732,12 +744,15 @@ export default function ClientsPage() {
               </select>
             </label>
 
-            <label className="grid gap-1 text-xs font-medium text-slate-600">
-              Base
+            <label className="grid gap-1 text-xs font-semibold text-slate-700">
+              <span className="flex items-center gap-1">
+                Base
+                <InfoTooltip text="La base determina la red a la que pertenece el cliente y limita las IP disponibles." />
+              </span>
               <select
                 value={formState.base}
                 onChange={(event) => setFormState((prev) => ({ ...prev, base: Number(event.target.value) }))}
-                className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+                className="rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200"
               >
                 <option value={1}>Base 1</option>
                 <option value={2}>Base 2</option>
@@ -745,13 +760,16 @@ export default function ClientsPage() {
             </label>
 
             {currentIpFields.map(({ name, label, rangeKey }) => (
-              <label key={name} className="grid gap-1 text-xs font-medium text-slate-600">
-                {label}
+              <label key={name} className="grid gap-1 text-xs font-semibold text-slate-700">
+                <span className="flex items-center gap-1">
+                  {label}
+                  <InfoTooltip text={`Selecciona una IP libre para ${label.toLowerCase()}. Solo se muestran las opciones disponibles según la base elegida.`} />
+                </span>
                 <select
                   value={formState[name] ?? ''}
                   onChange={(event) => setFormState((prev) => ({ ...prev, [name]: event.target.value }))}
-                  className={`rounded-md border px-3 py-2 text-sm ${
-                    formErrors[name] ? 'border-red-400 focus:border-red-400 focus:ring-red-200' : 'border-slate-300'
+                  className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
+                    formErrors[name] ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200' : 'border-slate-300'
                   }`}
                 >
                   <option value="">Selecciona una IP disponible</option>
@@ -761,6 +779,9 @@ export default function ClientsPage() {
                     </option>
                   ))}
                 </select>
+                <span className="text-[11px] text-slate-500">
+                  Las IP sugeridas respetan el rango asignado a la base seleccionada.
+                </span>
                 {formErrors[name] && (
                   <span className="text-xs font-medium text-red-600">{formErrors[name]}</span>
                 )}
@@ -770,8 +791,11 @@ export default function ClientsPage() {
 
           {formState.type === 'residential' ? (
             <div className="grid gap-4 md:grid-cols-3">
-              <label className="grid gap-1 text-xs font-medium text-slate-600">
-                Pago mensual (MXN)
+              <label className="grid gap-1 text-xs font-semibold text-slate-700">
+                <span className="flex items-center gap-1">
+                  Pago mensual (MXN)
+                  <InfoTooltip text="Registra el monto mensual acordado. Se utiliza para calcular deudas y pagos adelantados." />
+                </span>
                 <input
                   value={formState.monthlyFee}
                   onChange={(event) => setFormState((prev) => ({ ...prev, monthlyFee: event.target.value }))}
@@ -779,9 +803,9 @@ export default function ClientsPage() {
                   inputMode="decimal"
                   step="0.01"
                   min="0"
-                  className={`rounded-md border px-3 py-2 text-sm ${
+                  className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
                     formErrors.monthlyFee
-                      ? 'border-red-400 focus:border-red-400 focus:ring-red-200'
+                      ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
                       : 'border-slate-300'
                   }`}
                 />
@@ -792,17 +816,20 @@ export default function ClientsPage() {
                   <span className="text-xs font-medium text-red-600">{formErrors.monthlyFee}</span>
                 )}
               </label>
-              <label className="grid gap-1 text-xs font-medium text-slate-600">
-                Periodos pendientes
+              <label className="grid gap-1 text-xs font-semibold text-slate-700">
+                <span className="flex items-center gap-1">
+                  Periodos pendientes
+                  <InfoTooltip text="Introduce los periodos adeudados para llevar un control preciso del saldo." />
+                </span>
                 <input
                   value={formState.debtMonths}
                   onChange={(event) => setFormState((prev) => ({ ...prev, debtMonths: event.target.value }))}
                   type="number"
                   inputMode="numeric"
                   min="0"
-                  className={`rounded-md border px-3 py-2 text-sm ${
+                  className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
                     formErrors.debtMonths
-                      ? 'border-red-400 focus:border-red-400 focus:ring-red-200'
+                      ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
                       : 'border-slate-300'
                   }`}
                 />
@@ -810,8 +837,11 @@ export default function ClientsPage() {
                   <span className="text-xs font-medium text-red-600">{formErrors.debtMonths}</span>
                 )}
               </label>
-              <label className="grid gap-1 text-xs font-medium text-slate-600">
-                Periodos adelantados
+              <label className="grid gap-1 text-xs font-semibold text-slate-700">
+                <span className="flex items-center gap-1">
+                  Periodos adelantados
+                  <InfoTooltip text="Registra periodos pagados por adelantado para evitar duplicar cargos posteriores." />
+                </span>
                 <input
                   value={formState.paidMonthsAhead}
                   onChange={(event) =>
@@ -820,9 +850,9 @@ export default function ClientsPage() {
                   type="number"
                   inputMode="numeric"
                   min="0"
-                  className={`rounded-md border px-3 py-2 text-sm ${
+                  className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
                     formErrors.paidMonthsAhead
-                      ? 'border-red-400 focus:border-red-400 focus:ring-red-200'
+                      ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
                       : 'border-slate-300'
                   }`}
                 />
@@ -833,14 +863,17 @@ export default function ClientsPage() {
             </div>
           ) : (
             <div className="grid gap-4 md:grid-cols-3">
-              <label className="grid gap-1 text-xs font-medium text-slate-600">
-                Modelo de antena
+              <label className="grid gap-1 text-xs font-semibold text-slate-700">
+                <span className="flex items-center gap-1">
+                  Modelo de antena
+                  <InfoTooltip text="Selecciona el equipo instalado para facilitar mantenimientos y reposiciones." />
+                </span>
                 <select
                   value={formState.antennaModel}
                   onChange={(event) =>
                     setFormState((prev) => ({ ...prev, antennaModel: event.target.value }))
                   }
-                  className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+                  className="rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200"
                 >
                   {CLIENT_ANTENNA_MODELS.map((model) => (
                     <option key={model} value={model}>
@@ -849,14 +882,17 @@ export default function ClientsPage() {
                   ))}
                 </select>
               </label>
-              <label className="grid gap-1 text-xs font-medium text-slate-600">
-                Modelo de módem
+              <label className="grid gap-1 text-xs font-semibold text-slate-700">
+                <span className="flex items-center gap-1">
+                  Modelo de módem
+                  <InfoTooltip text="Describe el módem instalado en el cliente para identificar compatibilidad y garantías." />
+                </span>
                 <input
                   value={formState.modemModel}
                   onChange={(event) => setFormState((prev) => ({ ...prev, modemModel: event.target.value }))}
-                  className={`rounded-md border px-3 py-2 text-sm ${
+                  className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
                     formErrors.modemModel
-                      ? 'border-red-400 focus:border-red-400 focus:ring-red-200'
+                      ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
                       : 'border-slate-300'
                   }`}
                   placeholder="Ej. TP-Link WR840N"
@@ -865,8 +901,11 @@ export default function ClientsPage() {
                   <span className="text-xs font-medium text-red-600">{formErrors.modemModel}</span>
                 )}
               </label>
-              <label className="grid gap-1 text-xs font-medium text-slate-600">
-                Periodos adelantados
+              <label className="grid gap-1 text-xs font-semibold text-slate-700">
+                <span className="flex items-center gap-1">
+                  Periodos adelantados
+                  <InfoTooltip text="Registra si el punto con antena pública tiene pagos adelantados para ajustar los siguientes cobros." />
+                </span>
                 <input
                   value={formState.paidMonthsAhead}
                   onChange={(event) =>
@@ -875,9 +914,9 @@ export default function ClientsPage() {
                   type="number"
                   inputMode="numeric"
                   min="0"
-                  className={`rounded-md border px-3 py-2 text-sm ${
+                  className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
                     formErrors.paidMonthsAhead
-                      ? 'border-red-400 focus:border-red-400 focus:ring-red-200'
+                      ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
                       : 'border-slate-300'
                   }`}
                 />
