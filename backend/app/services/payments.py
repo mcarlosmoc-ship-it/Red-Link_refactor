@@ -126,7 +126,55 @@ class PaymentService:
 
     @staticmethod
     def delete_payment(db: Session, payment: models.Payment) -> None:
-        amount = Decimal(payment.amount)
+        client = (
+            db.query(models.Client)
+                .filter(models.Client.id == payment.client_id)
+                .first()
+        )
+        if client is None:
+            raise ValueError("Client not found for payment deletion")
+
+        cents = Decimal("0.01")
+        amount = Decimal(payment.amount).quantize(cents, rounding=ROUND_HALF_UP)
+        months_paid = Decimal(payment.months_paid).quantize(
+            cents, rounding=ROUND_HALF_UP
+        )
+
+        current_debt = Decimal(client.debt_months or 0).quantize(
+            cents, rounding=ROUND_HALF_UP
+        )
+        current_ahead = Decimal(client.paid_months_ahead or 0).quantize(
+            cents, rounding=ROUND_HALF_UP
+        )
+
+        months_reverted_from_ahead = min(current_ahead, months_paid)
+        new_ahead = (current_ahead - months_reverted_from_ahead).quantize(
+            cents, rounding=ROUND_HALF_UP
+        )
+        debt_increase = months_paid - months_reverted_from_ahead
+        new_debt = (current_debt + debt_increase).quantize(
+            cents, rounding=ROUND_HALF_UP
+        )
+
+        client.paid_months_ahead = new_ahead
+        client.debt_months = new_debt
+        if new_debt > 0:
+            client.service_status = models.ServiceStatus.SUSPENDED
+        else:
+            client.service_status = models.ServiceStatus.ACTIVE
+
+        audit_entry = models.PaymentAuditLog(
+            payment=payment,
+            action=models.PaymentAuditAction.DELETED,
+            snapshot={
+                "amount": str(amount),
+                "months_paid": str(months_paid),
+                "method": payment.method,
+                "paid_on": str(payment.paid_on),
+            },
+        )
+        db.add(audit_entry)
+
         period_key = payment.period_key
         db.delete(payment)
         FinancialSnapshotService.remove_payment(db, period_key, amount)
