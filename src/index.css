@@ -2,5 +2,24 @@
 @tailwind components;
 @tailwind utilities;
 
-html, body, #root { height: 100%; }
-body { @apply text-gray-900; }
+html,
+body,
+#root {
+  height: 100%;
+}
+
+@layer base {
+  body {
+    @apply text-slate-900 antialiased;
+    background-color: #f4f7fb;
+    background-image:
+      radial-gradient(circle at top left, rgba(59, 130, 246, 0.12), transparent 55%),
+      radial-gradient(circle at bottom right, rgba(168, 85, 247, 0.1), transparent 50%),
+      linear-gradient(135deg, rgba(241, 245, 249, 0.9), rgba(255, 255, 255, 0.95));
+    background-attachment: fixed;
+  }
+
+  ::selection {
+    @apply bg-blue-600/90 text-white;
+  }
+}
