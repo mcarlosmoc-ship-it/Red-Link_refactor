@@ -107,6 +107,46 @@ def test_payment_validation_requires_existing_client(client):
     assert response.status_code == 400
 
 
+def test_payment_rejects_zero_amount(client, seed_basic_data):
+    client_model = seed_basic_data["client"]
+    billing_period = seed_basic_data["period"]
+
+    payload = {
+        "client_id": client_model.id,
+        "period_key": billing_period.period_key,
+        "paid_on": date(2025, 1, 10).isoformat(),
+        "amount": "0.00",
+        "months_paid": "1",
+        "method": models.PaymentMethod.EFECTIVO.value,
+    }
+
+    response = client.post("/payments/", json=payload)
+    assert response.status_code == 422
+    error = response.json()["detail"][0]
+    assert error["loc"][-1] == "amount"
+    assert "greater than" in error["msg"]
+
+
+def test_payment_rejects_negative_amount(client, seed_basic_data):
+    client_model = seed_basic_data["client"]
+    billing_period = seed_basic_data["period"]
+
+    payload = {
+        "client_id": client_model.id,
+        "period_key": billing_period.period_key,
+        "paid_on": date(2025, 1, 10).isoformat(),
+        "amount": "-10.00",
+        "months_paid": "1",
+        "method": models.PaymentMethod.EFECTIVO.value,
+    }
+
+    response = client.post("/payments/", json=payload)
+    assert response.status_code == 422
+    error = response.json()["detail"][0]
+    assert error["loc"][-1] == "amount"
+    assert "greater than" in error["msg"]
+
+
 def test_payment_creates_missing_period(client, db_session, seed_basic_data):
     client_model = seed_basic_data["client"]
 
