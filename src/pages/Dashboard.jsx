@@ -1129,16 +1129,17 @@ export default function DashboardPage() {
                             )
                           })()}
                         </td>
-                        <td className="px-3 py-2 text-right">
-                          <Button
-                            type="button"
-                            size="sm"
-                            disabled={!isCurrentPeriod || isSubmittingPayment}
-                            className="disabled:cursor-not-allowed disabled:opacity-50"
-                            onClick={() => handleOpenPaymentForm(client)}
-                          >
-                            Registrar pago
-                          </Button>
+                        <td className="px-3 py-2">
+                          <div className="flex justify-end">
+                            <Button
+                              type="button"
+                              disabled={!isCurrentPeriod || isSubmittingPayment}
+                              className="w-full whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+                              onClick={() => handleOpenPaymentForm(client)}
+                            >
+                              Registrar pago
+                            </Button>
+                          </div>
                         </td>
                       </tr>
                       {isPaymentActive && (
