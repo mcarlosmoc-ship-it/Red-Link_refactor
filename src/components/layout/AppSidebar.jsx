@@ -27,22 +27,19 @@ const linkBaseClasses =
 
 export function AppSidebar() {
   return (
-    <aside
-      aria-label="Menú principal"
-      className="hidden w-64 shrink-0 border-r border-slate-200 bg-white/90 backdrop-blur md:block"
-    >
-      <div className="flex h-full flex-col">
-        <div className="flex items-center gap-3 border-b border-slate-200 px-6 py-5">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 text-blue-600">
+    <aside aria-label="Menú principal" className="hidden w-64 shrink-0 md:flex">
+      <div className="flex h-full w-full flex-col overflow-hidden rounded-[28px] border border-slate-200/70 bg-white/80 p-5 shadow-xl shadow-slate-200/80 backdrop-blur">
+        <div className="flex items-center gap-3 rounded-2xl border border-blue-100/80 bg-gradient-to-r from-blue-50 via-white to-blue-100 px-4 py-4 shadow-sm">
+          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-blue-500/10 text-blue-600">
             <Wifi aria-hidden className="h-5 w-5" />
           </div>
-          <div>
+          <div className="space-y-1">
             <p className="text-sm font-semibold text-slate-900">Red-Link Backoffice</p>
             <p className="text-xs text-slate-500">Operación diaria</p>
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto px-4 py-4">
-          <nav className="space-y-1" aria-label="Secciones">
+        <div className="mt-6 flex-1 overflow-y-auto">
+          <nav className="flex flex-col gap-2" aria-label="Secciones">
             {navItems.map(({ to, label, icon: Icon }) => (
               <NavLink
                 key={to}
@@ -50,19 +47,24 @@ export function AppSidebar() {
                 className={({ isActive }) =>
                   [
                     linkBaseClasses,
+                    'rounded-xl border border-transparent bg-white/70 text-slate-600 shadow-sm transition hover:border-blue-100 hover:bg-blue-50/80 hover:text-blue-700',
                     isActive
-                      ? 'bg-blue-50 text-blue-700 shadow-sm'
-                      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900',
+                      ? 'border-blue-200 bg-blue-50/90 text-blue-700 shadow-md shadow-blue-100/80'
+                      : '',
                   ].join(' ')
                 }
               >
                 <Icon aria-hidden className="h-5 w-5" />
                 <span>{label}</span>
+                <span
+                  aria-hidden
+                  className="ml-auto h-2 w-2 rounded-full bg-transparent transition group-hover:bg-blue-300"
+                />
               </NavLink>
             ))}
           </nav>
         </div>
-        <div className="border-t border-slate-200 px-6 py-4 text-xs text-slate-500">
+        <div className="mt-6 rounded-2xl border border-slate-200/80 bg-white/80 px-4 py-3 text-xs text-slate-500 shadow-inner">
           © {new Date().getFullYear()} Red-Link
         </div>
       </div>
