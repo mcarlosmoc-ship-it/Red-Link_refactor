@@ -27,6 +27,15 @@ cd backend
 alembic upgrade head
 ```
 
+Si te encuentras en la raíz del repositorio también puedes ejecutar:
+
+```bash
+./backend/scripts/run_alembic.sh upgrade head
+```
+
+El script localiza el entorno virtual (si existe), apunta automáticamente a
+`backend/alembic.ini` y aplica cualquier subcomando de Alembic que le pases.
+
 Si vas a crear nuevas versiones, genera un borrador autogenerado con:
 
 ```bash
