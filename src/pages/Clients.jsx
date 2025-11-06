@@ -964,6 +964,8 @@ export default function ClientsPage() {
                     setSearchTerm('')
                     setLocationFilter('all')
                     setStatusFilter('all')
+                    setSortField('name')
+                    setSortDirection('asc')
                   }}
                 >
                   Limpiar filtros
@@ -988,11 +990,71 @@ export default function ClientsPage() {
                   <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
                     <thead className="bg-slate-50 text-slate-600">
                       <tr>
-                        <th scope="col" className="px-3 py-2 font-medium">
-                          Cliente
+                        <th
+                          scope="col"
+                          className="px-3 py-2 font-medium"
+                          aria-sort={
+                            sortField === 'name'
+                              ? sortDirection === 'asc'
+                                ? 'ascending'
+                                : 'descending'
+                              : 'none'
+                          }
+                        >
+                          <button
+                            type="button"
+                            onClick={() => handleSort('name')}
+                            className="flex items-center gap-1 text-slate-600 transition-colors hover:text-slate-900"
+                          >
+                            <span>Cliente</span>
+                            <span aria-hidden className="text-xs">
+                              {sortField === 'name'
+                                ? sortDirection === 'asc'
+                                  ? '↑'
+                                  : '↓'
+                                : '↕'}
+                            </span>
+                            <span className="sr-only">
+                              Orden {sortField === 'name'
+                                ? sortDirection === 'asc'
+                                  ? 'ascendente'
+                                  : 'descendente'
+                                : 'no aplicado'}. Haz clic para cambiar.
+                            </span>
+                          </button>
                         </th>
-                        <th scope="col" className="px-3 py-2 font-medium">
-                          Localidad
+                        <th
+                          scope="col"
+                          className="px-3 py-2 font-medium"
+                          aria-sort={
+                            sortField === 'location'
+                              ? sortDirection === 'asc'
+                                ? 'ascending'
+                                : 'descending'
+                              : 'none'
+                          }
+                        >
+                          <button
+                            type="button"
+                            onClick={() => handleSort('location')}
+                            className="flex items-center gap-1 text-slate-600 transition-colors hover:text-slate-900"
+                          >
+                            <span>Localidad</span>
+                            <span aria-hidden className="text-xs">
+                              {sortField === 'location'
+                                ? sortDirection === 'asc'
+                                  ? '↑'
+                                  : '↓'
+                                : '↕'}
+                            </span>
+                            <span className="sr-only">
+                              Orden {sortField === 'location'
+                                ? sortDirection === 'asc'
+                                  ? 'ascendente'
+                                  : 'descendente'
+                                : 'no aplicado'}. Haz clic para cambiar.
+                            </span>
+                          </button>
                         </th>
                         <th scope="col" className="px-3 py-2 font-medium">
                           Base
