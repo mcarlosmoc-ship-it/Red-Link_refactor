@@ -188,7 +188,7 @@ export default function DashboardPage() {
           : paymentMonthsInputRef.current
 
       if (paymentFormRef.current) {
-        paymentFormRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        paymentFormRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' })
       }
 
       targetInput?.focus({ preventScroll: true })
@@ -555,6 +555,164 @@ export default function DashboardPage() {
     }
   }
 
+  const handleClosePaymentForm = useCallback(() => {
+    setPaymentForm(createEmptyPaymentForm())
+  }, [])
+
+  const QuickPaymentForm = ({ className = '', refCallback }) => {
+    if (!activeClient) {
+      return null
+    }
+
+    return (
+      <form
+        ref={refCallback}
+        className={`grid gap-3 rounded-md border border-slate-200 bg-white p-4 shadow-sm ${className}`}
+        onSubmit={handleSubmitPayment}
+      >
+        <h3 className="text-sm font-semibold text-slate-800">Registrar pago rápido</h3>
+        <p className="text-xs text-slate-500">
+          {activeClient.name} tiene {formatPeriods(activeClient.debtMonths)} periodo(s) pendientes y
+          {" "}
+          {formatPeriods(activeClient.paidMonthsAhead)} adelantados.
+        </p>
+        <p className="text-xs text-slate-500">
+          Pago mensual acordado: {peso(activeMonthlyFee)}. Adeudo total: {peso(outstandingAmount)}.
+        </p>
+        <div className="flex flex-wrap items-center gap-3 text-xs font-medium text-slate-600">
+          <span className="text-slate-500">Registrar por:</span>
+          <label className="inline-flex items-center gap-1">
+            <input
+              type="radio"
+              name="payment-mode"
+              value="months"
+              checked={paymentForm.mode === 'months'}
+              onChange={() => handleModeChange('months')}
+              className="h-3.5 w-3.5"
+            />
+            Periodos
+          </label>
+          <label className="inline-flex items-center gap-1">
+            <input
+              type="radio"
+              name="payment-mode"
+              value="amount"
+              checked={paymentForm.mode === 'amount'}
+              onChange={() => handleModeChange('amount')}
+              className="h-3.5 w-3.5"
+              disabled={Number(activeMonthlyFee) <= 0}
+              title={
+                Number(activeMonthlyFee) <= 0
+                  ? 'Configura una tarifa mensual para habilitar el pago por monto.'
+                  : undefined
+              }
+            />
+            Monto
+          </label>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-3">
+          <label className="grid gap-1 text-xs font-medium text-slate-600">
+            Periodos pagados
+            <input
+              ref={paymentMonthsInputRef}
+              min={0.01}
+              step="0.01"
+              value={paymentForm.months}
+              onChange={(event) => handleMonthsInputChange(event.target.value)}
+              className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+              type="number"
+              required
+              disabled={paymentForm.mode === 'amount'}
+            />
+          </label>
+          <label className="grid gap-1 text-xs font-medium text-slate-600">
+            Monto a pagar
+            <input
+              ref={paymentAmountInputRef}
+              min={0.01}
+              step="0.01"
+              value={paymentForm.amount}
+              onChange={(event) => handleAmountInputChange(event.target.value)}
+              className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+              type="number"
+              required
+              disabled={paymentForm.mode === 'months'}
+            />
+          </label>
+          <label className="grid gap-1 text-xs font-medium text-slate-600">
+            Método
+            <select
+              value={paymentForm.method}
+              onChange={(event) => setPaymentForm((prev) => ({ ...prev, method: event.target.value }))}
+              className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+              required
+            >
+              <option value="Efectivo">Efectivo</option>
+              <option value="Transferencia">Transferencia</option>
+              <option value="Tarjeta">Tarjeta</option>
+            </select>
+          </label>
+        </div>
+        <div className="grid gap-1 text-xs text-slate-500">
+          <p>
+            Pago a registrar: {peso(plannedAmount)} ({formatPeriods(plannedMonths)}{' '}
+            {isApproximatelyOne(plannedMonths) ? 'periodo' : 'periodos'}).
+          </p>
+          {outstandingAmount > 0 && plannedAmount < outstandingAmount && (
+            <p>Restante tras el pago: {peso(remainingBalance)}.</p>
+          )}
+          {plannedAmount > outstandingAmount && (
+            <p className="text-amber-600">
+              Esto agregará {formatPeriods(additionalAhead)}{' '}
+              {isApproximatelyOne(additionalAhead) ? 'periodo' : 'periodos'} adelantados.
+            </p>
+          )}
+        </div>
+        <label className="grid gap-1 text-xs font-medium text-slate-600">
+          Nota (opcional)
+          <textarea
+            value={paymentForm.note}
+            onChange={(event) => setPaymentForm((prev) => ({ ...prev, note: event.target.value }))}
+            className="min-h-[60px] rounded-md border border-slate-300 px-3 py-2 text-sm"
+          />
+        </label>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            className="border border-slate-200 bg-white text-slate-700 hover:border-blue-200"
+            onClick={handleClosePaymentForm}
+          >
+            Cancelar
+          </Button>
+          <Button type="submit" disabled={isSubmittingPayment} className="disabled:cursor-not-allowed disabled:opacity-50">
+            {isSubmittingPayment ? 'Registrando…' : 'Confirmar pago'}
+          </Button>
+        </div>
+      </form>
+    )
+  }
+
+  const renderDesktopPaymentPanel = () => {
+    if (!isCurrentPeriod) {
+      return (
+        <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700">
+          Para registrar pagos regresa al periodo actual ({currentPeriodLabel}).
+        </div>
+      )
+    }
+
+    if (!paymentForm.open || !activeClient) {
+      return (
+        <div className="rounded-md border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+          Selecciona «Registrar pago» en la lista para ver el formulario aquí mismo.
+        </div>
+      )
+    }
+
+    return <QuickPaymentForm refCallback={paymentFormRef} />
+  }
+
   const handleMonthsInputChange = (value) => {
     setPaymentForm((prev) => {
       if (value === '') {
@@ -866,8 +1024,9 @@ export default function DashboardPage() {
             </div>
           )}
 
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200 text-left text-sm" role="grid">
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-slate-200 text-left text-sm" role="grid">
               <thead className="bg-slate-50 text-slate-600">
                 <tr>
                   <th scope="col" className="px-3 py-2 font-medium">
@@ -890,6 +1049,8 @@ export default function DashboardPage() {
               <tbody className="divide-y divide-slate-100">
                 {filteredClients.map((client) => {
                   const isExpanded = expandedClientId === client.id
+                  const isPaymentActive =
+                    paymentForm.open && paymentForm.clientId === client.id && Boolean(activeClient)
                   return (
                     <React.Fragment key={client.id}>
                       <tr>
@@ -962,6 +1123,13 @@ export default function DashboardPage() {
                           </Button>
                         </td>
                       </tr>
+                      {isPaymentActive && (
+                        <tr className="lg:hidden">
+                          <td colSpan={5} className="bg-slate-50 px-3 py-3">
+                            <QuickPaymentForm refCallback={paymentFormRef} />
+                          </td>
+                        </tr>
+                      )}
                       {isExpanded && (
                         <tr id={`client-details-${client.id}`}>
                           <td colSpan={5} className="bg-slate-50 px-3 py-3">
@@ -1098,142 +1266,10 @@ export default function DashboardPage() {
               </tbody>
             </table>
           </div>
-
-          {paymentForm.open && activeClient && (
-            <form
-              ref={paymentFormRef}
-              className="grid gap-3 rounded-md border border-slate-200 bg-slate-50 p-4"
-              onSubmit={handleSubmitPayment}
-            >
-              <h3 className="text-sm font-semibold text-slate-800">Registrar pago rápido</h3>
-              <p className="text-xs text-slate-500">
-                {activeClient.name} tiene {formatPeriods(activeClient.debtMonths)} periodo(s) pendientes y{' '}
-                {formatPeriods(activeClient.paidMonthsAhead)} adelantados.
-              </p>
-              <p className="text-xs text-slate-500">
-                Pago mensual acordado: {peso(activeMonthlyFee)}. Adeudo total: {peso(outstandingAmount)}.
-              </p>
-              <div className="flex flex-wrap items-center gap-3 text-xs font-medium text-slate-600">
-                <span className="text-slate-500">Registrar por:</span>
-                <label className="inline-flex items-center gap-1">
-                  <input
-                    type="radio"
-                    name="payment-mode"
-                    value="months"
-                    checked={paymentForm.mode === 'months'}
-                    onChange={() => handleModeChange('months')}
-                    className="h-3.5 w-3.5"
-                  />
-                  Periodos
-                </label>
-                <label className="inline-flex items-center gap-1">
-                  <input
-                    type="radio"
-                    name="payment-mode"
-                    value="amount"
-                    checked={paymentForm.mode === 'amount'}
-                    onChange={() => handleModeChange('amount')}
-                    className="h-3.5 w-3.5"
-                    disabled={Number(activeMonthlyFee) <= 0}
-                    title={
-                      Number(activeMonthlyFee) <= 0
-                        ? 'Configura una tarifa mensual para habilitar el pago por monto.'
-                        : undefined
-                    }
-                  />
-                  Monto
-                </label>
-              </div>
-              <div className="grid gap-2 sm:grid-cols-3">
-                <label className="grid gap-1 text-xs font-medium text-slate-600">
-                  Periodos pagados
-                  <input
-                    ref={paymentMonthsInputRef}
-                    min={0.01}
-                    step="0.01"
-                    value={paymentForm.months}
-                    onChange={(event) => handleMonthsInputChange(event.target.value)}
-                    className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-                    type="number"
-                    required
-                    disabled={paymentForm.mode === 'amount'}
-                  />
-                </label>
-                <label className="grid gap-1 text-xs font-medium text-slate-600">
-                  Monto a pagar
-                  <input
-                    ref={paymentAmountInputRef}
-                    min={0.01}
-                    step="0.01"
-                    value={paymentForm.amount}
-                    onChange={(event) => handleAmountInputChange(event.target.value)}
-                    className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-                    type="number"
-                    required
-                    disabled={paymentForm.mode === 'months'}
-                  />
-                </label>
-                <label className="grid gap-1 text-xs font-medium text-slate-600">
-                  Método
-                  <select
-                    value={paymentForm.method}
-                    onChange={(event) =>
-                      setPaymentForm((prev) => ({ ...prev, method: event.target.value }))
-                    }
-                    className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-                    required
-                  >
-                    <option value="Efectivo">Efectivo</option>
-                    <option value="Transferencia">Transferencia</option>
-                    <option value="Tarjeta">Tarjeta</option>
-                  </select>
-                </label>
-              </div>
-              <div className="grid gap-1 text-xs text-slate-500">
-                <p>
-                  Pago a registrar: {peso(plannedAmount)} ({formatPeriods(plannedMonths)}{' '}
-                  {isApproximatelyOne(plannedMonths) ? 'periodo' : 'periodos'}).
-                </p>
-                {outstandingAmount > 0 && plannedAmount < outstandingAmount && (
-                  <p>Restante tras el pago: {peso(remainingBalance)}.</p>
-                )}
-                {plannedAmount > outstandingAmount && (
-                  <p className="text-amber-600">
-                    Esto agregará {formatPeriods(additionalAhead)}{' '}
-                    {isApproximatelyOne(additionalAhead) ? 'periodo' : 'periodos'}{' '}
-                    adelantados.
-                  </p>
-                )}
-              </div>
-              <label className="grid gap-1 text-xs font-medium text-slate-600">
-                Nota (opcional)
-                <textarea
-                  value={paymentForm.note}
-                  onChange={(event) =>
-                    setPaymentForm((prev) => ({ ...prev, note: event.target.value }))
-                  }
-                  className="min-h-[60px] rounded-md border border-slate-300 px-3 py-2 text-sm"
-                />
-              </label>
-              <div className="flex flex-wrap items-center justify-end gap-2">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="border border-slate-200 bg-white text-slate-700 hover:border-blue-200"
-                  onClick={() => setPaymentForm(createEmptyPaymentForm())}
-                >
-                  Cancelar
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={isSubmittingPayment}
-                  className="disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {isSubmittingPayment ? 'Registrando…' : 'Confirmar pago'}
-                </Button>
-              </div>
-            </form>
-          )}
+          <aside className="hidden lg:block">
+            {renderDesktopPaymentPanel()}
+          </aside>
+        </div>
         </div>
       </section>
     </div>
