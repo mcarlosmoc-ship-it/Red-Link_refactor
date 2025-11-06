@@ -25,6 +25,8 @@ export default function ImportClientsModal({
   onSubmit,
   isProcessing,
   summary,
+  requiresConfirmation = false,
+  onConfirmSummary,
 }) {
   const [selectedFile, setSelectedFile] = useState(null)
   const [localError, setLocalError] = useState('')
@@ -35,6 +37,12 @@ export default function ImportClientsModal({
       setLocalError('')
     }
   }, [isOpen])
+
+  const handleConfirmSummary = () => {
+    if (typeof onConfirmSummary === 'function') {
+      onConfirmSummary()
+    }
+  }
 
   const columnList = useMemo(
     () => [
@@ -65,6 +73,7 @@ export default function ImportClientsModal({
   }
 
   const isSummarySuccess = Boolean(summary && summary.failed_count === 0 && summary.created_count > 0)
+  const shouldShowConfirmation = Boolean(requiresConfirmation && summary)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4 py-6">
@@ -147,7 +156,11 @@ export default function ImportClientsModal({
                 Cancelar
               </Button>
               <Button type="submit" disabled={isProcessing}>
-                {isProcessing ? 'Importando...' : 'Importar clientes'}
+                {isProcessing
+                  ? 'Importando...'
+                  : summary
+                    ? 'Importar de nuevo'
+                    : 'Importar clientes'}
               </Button>
             </div>
 
@@ -192,6 +205,26 @@ export default function ImportClientsModal({
                     </ul>
                   </div>
                 )}
+              </div>
+            )}
+
+            {shouldShowConfirmation && (
+              <div className="mt-4 space-y-3 rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                <div>
+                  <p className="font-semibold">¿Deseas continuar con la importación?</p>
+                  <p className="mt-1">
+                    Se detectaron observaciones en el archivo. Puedes revisar y volver a importar un CSV
+                    corregido o confirmar para regresar al panel con los clientes válidos.
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+                  <Button type="button" variant="ghost" onClick={onClose}>
+                    Revisar nuevamente
+                  </Button>
+                  <Button type="button" onClick={handleConfirmSummary}>
+                    Continuar
+                  </Button>
+                </div>
               </div>
             )}
           </section>

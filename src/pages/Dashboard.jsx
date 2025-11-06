@@ -515,6 +515,9 @@ export default function DashboardPage() {
         }) para ${activeClient?.name ?? 'el cliente'}.`,
       })
       setPaymentForm(createEmptyPaymentForm())
+      if (searchTerm.trim().length > 0) {
+        setSearchTerm('')
+      }
     } catch (error) {
       showToast({
         type: 'error',
