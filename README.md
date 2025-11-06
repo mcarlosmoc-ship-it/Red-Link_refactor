@@ -131,6 +131,10 @@ Recuerda detener los servicios cerrando las ventanas que se abren al final.
    ./start.sh
    ```
 
+   > **Consejo:** si prefieres quedarte en la raíz del repositorio puedes usar
+   > `./backend/scripts/run_alembic.sh upgrade head`, que cambia de directorio
+   > y apunta al `alembic.ini` correcto por ti.
+
 4. Con las migraciones al día, el backend quedará escuchando en
    `http://0.0.0.0:8000`. Asegúrate de que esta URL coincida con la definida en
    `VITE_API_BASE_URL`.
