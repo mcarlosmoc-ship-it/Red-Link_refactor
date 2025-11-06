@@ -6,7 +6,7 @@ import { Card, CardContent } from '../components/ui/Card.jsx'
 import { CLIENT_PRICE, useBackofficeStore } from '../store/useBackofficeStore.js'
 import { useClients } from '../hooks/useClients.js'
 import { useToast } from '../hooks/useToast.js'
-import { peso } from '../utils/formatters.js'
+import { peso, formatDate } from '../utils/formatters.js'
 import {
   CLIENT_ANTENNA_MODELS,
   CLIENT_IP_FIELDS_BY_TYPE,
@@ -16,6 +16,8 @@ import {
 } from '../utils/clientIpConfig.js'
 import { useBackofficeRefresh } from '../contexts/BackofficeRefreshContext.jsx'
 import ClientsSkeleton from './ClientsSkeleton.jsx'
+import { apiClient } from '../services/apiClient.js'
+import { mapPayment } from '../store/mappers/index.js'
 
 const periodsFormatter = new Intl.NumberFormat('es-MX', { maximumFractionDigits: 2 })
 
@@ -32,6 +34,11 @@ const CLIENT_TYPE_LABELS = {
   residential: 'Cliente residencial',
   token: 'Punto con antena pública',
 }
+
+const SORT_FIELDS = [
+  { value: 'name', label: 'Nombre' },
+  { value: 'location', label: 'Localidad' },
+]
 
 const defaultForm = {
   type: 'residential',
@@ -71,6 +78,10 @@ export default function ClientsPage() {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false)
   const [importSummary, setImportSummary] = useState(null)
   const [isImportingClients, setIsImportingClients] = useState(false)
+  const [sortField, setSortField] = useState('name')
+  const [sortDirection, setSortDirection] = useState('asc')
+  const [selectedClientId, setSelectedClientId] = useState(null)
+  const [clientPaymentsState, setClientPaymentsState] = useState({})
   const isMutatingClients = Boolean(clientsStatus?.isMutating)
   const isSyncingClients = Boolean(clientsStatus?.isLoading)
   const isLoadingClients = Boolean(clientsStatus?.isLoading && clients.length === 0)
@@ -310,6 +321,97 @@ export default function ClientsPage() {
       return true
     })
   }, [residentialClients, matchesTerm, locationFilter, statusFilter])
+
+  const sortedResidentialClients = useMemo(() => {
+    const sorted = [...filteredResidentialClients]
+    const directionMultiplier = sortDirection === 'desc' ? -1 : 1
+    sorted.sort((a, b) => {
+      if (sortField === 'location') {
+        return directionMultiplier * a.location.localeCompare(b.location)
+      }
+      return directionMultiplier * a.name.localeCompare(b.name)
+    })
+    return sorted
+  }, [filteredResidentialClients, sortField, sortDirection])
+
+  const fetchClientPayments = useCallback(
+    async (clientId) => {
+      if (!clientId) {
+        return
+      }
+
+      setClientPaymentsState((prev) => ({
+        ...prev,
+        [clientId]: {
+          ...(prev[clientId] ?? {}),
+          isLoading: true,
+          error: null,
+        },
+      }))
+
+      try {
+        const response = await apiClient.get('/payments', {
+          query: { client_id: clientId, limit: 20 },
+        })
+        const payload = response.data
+        const items = Array.isArray(payload?.items)
+          ? payload.items
+          : Array.isArray(payload)
+            ? payload
+            : []
+        const payments = items.map(mapPayment)
+
+        setClientPaymentsState((prev) => ({
+          ...prev,
+          [clientId]: {
+            payments,
+            isLoading: false,
+            error: null,
+          },
+        }))
+      } catch (error) {
+        setClientPaymentsState((prev) => ({
+          ...prev,
+          [clientId]: {
+            ...(prev[clientId] ?? {}),
+            payments: prev[clientId]?.payments ?? [],
+            isLoading: false,
+            error: error?.message ?? 'No se pudieron cargar los pagos.',
+          },
+        }))
+      }
+    },
+    [],
+  )
+
+  useEffect(() => {
+    if (!selectedClientId) {
+      return
+    }
+
+    const state = clientPaymentsState[selectedClientId]
+    if (state?.payments?.length || state?.isLoading) {
+      return
+    }
+
+    fetchClientPayments(selectedClientId)
+  }, [selectedClientId, clientPaymentsState, fetchClientPayments])
+
+  useEffect(() => {
+    if (!selectedClientId) {
+      return
+    }
+
+    const exists = clients.some((client) => client.id === selectedClientId)
+    if (!exists) {
+      setSelectedClientId(null)
+    }
+  }, [clients, selectedClientId])
+
+  const selectedClient = useMemo(
+    () => clients.find((client) => client.id === selectedClientId) ?? null,
+    [clients, selectedClientId],
+  )
 
   const validateForm = () => {
     const errors = {}
@@ -790,7 +892,7 @@ export default function ClientsPage() {
 
         <Card>
           <CardContent className="space-y-6">
-            <div className="grid gap-3 md:grid-cols-4">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
               <label className="grid gap-1 text-xs font-medium text-slate-600">
                 Buscar
                 <input
@@ -828,6 +930,31 @@ export default function ClientsPage() {
                   <option value="ok">Al día / Activos</option>
                 </select>
               </label>
+              <label className="grid gap-1 text-xs font-medium text-slate-600">
+                Ordenar por
+                <select
+                  value={sortField}
+                  onChange={(event) => setSortField(event.target.value)}
+                  className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+                >
+                  {SORT_FIELDS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="grid gap-1 text-xs font-medium text-slate-600">
+                Orden
+                <select
+                  value={sortDirection}
+                  onChange={(event) => setSortDirection(event.target.value)}
+                  className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+                >
+                  <option value="asc">Ascendente</option>
+                  <option value="desc">Descendente</option>
+                </select>
+              </label>
               <div className="flex items-end">
                 <Button
                   type="button"
@@ -854,7 +981,7 @@ export default function ClientsPage() {
                     </p>
                   </div>
                   <span className="text-xs text-slate-500" role="status">
-                    {filteredResidentialClients.length} registro(s)
+                      {filteredResidentialClients.length} registro(s)
                   </span>
                 </div>
                 <div className="overflow-x-auto">
@@ -885,12 +1012,12 @@ export default function ClientsPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {filteredResidentialClients.map((client) => (
+                      {sortedResidentialClients.map((client) => (
                         <tr
                           key={client.id}
                           id={`client-${client.id}`}
                           className={
-                            highlightedClientId === client.id
+                            highlightedClientId === client.id || selectedClientId === client.id
                               ? 'bg-blue-50/70 transition-colors'
                               : undefined
                           }
@@ -920,22 +1047,44 @@ export default function ClientsPage() {
                             {peso(client.monthlyFee ?? CLIENT_PRICE)}
                           </td>
                           <td className="px-3 py-2 text-slate-600">
-                            {client.debtMonths > 0
-                              ? `${client.debtMonths} ${
-                                  client.debtMonths === 1 ? 'periodo' : 'periodos'
-                                }`
-                              : 'Sin deuda'}
+                            {client.debtMonths > 0 ? (
+                              <div className="flex flex-col">
+                                <span>
+                                  {client.debtMonths}{' '}
+                                  {client.debtMonths === 1 ? 'periodo' : 'periodos'}
+                                </span>
+                                <span className="text-xs text-slate-500">
+                                  {peso(client.debtMonths * (client.monthlyFee ?? CLIENT_PRICE))}
+                                </span>
+                              </div>
+                            ) : (
+                              'Sin deuda'
+                            )}
                           </td>
                           <td className="px-3 py-2 text-right">
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="border border-slate-200 bg-white text-slate-700 hover:border-blue-200 disabled:cursor-not-allowed disabled:opacity-50"
-                              onClick={() => handleToggleService(client)}
-                              disabled={isMutatingClients}
-                            >
-                              {client.service === 'Activo' ? 'Suspender' : 'Activar'}
-                            </Button>
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="border border-slate-200 bg-white text-slate-700 hover:border-blue-200"
+                                onClick={() =>
+                                  setSelectedClientId((prev) =>
+                                    prev === client.id ? null : client.id,
+                                  )
+                                }
+                              >
+                                {selectedClientId === client.id ? 'Ocultar' : 'Ver detalles'}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="border border-slate-200 bg-white text-slate-700 hover:border-blue-200 disabled:cursor-not-allowed disabled:opacity-50"
+                                onClick={() => handleToggleService(client)}
+                                disabled={isMutatingClients}
+                              >
+                                {client.service === 'Activo' ? 'Suspender' : 'Activar'}
+                              </Button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -955,6 +1104,119 @@ export default function ClientsPage() {
           </CardContent>
         </Card>
       </section>
+
+      {selectedClient && (
+        <section aria-labelledby="detalles-cliente" className="space-y-4">
+          <Card>
+            <CardContent className="space-y-6">
+              <div className="flex flex-col gap-1">
+                <h2 id="detalles-cliente" className="text-lg font-semibold text-slate-900">
+                  Detalles de {selectedClient.name}
+                </h2>
+                <p className="text-sm text-slate-500">
+                  Base {selectedClient.base} · {selectedClient.location}
+                </p>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-3">
+                <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs font-medium text-slate-500">Estado del servicio</p>
+                  <p className="text-base font-semibold text-slate-900">{selectedClient.service}</p>
+                </div>
+                <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs font-medium text-slate-500">Tarifa mensual</p>
+                  <p className="text-base font-semibold text-slate-900">
+                    {peso(selectedClient.monthlyFee ?? CLIENT_PRICE)}
+                  </p>
+                  <p className="text-xs text-slate-500">Adelantado: {formatPeriods(selectedClient.paidMonthsAhead)} periodo(s)</p>
+                </div>
+                <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs font-medium text-slate-500">Deuda acumulada</p>
+                  <p className="text-base font-semibold text-slate-900">
+                    {selectedClient.debtMonths > 0
+                      ? peso(selectedClient.debtMonths * (selectedClient.monthlyFee ?? CLIENT_PRICE))
+                      : 'Sin deuda'}
+                  </p>
+                  {selectedClient.debtMonths > 0 && (
+                    <p className="text-xs text-slate-500">
+                      {formatPeriods(selectedClient.debtMonths)}{' '}
+                      {isApproximatelyOne(selectedClient.debtMonths) ? 'periodo' : 'periodos'} pendientes
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <h3 className="text-base font-semibold text-slate-900">Pagos recientes</h3>
+                {clientPaymentsState[selectedClient.id]?.error && (
+                  <p className="text-sm text-red-600">
+                    {clientPaymentsState[selectedClient.id].error}
+                  </p>
+                )}
+                {clientPaymentsState[selectedClient.id]?.isLoading ? (
+                  <p className="text-sm text-slate-500">Cargando pagos…</p>
+                ) : (
+                  <div className="space-y-2">
+                    {clientPaymentsState[selectedClient.id]?.payments?.length ? (
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
+                          <thead className="bg-slate-50 text-slate-600">
+                            <tr>
+                              <th scope="col" className="px-3 py-2 font-medium">
+                                Fecha
+                              </th>
+                              <th scope="col" className="px-3 py-2 font-medium">
+                                Meses
+                              </th>
+                              <th scope="col" className="px-3 py-2 font-medium">
+                                Monto
+                              </th>
+                              <th scope="col" className="px-3 py-2 font-medium">
+                                Método
+                              </th>
+                              <th scope="col" className="px-3 py-2 font-medium">
+                                Nota
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {clientPaymentsState[selectedClient.id].payments.map((payment) => (
+                              <tr key={payment.id}>
+                                <td className="px-3 py-2 text-slate-700">
+                                  {formatDate(payment.date)}
+                                </td>
+                                <td className="px-3 py-2 text-slate-700">
+                                  {formatPeriods(payment.months)}{' '}
+                                  {isApproximatelyOne(payment.months) ? 'periodo' : 'periodos'}
+                                </td>
+                                <td className="px-3 py-2 text-slate-700">{peso(payment.amount)}</td>
+                                <td className="px-3 py-2 text-slate-700">{payment.method}</td>
+                                <td className="px-3 py-2 text-slate-500">{payment.note || '—'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-slate-500">
+                        No se han registrado pagos recientes para este cliente.
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {clientPaymentsState[selectedClient.id]?.payments?.[0] && (
+                  <p className="text-xs text-slate-500">
+                    Último pago registrado el{' '}
+                    {formatDate(clientPaymentsState[selectedClient.id].payments[0].date)} por{' '}
+                    {peso(clientPaymentsState[selectedClient.id].payments[0].amount)}.
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </section>
+      )}
 
     </div>
   )
