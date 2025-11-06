@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import Button from '../components/ui/Button.jsx'
 import ImportClientsModal from '../components/clients/ImportClientsModal.jsx'
@@ -35,10 +35,12 @@ const CLIENT_TYPE_LABELS = {
   token: 'Punto con antena pública',
 }
 
-const SORT_FIELDS = [
-  { value: 'name', label: 'Nombre' },
-  { value: 'location', label: 'Localidad' },
-]
+const normalizeId = (value) => {
+  if (value === null || value === undefined) {
+    return null
+  }
+  return String(value)
+}
 
 const defaultForm = {
   type: 'residential',
@@ -83,6 +85,7 @@ export default function ClientsPage() {
   const [sortDirection, setSortDirection] = useState('asc')
   const [selectedClientId, setSelectedClientId] = useState(null)
   const [clientPaymentsState, setClientPaymentsState] = useState({})
+  const clientDetailsRef = useRef(null)
   const isMutatingClients = Boolean(clientsStatus?.isMutating)
   const isSyncingClients = Boolean(clientsStatus?.isLoading)
   const isLoadingClients = Boolean(clientsStatus?.isLoading && clients.length === 0)
@@ -105,20 +108,21 @@ export default function ClientsPage() {
     }
 
     const clientId = location.hash.slice('#client-'.length)
-    if (!clientId) {
+    const normalizedClientId = normalizeId(clientId)
+    if (!normalizedClientId) {
       setHighlightedClientId(null)
       return
     }
 
-    const exists = clients.some((client) => client.id === clientId)
+    const exists = clients.some((client) => normalizeId(client.id) === normalizedClientId)
     if (!exists) {
       setHighlightedClientId(null)
       return
     }
 
-    setHighlightedClientId(clientId)
+    setHighlightedClientId(normalizedClientId)
 
-    const row = document.getElementById(`client-${clientId}`)
+    const row = document.getElementById(`client-${normalizedClientId}`)
     if (row) {
       row.scrollIntoView({ behavior: 'smooth', block: 'center' })
     }
@@ -353,20 +357,17 @@ export default function ClientsPage() {
     return sorted
   }, [filteredResidentialClients, sortField, sortDirection])
 
-  const handleSort = useCallback(
-    (field) => {
-      setSortField((currentField) => {
-        setSortDirection((currentDirection) => {
-          if (currentField !== field) {
-            return 'asc'
-          }
-          return currentDirection === 'asc' ? 'desc' : 'asc'
-        })
-        return field
-      })
-    },
-    [],
-  )
+  const handleSort = useCallback((field) => {
+    setSortField((currentField) => {
+      if (currentField === field) {
+        setSortDirection((currentDirection) => (currentDirection === 'asc' ? 'desc' : 'asc'))
+        return currentField
+      }
+
+      setSortDirection('asc')
+      return field
+    })
+  }, [])
 
   const fetchClientPayments = useCallback(
     async (clientId) => {
@@ -436,16 +437,45 @@ export default function ClientsPage() {
       return
     }
 
-    const exists = clients.some((client) => client.id === selectedClientId)
+    const exists = clients.some((client) => normalizeId(client.id) === selectedClientId)
     if (!exists) {
       setSelectedClientId(null)
     }
   }, [clients, selectedClientId])
 
   const selectedClient = useMemo(
-    () => clients.find((client) => client.id === selectedClientId) ?? null,
+    () => {
+      if (!selectedClientId) {
+        return null
+      }
+      return clients.find((client) => normalizeId(client.id) === selectedClientId) ?? null
+    },
     [clients, selectedClientId],
   )
+
+  const selectedClientKey = useMemo(() => normalizeId(selectedClient?.id), [selectedClient])
+  const selectedClientPayments = useMemo(
+    () => (selectedClientKey ? clientPaymentsState[selectedClientKey] : undefined),
+    [clientPaymentsState, selectedClientKey],
+  )
+
+  useEffect(() => {
+    if (!selectedClientId || !selectedClient) {
+      return
+    }
+
+    const scrollToDetails = () => {
+      if (clientDetailsRef.current) {
+        clientDetailsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }
+    }
+
+    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+      window.requestAnimationFrame(scrollToDetails)
+    } else {
+      scrollToDetails()
+    }
+  }, [selectedClientId, selectedClient])
 
   const validateForm = () => {
     const errors = {}
@@ -939,7 +969,7 @@ export default function ClientsPage() {
 
         <Card>
           <CardContent className="space-y-6">
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               <label className="grid gap-1 text-xs font-medium text-slate-600">
                 Buscar
                 <input
@@ -975,31 +1005,6 @@ export default function ClientsPage() {
                   <option value="all">Todos</option>
                   <option value="debt">Pendientes</option>
                   <option value="ok">Al día / Activos</option>
-                </select>
-              </label>
-              <label className="grid gap-1 text-xs font-medium text-slate-600">
-                Ordenar por
-                <select
-                  value={sortField}
-                  onChange={(event) => setSortField(event.target.value)}
-                  className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-                >
-                  {SORT_FIELDS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="grid gap-1 text-xs font-medium text-slate-600">
-                Orden
-                <select
-                  value={sortDirection}
-                  onChange={(event) => setSortDirection(event.target.value)}
-                  className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-                >
-                  <option value="asc">Ascendente</option>
-                  <option value="desc">Descendente</option>
                 </select>
               </label>
               <div className="flex items-end">
@@ -1121,16 +1126,20 @@ export default function ClientsPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {sortedResidentialClients.map((client) => (
-                        <tr
-                          key={client.id}
-                          id={`client-${client.id}`}
-                          className={
-                            highlightedClientId === client.id || selectedClientId === client.id
-                              ? 'bg-blue-50/70 transition-colors'
-                              : undefined
-                          }
-                        >
+                      {sortedResidentialClients.map((client, index) => {
+                        const clientRowId = normalizeId(client.id)
+                        const isActiveRow =
+                          clientRowId !== null &&
+                          (highlightedClientId === clientRowId || selectedClientId === clientRowId)
+                        const rowKey = clientRowId ?? `client-${index}`
+                        const rowElementId = `client-${clientRowId ?? client.id ?? index}`
+
+                        return (
+                          <tr
+                            key={rowKey}
+                            id={rowElementId}
+                            className={isActiveRow ? 'bg-blue-50/70 transition-colors' : undefined}
+                          >
                           <td className="px-3 py-2 font-medium text-slate-900">
                             <div className="flex flex-col">
                               <span>{client.name}</span>
@@ -1177,12 +1186,15 @@ export default function ClientsPage() {
                                 variant="ghost"
                                 className="border border-slate-200 bg-white text-slate-700 hover:border-blue-200"
                                 onClick={() =>
-                                  setSelectedClientId((prev) =>
-                                    prev === client.id ? null : client.id,
-                                  )
+                                  setSelectedClientId((prev) => {
+                                    if (!clientRowId) {
+                                      return prev
+                                    }
+                                    return prev === clientRowId ? null : clientRowId
+                                  })
                                 }
                               >
-                                {selectedClientId === client.id ? 'Ocultar' : 'Ver detalles'}
+                                {selectedClientId === clientRowId ? 'Ocultar' : 'Ver detalles'}
                               </Button>
                               <Button
                                 size="sm"
@@ -1196,7 +1208,8 @@ export default function ClientsPage() {
                             </div>
                           </td>
                         </tr>
-                      ))}
+                        )
+                      })}
                       {filteredResidentialClients.length === 0 && (
                         <tr>
                           <td colSpan={7} className="px-3 py-6 text-center text-sm text-slate-500">
@@ -1215,7 +1228,11 @@ export default function ClientsPage() {
       </section>
 
       {selectedClient && (
-        <section aria-labelledby="detalles-cliente" className="space-y-4">
+        <section
+          ref={clientDetailsRef}
+          aria-labelledby="detalles-cliente"
+          className="space-y-4"
+        >
           <Card>
             <CardContent className="space-y-6">
               <div className="flex flex-col gap-1">
@@ -1257,16 +1274,14 @@ export default function ClientsPage() {
 
               <div className="space-y-3">
                 <h3 className="text-base font-semibold text-slate-900">Pagos recientes</h3>
-                {clientPaymentsState[selectedClient.id]?.error && (
-                  <p className="text-sm text-red-600">
-                    {clientPaymentsState[selectedClient.id].error}
-                  </p>
+                {selectedClientPayments?.error && (
+                  <p className="text-sm text-red-600">{selectedClientPayments.error}</p>
                 )}
-                {clientPaymentsState[selectedClient.id]?.isLoading ? (
+                {selectedClientPayments?.isLoading ? (
                   <p className="text-sm text-slate-500">Cargando pagos…</p>
                 ) : (
                   <div className="space-y-2">
-                    {clientPaymentsState[selectedClient.id]?.payments?.length ? (
+                    {selectedClientPayments?.payments?.length ? (
                       <div className="overflow-x-auto">
                         <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
                           <thead className="bg-slate-50 text-slate-600">
@@ -1289,11 +1304,9 @@ export default function ClientsPage() {
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
-                            {clientPaymentsState[selectedClient.id].payments.map((payment) => (
+                            {selectedClientPayments?.payments?.map((payment) => (
                               <tr key={payment.id}>
-                                <td className="px-3 py-2 text-slate-700">
-                                  {formatDate(payment.date)}
-                                </td>
+                                <td className="px-3 py-2 text-slate-700">{formatDate(payment.date)}</td>
                                 <td className="px-3 py-2 text-slate-700">
                                   {formatPeriods(payment.months)}{' '}
                                   {isApproximatelyOne(payment.months) ? 'periodo' : 'periodos'}
@@ -1314,11 +1327,10 @@ export default function ClientsPage() {
                   </div>
                 )}
 
-                {clientPaymentsState[selectedClient.id]?.payments?.[0] && (
+                {selectedClientPayments?.payments?.[0] && (
                   <p className="text-xs text-slate-500">
-                    Último pago registrado el{' '}
-                    {formatDate(clientPaymentsState[selectedClient.id].payments[0].date)} por{' '}
-                    {peso(clientPaymentsState[selectedClient.id].payments[0].amount)}.
+                    Último pago registrado el {formatDate(selectedClientPayments.payments[0].date)} por{' '}
+                    {peso(selectedClientPayments.payments[0].amount)}.
                   </p>
                 )}
               </div>
