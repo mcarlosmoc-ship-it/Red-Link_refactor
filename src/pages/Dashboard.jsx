@@ -1,9 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState, useId } from 'react'
 import { CalendarDays, DollarSign, Plus, Wifi } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import StatCard from '../components/dashboard/StatCard.jsx'
 import EarningsCard from '../components/dashboard/EarningsCard.jsx'
 import Button from '../components/ui/Button.jsx'
+import InfoTooltip from '../components/ui/InfoTooltip.jsx'
 import {
   peso,
   formatPeriodLabel,
@@ -94,6 +95,7 @@ export default function DashboardPage() {
   const [statusFilter, setStatusFilter] = useState('pending')
   const [searchTerm, setSearchTerm] = useState('')
   const [paymentForm, setPaymentForm] = useState(createEmptyPaymentForm)
+  const [paymentErrors, setPaymentErrors] = useState({})
   const [isRetryingSync, setIsRetryingSync] = useState(false)
   const [showEarningsBreakdown, setShowEarningsBreakdown] = useState(false)
   const [expandedClientId, setExpandedClientId] = useState(null)
@@ -188,7 +190,7 @@ export default function DashboardPage() {
           : paymentMonthsInputRef.current
 
       if (paymentFormRef.current) {
-        paymentFormRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        paymentFormRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' })
       }
 
       targetInput?.focus({ preventScroll: true })
@@ -449,6 +451,7 @@ export default function DashboardPage() {
       method: 'Efectivo',
       note: '',
     })
+    setPaymentErrors({})
   }
 
   const activeMonthlyFee = activeClient?.monthlyFee ?? CLIENT_PRICE
@@ -469,21 +472,12 @@ export default function DashboardPage() {
 
   const handleSubmitPayment = async (event) => {
     event.preventDefault()
+    const errors = {}
     if (!paymentForm.clientId) {
-      showToast({
-        type: 'error',
-        title: 'Selecciona un cliente',
-        description: 'Elige un cliente para registrar el pago.',
-      })
-      return
+      errors.clientId = 'Selecciona un cliente para registrar el pago.'
     }
     if (!activeClient) {
-      showToast({
-        type: 'error',
-        title: 'Cliente no encontrado',
-        description: 'No se encontró información del cliente seleccionado.',
-      })
-      return
+      errors.client = 'No se encontró información del cliente seleccionado.'
     }
 
     const monthlyFeeRaw = Number(activeClient?.monthlyFee)
@@ -496,29 +490,27 @@ export default function DashboardPage() {
 
     if (isAmountMode) {
       if (!Number.isFinite(amountValue) || amountValue <= 0) {
-        showToast({
-          type: 'error',
-          title: 'Monto inválido',
-          description: 'Ingresa un monto mayor a cero.',
-        })
-        return
+        errors.amount = 'Ingresa un monto mayor a cero.'
       }
       if (!hasPositiveMonthlyFee) {
-        showToast({
-          type: 'error',
-          title: 'Tarifa no disponible',
-          description: 'Registra el pago por periodos porque el cliente no tiene una tarifa mensual.',
-        })
-        return
+        errors.mode = 'Registra el pago por periodos porque el cliente no tiene una tarifa mensual.'
       }
     } else if (!Number.isFinite(monthsValue) || monthsValue <= 0) {
+      errors.months = 'Ingresa un número de periodos mayor a cero.'
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setPaymentErrors(errors)
+      const firstError = Object.values(errors)[0]
       showToast({
         type: 'error',
-        title: 'Periodo inválido',
-        description: 'Ingresa un número de periodos mayor a cero.',
+        title: 'Revisa la información del pago',
+        description: firstError,
       })
       return
     }
+
+    setPaymentErrors({})
 
     const monthsToRegister = isAmountMode
       ? amountValue / monthlyFee
@@ -555,6 +547,236 @@ export default function DashboardPage() {
     }
   }
 
+  const handleClosePaymentForm = useCallback(() => {
+    setPaymentForm(createEmptyPaymentForm())
+    setPaymentErrors({})
+  }, [])
+
+  const QuickPaymentForm = ({ className = '', refCallback }) => {
+    if (!activeClient) {
+      return null
+    }
+
+    const modeFieldId = useId()
+    const monthsInputId = useId()
+    const amountInputId = useId()
+    const summaryId = useId()
+    const monthsHelpId = `${monthsInputId}-help`
+    const monthsErrorId = paymentErrors.months ? `${monthsInputId}-error` : undefined
+    const amountHelpId = `${amountInputId}-help`
+    const amountErrorId = paymentErrors.amount ? `${amountInputId}-error` : undefined
+    const modeHelpId = `${modeFieldId}-help`
+    const modeErrorId = paymentErrors.mode ? `${modeFieldId}-error` : undefined
+
+    const monthsDescribedBy = [monthsHelpId, monthsErrorId].filter(Boolean).join(' ')
+    const amountDescribedBy = [amountHelpId, amountErrorId].filter(Boolean).join(' ')
+    const modeDescribedBy = [modeHelpId, modeErrorId].filter(Boolean).join(' ')
+
+    return (
+      <form
+        ref={refCallback}
+        className={`grid gap-4 rounded-lg border border-slate-200 bg-white/95 p-4 shadow-sm backdrop-blur-sm ${className}`}
+        onSubmit={handleSubmitPayment}
+      >
+        <h3 className="text-base font-semibold text-slate-900">Registrar pago rápido</h3>
+        <p className="text-sm text-slate-600">
+          {activeClient.name} tiene {formatPeriods(activeClient.debtMonths)} periodo(s) pendientes y
+          {" "}
+          {formatPeriods(activeClient.paidMonthsAhead)} adelantados.
+        </p>
+        <p className="text-sm text-slate-600">
+          Pago mensual acordado: {peso(activeMonthlyFee)}. Adeudo total: {peso(outstandingAmount)}.
+        </p>
+        <fieldset
+          className="grid gap-2 rounded-md border border-slate-200 bg-slate-50/70 p-3 text-xs font-semibold text-slate-700"
+          aria-describedby={modeDescribedBy || undefined}
+        >
+          <legend className="flex items-center gap-1 text-slate-700">
+            Registrar por
+            <InfoTooltip text="Puedes registrar el pago por periodos exactos o por un monto específico si el cliente tiene una tarifa definida." />
+          </legend>
+          <p id={modeHelpId} className="text-[11px] font-normal text-slate-500">
+            Usa periodos cuando cobres según la mensualidad. Elige monto para pagos especiales o ajustes.
+          </p>
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="inline-flex items-center gap-2">
+              <input
+                type="radio"
+                name="payment-mode"
+                id={`${modeFieldId}-months`}
+                value="months"
+                checked={paymentForm.mode === 'months'}
+                onChange={() => handleModeChange('months')}
+                className="h-3.5 w-3.5"
+                aria-describedby={modeDescribedBy || undefined}
+              />
+              Periodos
+            </label>
+            <label className="inline-flex items-center gap-2">
+              <input
+                type="radio"
+                name="payment-mode"
+                id={`${modeFieldId}-amount`}
+                value="amount"
+                checked={paymentForm.mode === 'amount'}
+                onChange={() => handleModeChange('amount')}
+                className="h-3.5 w-3.5"
+                disabled={Number(activeMonthlyFee) <= 0}
+                title={
+                  Number(activeMonthlyFee) <= 0
+                    ? 'Configura una tarifa mensual para habilitar el pago por monto.'
+                    : undefined
+                }
+                aria-describedby={modeDescribedBy || undefined}
+              />
+              Monto
+            </label>
+          </div>
+        </fieldset>
+        {paymentErrors.mode && (
+          <p id={modeErrorId} className="text-xs font-medium text-red-600" role="alert">
+            {paymentErrors.mode}
+          </p>
+        )}
+        <div className="grid gap-3 sm:grid-cols-3">
+          <label className="grid gap-1 text-xs font-semibold text-slate-700">
+            <span className="flex items-center gap-1">
+              Periodos pagados
+              <InfoTooltip text="Ingresa cuántos periodos del servicio cubrirá el pago. Se permiten decimales para pagos parciales." />
+            </span>
+            <input
+              ref={paymentMonthsInputRef}
+              min={0.01}
+              step="0.01"
+              value={paymentForm.months}
+              onChange={(event) => handleMonthsInputChange(event.target.value)}
+              className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
+                paymentErrors.months ? 'border-red-400 ring-red-200 focus-visible:ring-red-200' : 'border-slate-300'
+              }`}
+              type="number"
+              required
+              disabled={paymentForm.mode === 'amount'}
+              aria-describedby={monthsDescribedBy}
+              aria-invalid={Boolean(paymentErrors.months)}
+              id={monthsInputId}
+            />
+            <span id={monthsHelpId} className="text-[11px] text-slate-500">
+              Usa la opción de periodos cuando el cliente paga con base en la mensualidad acordada.
+            </span>
+            {paymentErrors.months && (
+              <span id={monthsErrorId} className="text-[11px] font-medium text-red-600" role="alert">
+                {paymentErrors.months}
+              </span>
+            )}
+          </label>
+          <label className="grid gap-1 text-xs font-semibold text-slate-700">
+            <span className="flex items-center gap-1">
+              Monto a pagar
+              <InfoTooltip text="Captura el monto exacto recibido. Calcularemos automáticamente los periodos que cubre." />
+            </span>
+            <input
+              ref={paymentAmountInputRef}
+              min={0.01}
+              step="0.01"
+              value={paymentForm.amount}
+              onChange={(event) => handleAmountInputChange(event.target.value)}
+              className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
+                paymentErrors.amount ? 'border-red-400 ring-red-200 focus-visible:ring-red-200' : 'border-slate-300'
+              }`}
+              type="number"
+              required
+              disabled={paymentForm.mode === 'months'}
+              aria-describedby={amountDescribedBy}
+              aria-invalid={Boolean(paymentErrors.amount)}
+              id={amountInputId}
+            />
+            <span id={amountHelpId} className="text-[11px] text-slate-500">
+              Ideal para pagos irregulares o ajustes especiales.
+            </span>
+            {paymentErrors.amount && (
+              <span id={amountErrorId} className="text-[11px] font-medium text-red-600" role="alert">
+                {paymentErrors.amount}
+              </span>
+            )}
+          </label>
+          <label className="grid gap-1 text-xs font-semibold text-slate-700">
+            <span className="flex items-center gap-1">
+              Método
+              <InfoTooltip text="Selecciona cómo se recibió el pago para mantener un historial financiero claro." />
+            </span>
+            <select
+              value={paymentForm.method}
+              onChange={(event) => setPaymentForm((prev) => ({ ...prev, method: event.target.value }))}
+              className="rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200"
+              required
+            >
+              <option value="Efectivo">Efectivo</option>
+              <option value="Transferencia">Transferencia</option>
+              <option value="Tarjeta">Tarjeta</option>
+            </select>
+          </label>
+        </div>
+        <div className="grid gap-1 rounded-md bg-slate-50 p-3 text-xs text-slate-600" aria-live="polite" id={summaryId}>
+          <p className="font-medium text-slate-700">
+            Pago a registrar: {peso(plannedAmount)} ({formatPeriods(plannedMonths)}{' '}
+            {isApproximatelyOne(plannedMonths) ? 'periodo' : 'periodos'}).
+          </p>
+          {outstandingAmount > 0 && plannedAmount < outstandingAmount && (
+            <p>Restante tras el pago: {peso(remainingBalance)}.</p>
+          )}
+          {plannedAmount > outstandingAmount && (
+            <p className="text-amber-600">
+              Esto agregará {formatPeriods(additionalAhead)}{' '}
+              {isApproximatelyOne(additionalAhead) ? 'periodo' : 'periodos'} adelantados.
+            </p>
+          )}
+        </div>
+        <label className="grid gap-1 text-xs font-semibold text-slate-700">
+          Nota (opcional)
+          <textarea
+            value={paymentForm.note}
+            onChange={(event) => setPaymentForm((prev) => ({ ...prev, note: event.target.value }))}
+            className="min-h-[60px] rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200"
+            aria-describedby={summaryId}
+          />
+        </label>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={handleClosePaymentForm}
+            disabled={isSubmittingPayment}
+          >
+            Cancelar
+          </Button>
+          <Button type="submit" disabled={isSubmittingPayment}>
+            {isSubmittingPayment ? 'Registrando…' : 'Registrar pago'}
+          </Button>
+        </div>
+      </form>
+    )
+  }
+
+  const renderDesktopPaymentPanel = () => {
+    if (!isCurrentPeriod) {
+      return (
+        <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700">
+          Para registrar pagos regresa al periodo actual ({currentPeriodLabel}).
+        </div>
+      )
+    }
+
+    if (!paymentForm.open || !activeClient) {
+      return (
+        <div className="rounded-md border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+          Selecciona «Registrar pago» en la lista para ver el formulario aquí mismo.
+        </div>
+      )
+    }
+
+    return <QuickPaymentForm refCallback={paymentFormRef} />
+  }
+
   const handleMonthsInputChange = (value) => {
     setPaymentForm((prev) => {
       if (value === '') {
@@ -574,6 +796,13 @@ export default function DashboardPage() {
         months: value,
         amount: toInputValue(derivedAmount, 2),
       }
+    })
+    setPaymentErrors((prev) => {
+      if (!prev.months && !prev.amount) return prev
+      const next = { ...prev }
+      delete next.months
+      delete next.amount
+      return next
     })
   }
 
@@ -597,6 +826,13 @@ export default function DashboardPage() {
         amount: value,
         months: toInputValue(derivedMonths, 4),
       }
+    })
+    setPaymentErrors((prev) => {
+      if (!prev.amount && !prev.months) return prev
+      const next = { ...prev }
+      delete next.amount
+      delete next.months
+      return next
     })
   }
 
@@ -632,6 +868,12 @@ export default function DashboardPage() {
       }
 
       return { ...prev, mode }
+    })
+    setPaymentErrors((prev) => {
+      if (!prev.mode) return prev
+      const next = { ...prev }
+      delete next.mode
+      return next
     })
   }
 
@@ -866,8 +1108,9 @@ export default function DashboardPage() {
             </div>
           )}
 
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200 text-left text-sm" role="grid">
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-slate-200 text-left text-sm" role="grid">
               <thead className="bg-slate-50 text-slate-600">
                 <tr>
                   <th scope="col" className="px-3 py-2 font-medium">
@@ -890,6 +1133,8 @@ export default function DashboardPage() {
               <tbody className="divide-y divide-slate-100">
                 {filteredClients.map((client) => {
                   const isExpanded = expandedClientId === client.id
+                  const isPaymentActive =
+                    paymentForm.open && paymentForm.clientId === client.id && Boolean(activeClient)
                   return (
                     <React.Fragment key={client.id}>
                       <tr>
@@ -962,6 +1207,13 @@ export default function DashboardPage() {
                           </Button>
                         </td>
                       </tr>
+                      {isPaymentActive && (
+                        <tr className="lg:hidden">
+                          <td colSpan={5} className="bg-slate-50 px-3 py-3">
+                            <QuickPaymentForm refCallback={paymentFormRef} />
+                          </td>
+                        </tr>
+                      )}
                       {isExpanded && (
                         <tr id={`client-details-${client.id}`}>
                           <td colSpan={5} className="bg-slate-50 px-3 py-3">
@@ -1098,142 +1350,10 @@ export default function DashboardPage() {
               </tbody>
             </table>
           </div>
-
-          {paymentForm.open && activeClient && (
-            <form
-              ref={paymentFormRef}
-              className="grid gap-3 rounded-md border border-slate-200 bg-slate-50 p-4"
-              onSubmit={handleSubmitPayment}
-            >
-              <h3 className="text-sm font-semibold text-slate-800">Registrar pago rápido</h3>
-              <p className="text-xs text-slate-500">
-                {activeClient.name} tiene {formatPeriods(activeClient.debtMonths)} periodo(s) pendientes y{' '}
-                {formatPeriods(activeClient.paidMonthsAhead)} adelantados.
-              </p>
-              <p className="text-xs text-slate-500">
-                Pago mensual acordado: {peso(activeMonthlyFee)}. Adeudo total: {peso(outstandingAmount)}.
-              </p>
-              <div className="flex flex-wrap items-center gap-3 text-xs font-medium text-slate-600">
-                <span className="text-slate-500">Registrar por:</span>
-                <label className="inline-flex items-center gap-1">
-                  <input
-                    type="radio"
-                    name="payment-mode"
-                    value="months"
-                    checked={paymentForm.mode === 'months'}
-                    onChange={() => handleModeChange('months')}
-                    className="h-3.5 w-3.5"
-                  />
-                  Periodos
-                </label>
-                <label className="inline-flex items-center gap-1">
-                  <input
-                    type="radio"
-                    name="payment-mode"
-                    value="amount"
-                    checked={paymentForm.mode === 'amount'}
-                    onChange={() => handleModeChange('amount')}
-                    className="h-3.5 w-3.5"
-                    disabled={Number(activeMonthlyFee) <= 0}
-                    title={
-                      Number(activeMonthlyFee) <= 0
-                        ? 'Configura una tarifa mensual para habilitar el pago por monto.'
-                        : undefined
-                    }
-                  />
-                  Monto
-                </label>
-              </div>
-              <div className="grid gap-2 sm:grid-cols-3">
-                <label className="grid gap-1 text-xs font-medium text-slate-600">
-                  Periodos pagados
-                  <input
-                    ref={paymentMonthsInputRef}
-                    min={0.01}
-                    step="0.01"
-                    value={paymentForm.months}
-                    onChange={(event) => handleMonthsInputChange(event.target.value)}
-                    className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-                    type="number"
-                    required
-                    disabled={paymentForm.mode === 'amount'}
-                  />
-                </label>
-                <label className="grid gap-1 text-xs font-medium text-slate-600">
-                  Monto a pagar
-                  <input
-                    ref={paymentAmountInputRef}
-                    min={0.01}
-                    step="0.01"
-                    value={paymentForm.amount}
-                    onChange={(event) => handleAmountInputChange(event.target.value)}
-                    className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-                    type="number"
-                    required
-                    disabled={paymentForm.mode === 'months'}
-                  />
-                </label>
-                <label className="grid gap-1 text-xs font-medium text-slate-600">
-                  Método
-                  <select
-                    value={paymentForm.method}
-                    onChange={(event) =>
-                      setPaymentForm((prev) => ({ ...prev, method: event.target.value }))
-                    }
-                    className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-                    required
-                  >
-                    <option value="Efectivo">Efectivo</option>
-                    <option value="Transferencia">Transferencia</option>
-                    <option value="Tarjeta">Tarjeta</option>
-                  </select>
-                </label>
-              </div>
-              <div className="grid gap-1 text-xs text-slate-500">
-                <p>
-                  Pago a registrar: {peso(plannedAmount)} ({formatPeriods(plannedMonths)}{' '}
-                  {isApproximatelyOne(plannedMonths) ? 'periodo' : 'periodos'}).
-                </p>
-                {outstandingAmount > 0 && plannedAmount < outstandingAmount && (
-                  <p>Restante tras el pago: {peso(remainingBalance)}.</p>
-                )}
-                {plannedAmount > outstandingAmount && (
-                  <p className="text-amber-600">
-                    Esto agregará {formatPeriods(additionalAhead)}{' '}
-                    {isApproximatelyOne(additionalAhead) ? 'periodo' : 'periodos'}{' '}
-                    adelantados.
-                  </p>
-                )}
-              </div>
-              <label className="grid gap-1 text-xs font-medium text-slate-600">
-                Nota (opcional)
-                <textarea
-                  value={paymentForm.note}
-                  onChange={(event) =>
-                    setPaymentForm((prev) => ({ ...prev, note: event.target.value }))
-                  }
-                  className="min-h-[60px] rounded-md border border-slate-300 px-3 py-2 text-sm"
-                />
-              </label>
-              <div className="flex flex-wrap items-center justify-end gap-2">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="border border-slate-200 bg-white text-slate-700 hover:border-blue-200"
-                  onClick={() => setPaymentForm(createEmptyPaymentForm())}
-                >
-                  Cancelar
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={isSubmittingPayment}
-                  className="disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {isSubmittingPayment ? 'Registrando…' : 'Confirmar pago'}
-                </Button>
-              </div>
-            </form>
-          )}
+          <aside className="hidden lg:block">
+            {renderDesktopPaymentPanel()}
+          </aside>
+        </div>
         </div>
       </section>
     </div>

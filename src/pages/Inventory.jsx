@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import Button from '../components/ui/Button.jsx'
+import InfoTooltip from '../components/ui/InfoTooltip.jsx'
 import { Card, CardContent } from '../components/ui/Card.jsx'
 import { INVENTORY_IP_RANGES, useBackofficeStore } from '../store/useBackofficeStore.js'
 import { useClients } from '../hooks/useClients.js'
@@ -467,16 +468,19 @@ export default function InventoryPage() {
           onSubmit={handleEquipmentSubmit}
         >
           <div className="grid gap-4 md:grid-cols-2">
-            <label className="grid gap-1 text-xs font-medium text-slate-600">
-              Marca
+            <label className="grid gap-1 text-xs font-semibold text-slate-700">
+              <span className="flex items-center gap-1">
+                Marca
+                <InfoTooltip text="Ingresa la marca comercial para identificar compatibilidad con otros equipos." />
+              </span>
               <input
                 value={equipmentForm.brand}
                 onChange={(event) =>
                   setEquipmentForm((prev) => ({ ...prev, brand: event.target.value }))
                 }
-                className={`rounded-md border px-3 py-2 text-sm ${
+                className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
                   equipmentErrors.brand
-                    ? 'border-red-400 focus:border-red-400 focus:ring-red-200'
+                    ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
                     : 'border-slate-300'
                 }`}
                 placeholder="Ubiquiti"
@@ -486,16 +490,19 @@ export default function InventoryPage() {
                 <span className="text-xs font-medium text-red-600">{equipmentErrors.brand}</span>
               )}
             </label>
-            <label className="grid gap-1 text-xs font-medium text-slate-600">
-              Modelo
+            <label className="grid gap-1 text-xs font-semibold text-slate-700">
+              <span className="flex items-center gap-1">
+                Modelo
+                <InfoTooltip text="Detalla el modelo exacto para consultar firmware, compatibilidad y repuestos." />
+              </span>
               <input
                 value={equipmentForm.model}
                 onChange={(event) =>
                   setEquipmentForm((prev) => ({ ...prev, model: event.target.value }))
                 }
-                className={`rounded-md border px-3 py-2 text-sm ${
+                className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
                   equipmentErrors.model
-                    ? 'border-red-400 focus:border-red-400 focus:ring-red-200'
+                    ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
                     : 'border-slate-300'
                 }`}
                 placeholder="LiteBeam AC Gen2"
@@ -508,40 +515,49 @@ export default function InventoryPage() {
           </div>
 
           <div className="grid gap-4 md:grid-cols-3">
-            <label className="grid gap-1 text-xs font-medium text-slate-600">
-              Número de serie (opcional)
+            <label className="grid gap-1 text-xs font-semibold text-slate-700">
+              <span className="flex items-center gap-1">
+                Número de serie (opcional)
+                <InfoTooltip text="Registrar el número de serie ayuda a gestionar garantías y seguimientos de soporte." />
+              </span>
               <input
                 value={equipmentForm.serial}
                 onChange={(event) =>
                   setEquipmentForm((prev) => ({ ...prev, serial: event.target.value }))
                 }
-                className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+                className="rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200"
                 placeholder="SN123456789"
                 autoComplete="off"
               />
             </label>
-            <label className="grid gap-1 text-xs font-medium text-slate-600">
-              Etiqueta / activo (opcional)
+            <label className="grid gap-1 text-xs font-semibold text-slate-700">
+              <span className="flex items-center gap-1">
+                Etiqueta / activo (opcional)
+                <InfoTooltip text="Utiliza una etiqueta interna para localizar el equipo en almacén o en campo." />
+              </span>
               <input
                 value={equipmentForm.assetTag}
                 onChange={(event) =>
                   setEquipmentForm((prev) => ({ ...prev, assetTag: event.target.value }))
                 }
-                className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+                className="rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200"
                 placeholder="ACT-001"
                 autoComplete="off"
               />
             </label>
-            <label className="grid gap-1 text-xs font-medium text-slate-600">
-              Estado
+            <label className="grid gap-1 text-xs font-semibold text-slate-700">
+              <span className="flex items-center gap-1">
+                Estado
+                <InfoTooltip text="Indica si el equipo está disponible, en uso o en mantenimiento para planificar despliegues." />
+              </span>
               <select
                 value={equipmentForm.status}
                 onChange={(event) =>
                   setEquipmentForm((prev) => ({ ...prev, status: event.target.value }))
                 }
-                className={`rounded-md border px-3 py-2 text-sm ${
+                className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
                   equipmentErrors.status
-                    ? 'border-red-400 focus:border-red-400 focus:ring-red-200'
+                    ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
                     : 'border-slate-300'
                 }`}
               >
@@ -558,16 +574,19 @@ export default function InventoryPage() {
           </div>
 
           <div className="grid gap-4 md:grid-cols-3">
-            <label className="grid gap-1 text-xs font-medium text-slate-600">
-              Base
+            <label className="grid gap-1 text-xs font-semibold text-slate-700">
+              <span className="flex items-center gap-1">
+                Base
+                <InfoTooltip text="Selecciona la base o red para vincular el equipo con el rango de IP correcto." />
+              </span>
               <select
                 value={equipmentForm.base}
                 onChange={(event) =>
                   setEquipmentForm((prev) => ({ ...prev, base: event.target.value }))
                 }
-                className={`rounded-md border px-3 py-2 text-sm ${
+                className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
                   equipmentErrors.base
-                    ? 'border-red-400 focus:border-red-400 focus:ring-red-200'
+                    ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
                     : 'border-slate-300'
                 }`}
               >
@@ -581,16 +600,19 @@ export default function InventoryPage() {
                 <span className="text-xs font-medium text-red-600">{equipmentErrors.base}</span>
               )}
             </label>
-            <label className="grid gap-1 text-xs font-medium text-slate-600">
-              IP fija (opcional)
+            <label className="grid gap-1 text-xs font-semibold text-slate-700">
+              <span className="flex items-center gap-1">
+                IP fija (opcional)
+                <InfoTooltip text="Asigna una IP fija si el equipo ya está configurado. Validamos automáticamente el rango permitido." />
+              </span>
               <input
                 value={equipmentForm.ip}
                 onChange={(event) =>
                   setEquipmentForm((prev) => ({ ...prev, ip: event.target.value }))
                 }
-                className={`rounded-md border px-3 py-2 text-sm ${
+                className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
                   equipmentErrors.ip
-                    ? 'border-red-400 focus:border-red-400 focus:ring-red-200'
+                    ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
                     : 'border-slate-300'
                 }`}
                 placeholder="192.168.4.10"
@@ -600,16 +622,19 @@ export default function InventoryPage() {
                 <span className="text-xs font-medium text-red-600">{equipmentErrors.ip}</span>
               )}
             </label>
-            <label className="grid gap-1 text-xs font-medium text-slate-600">
-              Ubicación / sitio
+            <label className="grid gap-1 text-xs font-semibold text-slate-700">
+              <span className="flex items-center gap-1">
+                Ubicación / sitio
+                <InfoTooltip text="Describe dónde está instalado el equipo para agilizar visitas o retiros." />
+              </span>
               <input
                 value={equipmentForm.location}
                 onChange={(event) =>
                   setEquipmentForm((prev) => ({ ...prev, location: event.target.value }))
                 }
-                className={`rounded-md border px-3 py-2 text-sm ${
+                className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
                   equipmentErrors.location
-                    ? 'border-red-400 focus:border-red-400 focus:ring-red-200'
+                    ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
                     : 'border-slate-300'
                 }`}
                 placeholder="Torre Base 1"
@@ -622,14 +647,17 @@ export default function InventoryPage() {
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
-            <label className="grid gap-1 text-xs font-medium text-slate-600">
-              Asignar a cliente (opcional)
+            <label className="grid gap-1 text-xs font-semibold text-slate-700">
+              <span className="flex items-center gap-1">
+                Asignar a cliente (opcional)
+                <InfoTooltip text="Vincula el equipo a un cliente para ver rápidamente su ubicación y estado desde el inventario." />
+              </span>
               <select
                 value={equipmentForm.client}
                 onChange={(event) =>
                   setEquipmentForm((prev) => ({ ...prev, client: event.target.value }))
                 }
-                className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+                className="rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200"
               >
                 <option value="">Sin asignar</option>
                 {clientOptions.map((option) => (
@@ -639,27 +667,33 @@ export default function InventoryPage() {
                 ))}
               </select>
             </label>
-            <label className="grid gap-1 text-xs font-medium text-slate-600">
-              Fecha de instalación (opcional)
+            <label className="grid gap-1 text-xs font-semibold text-slate-700">
+              <span className="flex items-center gap-1">
+                Fecha de instalación (opcional)
+                <InfoTooltip text="Registra cuándo se instaló el equipo para programar mantenimientos preventivos." />
+              </span>
               <input
                 value={equipmentForm.installedAt}
                 onChange={(event) =>
                   setEquipmentForm((prev) => ({ ...prev, installedAt: event.target.value }))
                 }
                 type="date"
-                className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+                className="rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200"
               />
             </label>
           </div>
 
-          <label className="grid gap-1 text-xs font-medium text-slate-600">
-            Notas (opcional)
+          <label className="grid gap-1 text-xs font-semibold text-slate-700">
+            <span className="flex items-center gap-1">
+              Notas (opcional)
+              <InfoTooltip text="Añade comentarios relevantes como mantenimientos pendientes o accesorios incluidos." />
+            </span>
             <textarea
               value={equipmentForm.notes}
               onChange={(event) =>
                 setEquipmentForm((prev) => ({ ...prev, notes: event.target.value }))
               }
-              className="min-h-[80px] rounded-md border border-slate-300 px-3 py-2 text-sm"
+              className="min-h-[80px] rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200"
               placeholder="Observaciones, mantenimiento pendiente, etc."
             />
           </label>
@@ -667,8 +701,7 @@ export default function InventoryPage() {
           <div className="flex flex-wrap items-center justify-end gap-3">
             <Button
               type="button"
-              variant="ghost"
-              className="border border-slate-200 bg-white text-slate-700 hover:border-blue-200"
+              variant="secondary"
               onClick={() => {
                 setEquipmentForm({ ...defaultEquipmentForm })
                 setEquipmentErrors({})
@@ -679,7 +712,6 @@ export default function InventoryPage() {
             </Button>
             <Button
               type="submit"
-              className="bg-blue-600 text-white hover:bg-blue-700 focus-visible:ring-blue-500/40"
               disabled={isMutatingInventory}
             >
               Guardar equipo
