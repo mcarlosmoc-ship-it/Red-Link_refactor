@@ -53,6 +53,63 @@ def test_create_payment_updates_client_balance(client, db_session, seed_basic_da
     assert updated_client.service_status == models.ServiceStatus.SUSPENDED
 
 
+def test_delete_payment_restores_client_and_snapshots(client, db_session, seed_basic_data):
+    client_model = seed_basic_data["client"]
+    billing_period = seed_basic_data["period"]
+
+    original_debt = Decimal(client_model.debt_months)
+    original_ahead = Decimal(client_model.paid_months_ahead)
+    original_status = client_model.service_status
+
+    payload = {
+        "client_id": client_model.id,
+        "period_key": billing_period.period_key,
+        "paid_on": date(2025, 1, 12).isoformat(),
+        "amount": "300.00",
+        "months_paid": "1",
+        "method": models.PaymentMethod.EFECTIVO.value,
+        "note": "Pago temporal",
+    }
+
+    response = client.post("/payments/", json=payload)
+    assert response.status_code == 201, response.text
+
+    payment_id = response.json()["id"]
+
+    db_session.expire_all()
+
+    snapshot = (
+        db_session.query(models.FinancialSnapshot)
+        .filter(models.FinancialSnapshot.period_key == billing_period.period_key)
+        .one()
+    )
+    assert Decimal(snapshot.total_income) == Decimal("300.00")
+    assert Decimal(snapshot.net_earnings) == Decimal("300.00")
+
+    delete_response = client.delete(f"/payments/{payment_id}")
+    assert delete_response.status_code == 204, delete_response.text
+
+    db_session.expire_all()
+    refreshed_client = (
+        db_session.query(models.Client)
+        .filter(models.Client.id == client_model.id)
+        .one()
+    )
+
+    assert Decimal(refreshed_client.debt_months) == original_debt
+    assert Decimal(refreshed_client.paid_months_ahead) == original_ahead
+    assert refreshed_client.service_status == original_status
+
+    snapshot_after_delete = (
+        db_session.query(models.FinancialSnapshot)
+        .filter(models.FinancialSnapshot.period_key == billing_period.period_key)
+        .one()
+    )
+
+    assert Decimal(snapshot_after_delete.total_income) == Decimal("0")
+    assert Decimal(snapshot_after_delete.net_earnings) == Decimal("0")
+
+
 def test_payment_clears_debt_and_sets_service_active(client, db_session, seed_basic_data):
     """A payment covering all debt activates the service and tracks credit ahead."""
     client_model = seed_basic_data["client"]
