@@ -457,9 +457,14 @@ export default function ClientsPage() {
       ) {
         errors.paidMonthsAhead = 'Los periodos adelantados no pueden ser negativos.'
       }
-      const monthlyFeeValue = Number(formState.monthlyFee)
-      if (!Number.isFinite(monthlyFeeValue) || monthlyFeeValue <= 0) {
-        errors.monthlyFee = 'Ingresa un monto mensual mayor a cero.'
+      const monthlyFeeRaw = formState.monthlyFee
+      const monthlyFeeValue = Number(monthlyFeeRaw)
+      if (
+        (typeof monthlyFeeRaw === 'string' && monthlyFeeRaw.trim() === '') ||
+        !Number.isFinite(monthlyFeeValue) ||
+        monthlyFeeValue < 0
+      ) {
+        errors.monthlyFee = 'Ingresa un monto mensual válido (cero o mayor).'
       }
     } else {
       if (!formState.modemModel.trim()) {
@@ -473,10 +478,6 @@ export default function ClientsPage() {
     const aheadValue = Number(formState.paidMonthsAhead)
     if (!Number.isFinite(aheadValue) || aheadValue < 0) {
       errors.paidMonthsAhead = 'Los periodos adelantados no pueden ser negativos.'
-    }
-    const monthlyFeeValue = Number(formState.monthlyFee)
-    if (!Number.isFinite(monthlyFeeValue) || monthlyFeeValue <= 0) {
-      errors.monthlyFee = 'Ingresa un monto mensual mayor a cero.'
     }
     setFormErrors(errors)
     return Object.keys(errors).length === 0
@@ -496,7 +497,14 @@ export default function ClientsPage() {
         formState.type === 'residential' ? Number(formState.paidMonthsAhead) || 0 : 0,
       monthlyFee:
         formState.type === 'residential'
-          ? Number(formState.monthlyFee) || CLIENT_PRICE
+          ? (() => {
+              const rawValue = formState.monthlyFee
+              const numericValue = Number(rawValue)
+              if (!Number.isFinite(numericValue) || numericValue < 0) {
+                return CLIENT_PRICE
+              }
+              return numericValue
+            })()
           : 0,
     }
 
@@ -713,6 +721,9 @@ export default function ClientsPage() {
                       : 'border-slate-300'
                   }`}
                 />
+                <span className="text-xs font-normal text-slate-500">
+                  Ingresa 0 para clientes en cortesía o sin cobro mensual.
+                </span>
                 {formErrors.monthlyFee && (
                   <span className="text-xs font-medium text-red-600">{formErrors.monthlyFee}</span>
                 )}

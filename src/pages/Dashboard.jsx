@@ -458,8 +458,9 @@ export default function DashboardPage() {
       return
     }
 
-    const monthlyFee = activeClient?.monthlyFee ?? CLIENT_PRICE
-    const normalizedMonthlyFee = monthlyFee > 0 ? monthlyFee : CLIENT_PRICE
+    const monthlyFeeRaw = Number(activeClient?.monthlyFee)
+    const monthlyFee = Number.isFinite(monthlyFeeRaw) ? monthlyFeeRaw : CLIENT_PRICE
+    const hasPositiveMonthlyFee = monthlyFee > 0
 
     const monthsValue = Number(paymentForm.months)
     const amountValue = Number(paymentForm.amount)
@@ -474,6 +475,14 @@ export default function DashboardPage() {
         })
         return
       }
+      if (!hasPositiveMonthlyFee) {
+        showToast({
+          type: 'error',
+          title: 'Tarifa no disponible',
+          description: 'Registra el pago por periodos porque el cliente no tiene una tarifa mensual.',
+        })
+        return
+      }
     } else if (!Number.isFinite(monthsValue) || monthsValue <= 0) {
       showToast({
         type: 'error',
@@ -484,11 +493,9 @@ export default function DashboardPage() {
     }
 
     const monthsToRegister = isAmountMode
-      ? normalizedMonthlyFee > 0
-        ? amountValue / normalizedMonthlyFee
-        : 0
+      ? amountValue / monthlyFee
       : monthsValue
-    const amountToRegister = isAmountMode ? amountValue : monthsValue * normalizedMonthlyFee
+    const amountToRegister = isAmountMode ? amountValue : monthsValue * monthlyFee
 
     try {
       await recordPayment({
@@ -1092,6 +1099,12 @@ export default function DashboardPage() {
                     checked={paymentForm.mode === 'amount'}
                     onChange={() => handleModeChange('amount')}
                     className="h-3.5 w-3.5"
+                    disabled={Number(activeMonthlyFee) <= 0}
+                    title={
+                      Number(activeMonthlyFee) <= 0
+                        ? 'Configura una tarifa mensual para habilitar el pago por monto.'
+                        : undefined
+                    }
                   />
                   Monto
                 </label>
