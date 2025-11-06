@@ -78,6 +78,7 @@ export default function ClientsPage() {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false)
   const [importSummary, setImportSummary] = useState(null)
   const [isImportingClients, setIsImportingClients] = useState(false)
+  const [requiresImportConfirmation, setRequiresImportConfirmation] = useState(false)
   const [sortField, setSortField] = useState('name')
   const [sortDirection, setSortDirection] = useState('asc')
   const [selectedClientId, setSelectedClientId] = useState(null)
@@ -145,6 +146,7 @@ export default function ClientsPage() {
 
   const handleOpenImport = () => {
     setImportSummary(null)
+    setRequiresImportConfirmation(false)
     setIsImportModalOpen(true)
   }
 
@@ -154,6 +156,7 @@ export default function ClientsPage() {
     }
     setIsImportModalOpen(false)
     setImportSummary(null)
+    setRequiresImportConfirmation(false)
   }
 
   const handleImportClients = async (file) => {
@@ -163,6 +166,9 @@ export default function ClientsPage() {
       setImportSummary(summary)
       const createdCount = Number(summary?.created_count ?? 0)
       const hasErrors = Number(summary?.failed_count ?? 0) > 0
+      const hasSuggestions = Array.isArray(summary?.errors) && summary.errors.length > 0
+      const requiresConfirmation = hasErrors || hasSuggestions
+      setRequiresImportConfirmation(requiresConfirmation)
       const description = hasErrors
         ? 'Revisa los detalles para corregir las filas con errores.'
         : createdCount > 0
@@ -173,6 +179,10 @@ export default function ClientsPage() {
         title: hasErrors ? 'Importación con advertencias' : 'Clientes importados',
         description,
       })
+      if (!requiresConfirmation) {
+        setIsImportModalOpen(false)
+        setImportSummary(null)
+      }
     } catch (error) {
       showToast({
         type: 'error',
@@ -182,6 +192,15 @@ export default function ClientsPage() {
     } finally {
       setIsImportingClients(false)
     }
+  }
+
+  const handleConfirmImportSummary = () => {
+    if (isImportingClients) {
+      return
+    }
+    setIsImportModalOpen(false)
+    setImportSummary(null)
+    setRequiresImportConfirmation(false)
   }
 
   const handleExportClients = useCallback(() => {
@@ -333,6 +352,21 @@ export default function ClientsPage() {
     })
     return sorted
   }, [filteredResidentialClients, sortField, sortDirection])
+
+  const handleSort = useCallback(
+    (field) => {
+      setSortField((currentField) => {
+        setSortDirection((currentDirection) => {
+          if (currentField !== field) {
+            return 'asc'
+          }
+          return currentDirection === 'asc' ? 'desc' : 'asc'
+        })
+        return field
+      })
+    },
+    [],
+  )
 
   const fetchClientPayments = useCallback(
     async (clientId) => {
@@ -852,6 +886,8 @@ export default function ClientsPage() {
         onSubmit={handleImportClients}
         isProcessing={isImportingClients}
         summary={importSummary}
+        requiresConfirmation={requiresImportConfirmation}
+        onConfirmSummary={handleConfirmImportSummary}
       />
 
       <section aria-labelledby="listado" className="space-y-4">
