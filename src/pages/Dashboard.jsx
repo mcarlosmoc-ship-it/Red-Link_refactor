@@ -97,6 +97,9 @@ export default function DashboardPage() {
   const [isRetryingSync, setIsRetryingSync] = useState(false)
   const [showEarningsBreakdown, setShowEarningsBreakdown] = useState(false)
   const [expandedClientId, setExpandedClientId] = useState(null)
+  const paymentFormRef = useRef(null)
+  const paymentMonthsInputRef = useRef(null)
+  const paymentAmountInputRef = useRef(null)
   const lastMetricsFiltersRef = useRef({ statusFilter: 'pending', searchTerm: '' })
 
   const { showToast } = useToast()
@@ -172,6 +175,31 @@ export default function DashboardPage() {
       setPaymentForm(createEmptyPaymentForm())
     }
   }, [isCurrentPeriod, setPaymentForm])
+
+  useEffect(() => {
+    if (!paymentForm.open) {
+      return
+    }
+
+    const focusAndScroll = () => {
+      const targetInput =
+        paymentForm.mode === 'amount'
+          ? paymentAmountInputRef.current
+          : paymentMonthsInputRef.current
+
+      if (paymentFormRef.current) {
+        paymentFormRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }
+
+      targetInput?.focus({ preventScroll: true })
+    }
+
+    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+      window.requestAnimationFrame(focusAndScroll)
+    } else {
+      focusAndScroll()
+    }
+  }, [paymentForm.open, paymentForm.mode])
 
   useEffect(() => {
     const previousFilters = lastMetricsFiltersRef.current
@@ -1072,7 +1100,11 @@ export default function DashboardPage() {
           </div>
 
           {paymentForm.open && activeClient && (
-            <form className="grid gap-3 rounded-md border border-slate-200 bg-slate-50 p-4" onSubmit={handleSubmitPayment}>
+            <form
+              ref={paymentFormRef}
+              className="grid gap-3 rounded-md border border-slate-200 bg-slate-50 p-4"
+              onSubmit={handleSubmitPayment}
+            >
               <h3 className="text-sm font-semibold text-slate-800">Registrar pago rápido</h3>
               <p className="text-xs text-slate-500">
                 {activeClient.name} tiene {formatPeriods(activeClient.debtMonths)} periodo(s) pendientes y{' '}
@@ -1116,6 +1148,7 @@ export default function DashboardPage() {
                 <label className="grid gap-1 text-xs font-medium text-slate-600">
                   Periodos pagados
                   <input
+                    ref={paymentMonthsInputRef}
                     min={0.01}
                     step="0.01"
                     value={paymentForm.months}
@@ -1129,6 +1162,7 @@ export default function DashboardPage() {
                 <label className="grid gap-1 text-xs font-medium text-slate-600">
                   Monto a pagar
                   <input
+                    ref={paymentAmountInputRef}
                     min={0.01}
                     step="0.01"
                     value={paymentForm.amount}
