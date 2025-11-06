@@ -20,7 +20,7 @@
 ### 1. Validación y gestión de errores
 - Implementar validación en tiempo real para campos clave (monto, IP, datos de contacto) con mensajes de error visibles junto al campo.
 - Incorporar un resumen de errores en la parte superior del formulario para capturar campos omitidos cuando el formulario es extenso.
-- Utilizar colores con contraste suficiente y patrones adicionales (iconos, bordes) para usuarios con daltonismo.
+- Utilizar colores con contraste suficiente y patrones adicionales (íconos, bordes) para usuarios con daltonismo.
 
 ### 2. Feedback y confirmaciones visuales
 - Añadir toasts persistentes breves que confirmen acciones exitosas (guardar cliente, registrar gasto/pago) y se ubiquen en la esquina superior derecha.
