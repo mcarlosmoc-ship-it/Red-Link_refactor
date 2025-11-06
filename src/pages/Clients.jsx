@@ -35,6 +35,11 @@ const CLIENT_TYPE_LABELS = {
   token: 'Punto con antena pública',
 }
 
+const SORT_FIELDS = [
+  { value: 'name', label: 'Nombre' },
+  { value: 'location', label: 'Localidad' },
+]
+
 const defaultForm = {
   type: 'residential',
   name: '',
@@ -329,19 +334,6 @@ export default function ClientsPage() {
     return sorted
   }, [filteredResidentialClients, sortField, sortDirection])
 
-  const handleSort = (field) => {
-    setSortField((previousField) => {
-      if (previousField === field) {
-        setSortDirection((previousDirection) =>
-          previousDirection === 'asc' ? 'desc' : 'asc',
-        )
-        return previousField
-      }
-      setSortDirection('asc')
-      return field
-    })
-  }
-
   const fetchClientPayments = useCallback(
     async (clientId) => {
       if (!clientId) {
@@ -420,50 +412,6 @@ export default function ClientsPage() {
     () => clients.find((client) => client.id === selectedClientId) ?? null,
     [clients, selectedClientId],
   )
-
-  const selectedClientPaymentsState = selectedClientId
-    ? clientPaymentsState[selectedClientId] ?? {}
-    : {}
-
-  const latestPayment = selectedClientPaymentsState?.payments?.[0] ?? null
-  const isLoadingPayments = Boolean(selectedClientPaymentsState?.isLoading)
-  const paymentsError = selectedClientPaymentsState?.error ?? null
-  const selectedClientMonthlyFee = selectedClient
-    ? Number(selectedClient.monthlyFee ?? CLIENT_PRICE)
-    : CLIENT_PRICE
-  const selectedClientPaidMonthsAhead = selectedClient
-    ? Number(selectedClient.paidMonthsAhead ?? 0)
-    : 0
-  const selectedClientDebtMonths = selectedClient
-    ? Number(selectedClient.debtMonths ?? 0)
-    : 0
-  const balancePeriods = selectedClientPaidMonthsAhead - selectedClientDebtMonths
-  const balanceAmount = Math.abs(balancePeriods) * selectedClientMonthlyFee
-  const aheadAmount = selectedClientPaidMonthsAhead * selectedClientMonthlyFee
-  const debtAmount = selectedClientDebtMonths * selectedClientMonthlyFee
-  const clientTypeLabel = selectedClient
-    ? CLIENT_TYPE_LABELS[selectedClient.type] ?? 'Cliente'
-    : ''
-  const formattedAheadPeriods = formatPeriods(selectedClientPaidMonthsAhead)
-  const formattedDebtPeriods = formatPeriods(selectedClientDebtMonths)
-  const balancePeriodsAbs = Math.abs(balancePeriods)
-  const formattedBalancePeriods = formatPeriods(balancePeriodsAbs)
-  const aheadWord = isApproximatelyOne(selectedClientPaidMonthsAhead) ? 'periodo' : 'periodos'
-  const debtWord = isApproximatelyOne(selectedClientDebtMonths) ? 'periodo' : 'periodos'
-  const balanceWord = isApproximatelyOne(balancePeriodsAbs) ? 'periodo' : 'periodos'
-  const balanceLabel =
-    balancePeriods === 0
-      ? 'Al corriente'
-      : balancePeriods > 0
-        ? `Adelantado ${formattedBalancePeriods} ${balanceWord}`
-        : `Pendiente ${formattedBalancePeriods} ${balanceWord}`
-  const formattedBalanceAmount = peso(balanceAmount)
-  const formattedAheadAmount = peso(aheadAmount)
-  const formattedDebtAmount = peso(debtAmount)
-  const serviceIsActive = selectedClient?.service === 'Activo'
-  const serviceBadgeClass = serviceIsActive
-    ? 'bg-emerald-100 text-emerald-700'
-    : 'bg-red-100 text-red-700'
 
   const validateForm = () => {
     const errors = {}
@@ -982,6 +930,31 @@ export default function ClientsPage() {
                   <option value="ok">Al día / Activos</option>
                 </select>
               </label>
+              <label className="grid gap-1 text-xs font-medium text-slate-600">
+                Ordenar por
+                <select
+                  value={sortField}
+                  onChange={(event) => setSortField(event.target.value)}
+                  className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+                >
+                  {SORT_FIELDS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="grid gap-1 text-xs font-medium text-slate-600">
+                Orden
+                <select
+                  value={sortDirection}
+                  onChange={(event) => setSortDirection(event.target.value)}
+                  className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+                >
+                  <option value="asc">Ascendente</option>
+                  <option value="desc">Descendente</option>
+                </select>
+              </label>
               <div className="flex items-end">
                 <Button
                   type="button"
@@ -1207,117 +1180,46 @@ export default function ClientsPage() {
                 </p>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                <div className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-4">
+              <div className="grid gap-4 md:grid-cols-3">
+                <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
                   <p className="text-xs font-medium text-slate-500">Estado del servicio</p>
-                  <span
-                    className={`inline-flex w-fit items-center justify-center rounded-full px-3 py-1 text-xs font-semibold ${serviceBadgeClass}`}
-                  >
-                    {selectedClient.service}
-                  </span>
-                  <p className="text-xs text-slate-500">{clientTypeLabel} · Base {selectedClient.base}</p>
+                  <p className="text-base font-semibold text-slate-900">{selectedClient.service}</p>
                 </div>
-                <div className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-4">
-                  <p className="text-xs font-medium text-slate-500">Saldo del servicio</p>
-                  <p
-                    className={`text-base font-semibold ${
-                      balancePeriods === 0
-                        ? 'text-slate-900'
-                        : balancePeriods > 0
-                          ? 'text-emerald-700'
-                          : 'text-red-600'
-                    }`}
-                  >
-                    {balanceLabel}
-                  </p>
-                  <p className="text-xs text-slate-500">
-                    Estimado: {formattedBalanceAmount}
-                  </p>
-                </div>
-                <div className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-4">
-                  <p className="text-xs font-medium text-slate-500">Pago mensual</p>
+                <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs font-medium text-slate-500">Tarifa mensual</p>
                   <p className="text-base font-semibold text-slate-900">
-                    {peso(selectedClientMonthlyFee)}
+                    {peso(selectedClient.monthlyFee ?? CLIENT_PRICE)}
                   </p>
-                  <p className="text-xs text-slate-500">Localidad: {selectedClient.location}</p>
+                  <p className="text-xs text-slate-500">Adelantado: {formatPeriods(selectedClient.paidMonthsAhead)} periodo(s)</p>
                 </div>
-                <div className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-4">
-                  <p className="text-xs font-medium text-slate-500">Último pago</p>
-                  {paymentsError ? (
-                    <p className="text-sm text-red-600">{paymentsError}</p>
-                  ) : isLoadingPayments ? (
-                    <p className="text-sm text-slate-500">Cargando información…</p>
-                  ) : latestPayment ? (
-                    <div className="space-y-1 text-sm text-slate-700">
-                      <p className="font-semibold">{formatDate(latestPayment.date)}</p>
-                      <p>
-                        {formatPeriods(latestPayment.months)} {isApproximatelyOne(latestPayment.months) ? 'periodo' : 'periodos'} · {peso(latestPayment.amount)}
-                      </p>
-                      <p className="text-xs text-slate-500">Método: {latestPayment.method}</p>
-                    </div>
-                  ) : (
-                    <p className="text-sm text-slate-500">No hay pagos registrados.</p>
+                <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs font-medium text-slate-500">Deuda acumulada</p>
+                  <p className="text-base font-semibold text-slate-900">
+                    {selectedClient.debtMonths > 0
+                      ? peso(selectedClient.debtMonths * (selectedClient.monthlyFee ?? CLIENT_PRICE))
+                      : 'Sin deuda'}
+                  </p>
+                  {selectedClient.debtMonths > 0 && (
+                    <p className="text-xs text-slate-500">
+                      {formatPeriods(selectedClient.debtMonths)}{' '}
+                      {isApproximatelyOne(selectedClient.debtMonths) ? 'periodo' : 'periodos'} pendientes
+                    </p>
                   )}
                 </div>
               </div>
 
               <div className="space-y-3">
-                <h3 className="text-base font-semibold text-slate-900">Datos operativos</h3>
-                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                  <dl className="rounded-md border border-slate-200 bg-white p-4">
-                    <dt className="text-xs font-medium text-slate-500">Tipo de cliente</dt>
-                    <dd className="text-sm text-slate-900">{clientTypeLabel}</dd>
-                  </dl>
-                  <dl className="rounded-md border border-slate-200 bg-white p-4">
-                    <dt className="text-xs font-medium text-slate-500">Localidad</dt>
-                    <dd className="text-sm text-slate-900">{selectedClient.location}</dd>
-                  </dl>
-                  <dl className="rounded-md border border-slate-200 bg-white p-4">
-                    <dt className="text-xs font-medium text-slate-500">Base asignada</dt>
-                    <dd className="text-sm text-slate-900">Base {selectedClient.base}</dd>
-                  </dl>
-                  <dl className="rounded-md border border-slate-200 bg-white p-4">
-                    <dt className="text-xs font-medium text-slate-500">Dirección IP</dt>
-                    <dd className="text-sm text-slate-900">{selectedClient.ip ?? '—'}</dd>
-                  </dl>
-                  <dl className="rounded-md border border-slate-200 bg-white p-4">
-                    <dt className="text-xs font-medium text-slate-500">IP de antena</dt>
-                    <dd className="text-sm text-slate-900">{selectedClient.antennaIp ?? '—'}</dd>
-                  </dl>
-                  <dl className="rounded-md border border-slate-200 bg-white p-4">
-                    <dt className="text-xs font-medium text-slate-500">IP de módem</dt>
-                    <dd className="text-sm text-slate-900">{selectedClient.modemIp ?? '—'}</dd>
-                  </dl>
-                  <dl className="rounded-md border border-slate-200 bg-white p-4">
-                    <dt className="text-xs font-medium text-slate-500">Periodos adelantados</dt>
-                    <dd className="text-sm text-slate-900">
-                      {formattedAheadPeriods} {aheadWord}
-                    </dd>
-                    <dd className="text-xs text-slate-500">Equivalente a {formattedAheadAmount}</dd>
-                  </dl>
-                  <dl className="rounded-md border border-slate-200 bg-white p-4">
-                    <dt className="text-xs font-medium text-slate-500">Periodos pendientes</dt>
-                    <dd className="text-sm text-slate-900">
-                      {formattedDebtPeriods} {debtWord}
-                    </dd>
-                    <dd className="text-xs text-slate-500">Equivalente a {formattedDebtAmount}</dd>
-                  </dl>
-                  <dl className="rounded-md border border-slate-200 bg-white p-4">
-                    <dt className="text-xs font-medium text-slate-500">Saldo estimado</dt>
-                    <dd className="text-sm text-slate-900">{balanceLabel}</dd>
-                    <dd className="text-xs text-slate-500">Monto aproximado: {formattedBalanceAmount}</dd>
-                  </dl>
-                </div>
-              </div>
-
-              <div className="space-y-3">
                 <h3 className="text-base font-semibold text-slate-900">Pagos recientes</h3>
-                {paymentsError && <p className="text-sm text-red-600">{paymentsError}</p>}
-                {isLoadingPayments ? (
+                {clientPaymentsState[selectedClient.id]?.error && (
+                  <p className="text-sm text-red-600">
+                    {clientPaymentsState[selectedClient.id].error}
+                  </p>
+                )}
+                {clientPaymentsState[selectedClient.id]?.isLoading ? (
                   <p className="text-sm text-slate-500">Cargando pagos…</p>
                 ) : (
                   <div className="space-y-2">
-                    {selectedClientPaymentsState?.payments?.length ? (
+                    {clientPaymentsState[selectedClient.id]?.payments?.length ? (
                       <div className="overflow-x-auto">
                         <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
                           <thead className="bg-slate-50 text-slate-600">
@@ -1340,7 +1242,7 @@ export default function ClientsPage() {
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
-                            {selectedClientPaymentsState.payments.map((payment) => (
+                            {clientPaymentsState[selectedClient.id].payments.map((payment) => (
                               <tr key={payment.id}>
                                 <td className="px-3 py-2 text-slate-700">
                                   {formatDate(payment.date)}
@@ -1365,11 +1267,11 @@ export default function ClientsPage() {
                   </div>
                 )}
 
-                {latestPayment && !paymentsError && (
+                {clientPaymentsState[selectedClient.id]?.payments?.[0] && (
                   <p className="text-xs text-slate-500">
-                    Último pago registrado el {formatDate(latestPayment.date)} por {peso(latestPayment.amount)}
-                    {' '}({formatPeriods(latestPayment.months)} {isApproximatelyOne(latestPayment.months) ? 'periodo' : 'periodos'} · {latestPayment.method}
-                    {latestPayment.note ? ` · Nota: ${latestPayment.note}` : ''}).
+                    Último pago registrado el{' '}
+                    {formatDate(clientPaymentsState[selectedClient.id].payments[0].date)} por{' '}
+                    {peso(clientPaymentsState[selectedClient.id].payments[0].amount)}.
                   </p>
                 )}
               </div>
