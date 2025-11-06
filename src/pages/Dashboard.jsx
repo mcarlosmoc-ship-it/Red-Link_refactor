@@ -668,16 +668,22 @@ export default function DashboardPage() {
             className="min-h-[60px] rounded-md border border-slate-300 px-3 py-2 text-sm"
           />
         </label>
-        <div className="flex flex-wrap items-center justify-end gap-2">
+        <div
+          className="sticky bottom-0 z-10 mt-3 flex flex-col gap-2 border-t border-slate-200 bg-white pt-3 sm:flex-row sm:items-center sm:justify-end"
+        >
           <Button
             type="button"
             variant="ghost"
-            className="border border-slate-200 bg-white text-slate-700 hover:border-blue-200"
+            className="w-full border border-slate-200 bg-white text-slate-700 hover:border-blue-200 sm:w-auto"
             onClick={handleClosePaymentForm}
           >
             Cancelar
           </Button>
-          <Button type="submit" disabled={isSubmittingPayment} className="disabled:cursor-not-allowed disabled:opacity-50">
+          <Button
+            type="submit"
+            disabled={isSubmittingPayment}
+            className="w-full disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+          >
             {isSubmittingPayment ? 'Registrando…' : 'Confirmar pago'}
           </Button>
         </div>
