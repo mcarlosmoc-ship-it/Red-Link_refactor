@@ -57,21 +57,25 @@ export default function StatCard({
       onKeyDown={clickable ? handleKeyDown : onKeyDown}
       role={clickable ? role ?? 'button' : role}
       tabIndex={clickable ? tabIndex ?? 0 : tabIndex}
-      className={`transition-shadow duration-200 ${clickable ? 'cursor-pointer hover:shadow-lg' : ''} ${className}`.trim()}
+      className={`group relative overflow-hidden rounded-2xl border border-slate-200/70 bg-white/80 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-lg ${clickable ? 'cursor-pointer' : ''} ${className}`.trim()}
     >
-      <CardContent className="p-5">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 bg-gradient-to-br from-blue-50/0 via-blue-50/0 to-blue-100/40 opacity-0 transition group-hover:opacity-100"
+      />
+      <CardContent className="relative z-10 p-6">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className={`text-sm font-medium text-gray-500 ${titleClassName}`.trim()}>{title}</p>
-            <p className={`mt-2 text-3xl font-semibold text-gray-900 ${valueClassName}`.trim()}>{value}</p>
+            <p className={`text-xs font-semibold uppercase tracking-wide text-slate-500 ${titleClassName}`.trim()}>{title}</p>
+            <p className={`mt-3 text-3xl font-semibold tracking-tight text-slate-900 ${valueClassName}`.trim()}>{value}</p>
             {trend && (
-              <p className={`mt-2 text-sm font-medium ${combinedTrendClassName}`}>
+              <p className={`mt-3 text-sm font-semibold ${combinedTrendClassName}`}>
                 {trend}
               </p>
             )}
           </div>
           {IconComponent && (
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-indigo-600">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-500/10 text-blue-600 transition group-hover:bg-blue-500/20 group-hover:text-blue-700">
               {renderIcon()}
             </div>
           )}
