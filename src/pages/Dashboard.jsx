@@ -386,6 +386,10 @@ export default function DashboardPage() {
     printWindow.print()
   }, [pendingClients, showToast])
 
+  const handleClosePaymentForm = useCallback(() => {
+    setPaymentForm(createEmptyPaymentForm())
+  }, [])
+
   const activeClient = useMemo(
     () => clients.find((client) => client.id === paymentForm.clientId) ?? null,
     [clients, paymentForm.clientId],
@@ -546,10 +550,6 @@ export default function DashboardPage() {
       })
     }
   }
-
-  const handleClosePaymentForm = useCallback(() => {
-    setPaymentForm(createEmptyPaymentForm())
-  }, [])
 
   const QuickPaymentForm = ({ className = '', refCallback }) => {
     if (!activeClient) {
