@@ -7,7 +7,7 @@ import { Card, CardContent } from '../components/ui/Card.jsx'
 import { CLIENT_PRICE, useBackofficeStore } from '../store/useBackofficeStore.js'
 import { useClients } from '../hooks/useClients.js'
 import { useToast } from '../hooks/useToast.js'
-import { peso, formatDate } from '../utils/formatters.js'
+import { peso, formatDate, formatPeriodLabel, addMonthsToPeriod } from '../utils/formatters.js'
 import {
   CLIENT_ANTENNA_MODELS,
   CLIENT_IP_FIELDS_BY_TYPE,
@@ -28,6 +28,8 @@ const formatPeriods = (value) => {
 }
 
 const isApproximatelyOne = (value) => Math.abs(Number(value) - 1) < 0.01
+
+const FRACTION_EPSILON = 0.0001
 
 const LOCATIONS = ['Nuevo Amatenango', 'Zapotal', 'Naranjal', 'Belén', 'Lagunita']
 
@@ -59,7 +61,11 @@ const defaultForm = {
 }
 
 export default function ClientsPage() {
-  const initializeStatus = useBackofficeStore((state) => state.status.initialize)
+  const { initializeStatus, selectedPeriod, currentPeriod } = useBackofficeStore((state) => ({
+    initializeStatus: state.status.initialize,
+    selectedPeriod: state.periods?.selected ?? state.periods?.current ?? null,
+    currentPeriod: state.periods?.current ?? state.periods?.selected ?? null,
+  }))
   const { isRefreshing } = useBackofficeRefresh()
   const {
     clients,
@@ -453,6 +459,49 @@ export default function ClientsPage() {
     },
     [clients, selectedClientId],
   )
+  const detailAnchorPeriod = selectedPeriod ?? currentPeriod ?? null
+  const selectedClientPaymentStatus = useMemo(() => {
+    if (!selectedClient || !detailAnchorPeriod) {
+      return null
+    }
+
+    const rawDebtMonths = Number(selectedClient.debtMonths ?? 0)
+    const rawAheadMonths = Number(selectedClient.paidMonthsAhead ?? 0)
+
+    const hasDebt = Number.isFinite(rawDebtMonths) && rawDebtMonths > FRACTION_EPSILON
+    const hasAhead = !hasDebt && Number.isFinite(rawAheadMonths) && rawAheadMonths > FRACTION_EPSILON
+
+    const normalizedDebt = hasDebt ? Math.max(rawDebtMonths, 0) : 0
+    const normalizedAhead = hasAhead ? Math.max(rawAheadMonths, 0) : 0
+
+    const debtWhole = Math.floor(normalizedDebt)
+    const aheadWhole = Math.floor(normalizedAhead)
+
+    const debtFraction = hasDebt ? Math.abs(normalizedDebt - debtWhole) : 0
+    const aheadFraction = hasAhead ? Math.abs(normalizedAhead - aheadWhole) : 0
+
+    const debtHasFraction = debtFraction > FRACTION_EPSILON
+    const aheadHasFraction = aheadFraction > FRACTION_EPSILON
+
+    const monthsToSubtract = hasDebt ? debtWhole + (debtHasFraction ? 1 : 0) : 0
+    const monthsToAdd = hasAhead ? aheadWhole : 0
+
+    const paidThroughPeriod = hasDebt
+      ? addMonthsToPeriod(detailAnchorPeriod, -monthsToSubtract)
+      : addMonthsToPeriod(detailAnchorPeriod, monthsToAdd)
+
+    const nextDuePeriod = addMonthsToPeriod(paidThroughPeriod, 1)
+
+    return {
+      anchorPeriod: detailAnchorPeriod,
+      paidThroughPeriod,
+      nextDuePeriod,
+      hasDebt,
+      hasAhead,
+      debtFraction: debtHasFraction ? debtFraction : 0,
+      aheadFraction: aheadHasFraction ? aheadFraction : 0,
+    }
+  }, [selectedClient, detailAnchorPeriod])
 
   const selectedClientKey = useMemo(() => normalizeId(selectedClient?.id), [selectedClient])
   const selectedClientPayments = useMemo(
@@ -1287,6 +1336,46 @@ export default function ClientsPage() {
                 <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
                   <p className="text-xs font-medium text-slate-500">Estado del servicio</p>
                   <p className="text-base font-semibold text-slate-900">{selectedClient.service}</p>
+                  {selectedClientPaymentStatus && (
+                    <div className="mt-2 space-y-1 text-xs">
+                      <p
+                        className={
+                          selectedClientPaymentStatus.hasDebt
+                            ? 'font-medium text-red-600'
+                            : 'text-slate-500'
+                        }
+                      >
+                        Pagado hasta{' '}
+                        {formatPeriodLabel(selectedClientPaymentStatus.paidThroughPeriod)}.
+                      </p>
+                      <p
+                        className={
+                          selectedClientPaymentStatus.hasDebt
+                            ? 'font-medium text-red-600'
+                            : 'text-slate-500'
+                        }
+                      >
+                        Toca pagar: {formatPeriodLabel(selectedClientPaymentStatus.nextDuePeriod)}.
+                      </p>
+                      {selectedClientPaymentStatus.hasDebt &&
+                        selectedClientPaymentStatus.debtFraction > 0 && (
+                          <p className="text-[11px] font-medium text-amber-700">
+                            Falta cubrir {formatPeriods(selectedClientPaymentStatus.debtFraction)} periodo
+                            parcial de {formatPeriodLabel(selectedClientPaymentStatus.nextDuePeriod)}.
+                          </p>
+                        )}
+                      {selectedClientPaymentStatus.hasAhead &&
+                        selectedClientPaymentStatus.aheadFraction > 0 && (
+                          <p className="text-[11px] font-medium text-emerald-700">
+                            Incluye {formatPeriods(selectedClientPaymentStatus.aheadFraction)} periodo
+                            parcial adelantado de {formatPeriodLabel(selectedClientPaymentStatus.nextDuePeriod)}.
+                          </p>
+                        )}
+                      <p className="text-[11px] text-slate-400">
+                        Referencia: {formatPeriodLabel(selectedClientPaymentStatus.anchorPeriod)}.
+                      </p>
+                    </div>
+                  )}
                 </div>
                 <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
                   <p className="text-xs font-medium text-slate-500">Tarifa mensual</p>
