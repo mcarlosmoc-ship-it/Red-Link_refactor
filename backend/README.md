@@ -17,6 +17,60 @@ migraciones de Alembic y un esquema inicial derivado de `db/schema.sql`.
 - El motor de SQLAlchemy y Alembic reutilizan este valor, por lo que modificar
   `DATABASE_URL` en el entorno afecta tanto a la API como a las migraciones.
 
+## Variables obligatorias de seguridad y autenticación
+
+El panel de administración está protegido mediante autenticación tipo OAuth2
+password. Para que el backend arranque correctamente debes definir las
+siguientes variables de entorno antes de lanzar Uvicorn (o ejecutar pruebas):
+
+| Variable | Descripción |
+|----------|-------------|
+| `CLIENT_PASSWORD_KEY` | Clave base64 de al menos 32 bytes que se usa para cifrar/descifrar contraseñas de clientes. |
+| `ADMIN_USERNAME` | Usuario que se aceptará en el endpoint `/auth/token`. |
+| `ADMIN_PASSWORD_HASH` | Hash PBKDF2 de la contraseña del administrador. |
+| `ADMIN_JWT_SECRET` | Cadena aleatoria usada para firmar los tokens JWT. |
+
+Opcionalmente puedes definir:
+
+- `ADMIN_TOTP_SECRET`: clave base32 para habilitar un segundo factor (TOTP).
+  Si la omites, el backend no solicitará códigos OTP.
+- `ACCESS_TOKEN_EXPIRE_MINUTES`: minutos de vigencia de cada token (por
+  defecto `15`).
+
+Si falta cualquiera de las variables obligatorias, la aplicación aborta el
+arranque con `SecurityConfigurationError` para evitar ejecutar la API en un
+estado inseguro.
+
+### Generar el hash de contraseña del administrador
+
+Utiliza la utilidad integrada para crear el valor de `ADMIN_PASSWORD_HASH`:
+
+```bash
+cd backend
+python - <<'PY'
+from backend.app.security import generate_password_hash
+
+print(generate_password_hash("TuContraseñaSegura123"))
+PY
+```
+
+Copia el hash resultante (formato `iteraciones$salt$hash`) en la variable de
+entorno. El script usa PBKDF2 con 390 000 iteraciones por defecto.
+
+### Obtener un token de acceso
+
+Con las variables configuradas y el backend en marcha, solicita un token JWT:
+
+```bash
+curl -X POST http://localhost:8000/auth/token \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin@example.com","password":"TuContraseñaSegura123"}'
+```
+
+Si definiste `ADMIN_TOTP_SECRET` añade el campo `"otp_code"` al cuerpo con el
+código generado por tu app de autenticación. La respuesta incluye un
+`access_token` que deberás enviar en las peticiones del frontend.
+
 ## Migraciones
 
 El directorio `alembic/` aloja el entorno de Alembic. Para aplicar el estado de

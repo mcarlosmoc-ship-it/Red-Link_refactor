@@ -28,6 +28,125 @@ const resolveBrowserDefaultBaseUrl = () => {
 
 const FALLBACK_BASE_URL = resolveBrowserDefaultBaseUrl() ?? 'http://localhost:8000'
 
+export const ACCESS_TOKEN_STORAGE_KEY = 'red-link.backoffice.accessToken'
+
+const readAccessTokenFromEnv = () => {
+  const rawFromVite =
+    typeof import.meta !== 'undefined' && typeof import.meta.env?.VITE_API_ACCESS_TOKEN === 'string'
+      ? import.meta.env.VITE_API_ACCESS_TOKEN
+      : null
+
+  const rawFromProcess =
+    typeof globalThis !== 'undefined' && typeof globalThis?.process?.env?.VITE_API_ACCESS_TOKEN === 'string'
+      ? globalThis.process.env.VITE_API_ACCESS_TOKEN
+      : null
+
+  const raw = rawFromVite ?? rawFromProcess
+  if (!raw) {
+    return null
+  }
+  const trimmed = raw.trim()
+  return trimmed ? trimmed : null
+}
+
+const detectPersistentStorage = () => {
+  if (typeof globalThis === 'undefined') {
+    return null
+  }
+  const storageCandidates = ['localStorage', 'sessionStorage']
+  for (const candidate of storageCandidates) {
+    const storage = globalThis?.[candidate]
+    if (!storage) {
+      continue
+    }
+    try {
+      const testKey = '__red_link_storage_test__'
+      storage.setItem(testKey, '1')
+      storage.removeItem(testKey)
+      return storage
+    } catch (error) {
+      continue
+    }
+  }
+  return null
+}
+
+const persistentStorage = detectPersistentStorage()
+
+const readStoredAccessToken = () => {
+  if (!persistentStorage) {
+    return null
+  }
+  try {
+    const raw = persistentStorage.getItem(ACCESS_TOKEN_STORAGE_KEY)
+    if (!raw) {
+      return null
+    }
+    const trimmed = raw.trim()
+    return trimmed ? trimmed : null
+  } catch (error) {
+    return null
+  }
+}
+
+const persistAccessToken = (token) => {
+  if (!persistentStorage) {
+    return
+  }
+  try {
+    if (!token) {
+      persistentStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY)
+    } else {
+      persistentStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, token)
+    }
+  } catch (error) {
+    // Silently ignore persistence errors to keep the client usable.
+  }
+}
+
+let accessToken = null
+let didLoadInitialToken = false
+
+const normalizeToken = (token) => {
+  if (typeof token === 'string') {
+    const trimmed = token.trim()
+    return trimmed ? trimmed : null
+  }
+  if (token === null || token === undefined) {
+    return null
+  }
+  return normalizeToken(String(token))
+}
+
+const loadInitialAccessToken = () => {
+  if (didLoadInitialToken) {
+    return accessToken
+  }
+  const stored = readStoredAccessToken()
+  const fromEnv = readAccessTokenFromEnv()
+  accessToken = stored ?? fromEnv ?? null
+  didLoadInitialToken = true
+  return accessToken
+}
+
+const getAccessToken = () => {
+  return accessToken ?? loadInitialAccessToken()
+}
+
+const setAccessToken = (token, { persist = true } = {}) => {
+  const normalized = normalizeToken(token)
+  accessToken = normalized
+  didLoadInitialToken = true
+  if (persist) {
+    persistAccessToken(accessToken)
+  }
+  return accessToken
+}
+
+const clearAccessToken = ({ persist = true } = {}) => {
+  return setAccessToken(null, { persist })
+}
+
 const readBaseUrlFromEnv = () => {
   if (typeof import.meta !== 'undefined' && import.meta?.env?.VITE_API_BASE_URL) {
     return import.meta.env.VITE_API_BASE_URL
@@ -166,6 +285,10 @@ const resolveHeaders = (body, customHeaders = {}) => {
     ensureHeader('Content-Type', 'application/json')
   }
   ensureHeader('Accept', 'application/json')
+  const token = getAccessToken()
+  if (token) {
+    ensureHeader('Authorization', `Bearer ${token}`)
+  }
   return headers
 }
 
@@ -263,6 +386,20 @@ export const apiClient = {
   patch: (path, body, options = {}) => request('PATCH', path, { ...options, body }),
   delete: (path, options) => request('DELETE', path, options),
   getBaseUrl: () => BASE_URL,
+  getAccessToken,
+  setAccessToken,
+  clearAccessToken,
+}
+
+if (typeof globalThis !== 'undefined') {
+  const globalClient = globalThis.__RED_LINK_API_CLIENT__ ?? {}
+  globalThis.__RED_LINK_API_CLIENT__ = {
+    ...globalClient,
+    getAccessToken,
+    setAccessToken,
+    clearAccessToken,
+    storageKey: ACCESS_TOKEN_STORAGE_KEY,
+  }
 }
 
 export const buildApiUrl = (path, query) => buildUrl(path, query)
