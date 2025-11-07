@@ -139,6 +139,65 @@ Recuerda detener los servicios cerrando las ventanas que se abren al final.
    `http://0.0.0.0:8000`. Asegúrate de que esta URL coincida con la definida en
    `VITE_API_BASE_URL`.
 
+### Variables de entorno obligatorias para la autenticación
+
+Además de la base de datos, el backend requiere varios secretos para habilitar
+el inicio de sesión del panel. Configúralos antes de iniciar el servidor:
+
+| Variable | Descripción |
+|----------|-------------|
+| `CLIENT_PASSWORD_KEY` | Clave base64 de al menos 32 bytes para cifrar contraseñas de clientes. |
+| `ADMIN_USERNAME` | Usuario administrador permitido en `/auth/token`. |
+| `ADMIN_PASSWORD_HASH` | Hash PBKDF2 generado con `backend.app.security.generate_password_hash`. |
+| `ADMIN_JWT_SECRET` | Cadena aleatoria usada para firmar los JWT. |
+
+Opcionales:
+
+- `ADMIN_TOTP_SECRET`: habilita códigos OTP (TOTP) si quieres 2FA.
+- `ACCESS_TOKEN_EXPIRE_MINUTES`: minutos de vigencia para cada token (default 15).
+
+Para obtener el hash del administrador ejecuta:
+
+```bash
+cd backend
+python - <<'PY'
+from backend.app.security import generate_password_hash
+
+print(generate_password_hash("TuContraseñaSegura123"))
+PY
+```
+
+Cuando el backend está configurado puedes solicitar un token válido:
+
+```bash
+curl -X POST http://localhost:8000/auth/token \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin@example.com","password":"TuContraseñaSegura123"}'
+```
+
+Si usas 2FA añade `"otp_code"` al cuerpo. Copia el `access_token` de la
+respuesta para configurarlo en el frontend.
+
+### Inyectar el token en el frontend
+
+El SPA guarda el token JWT en `localStorage` usando la clave
+`red-link.backoffice.accessToken`. Existen dos formas sencillas de establecerlo:
+
+1. **Variable de entorno**: define `VITE_API_ACCESS_TOKEN` en `.env.local`.
+   Durante el arranque el cliente leerá ese valor y lo aplicará a todas las
+   peticiones como cabecera `Authorization: Bearer <token>`.
+2. **Consola del navegador**: abre DevTools y ejecuta
+   ```js
+   window.__RED_LINK_API_CLIENT__.setAccessToken('pega-tu-token-aquí')
+   ```
+   El helper también queda disponible como `window.__RED_LINK_API_CLIENT__` para
+   limpiar (`clearAccessToken()`) o consultar (`getAccessToken()`) el valor
+   actual.
+
+Ambos métodos persisten el token entre recargas; si necesitas cerrarlo puedes
+ejecutar `window.__RED_LINK_API_CLIENT__.clearAccessToken()` o eliminar la
+entrada manualmente desde las herramientas de almacenamiento del navegador.
+
 ## Base de datos
 
 - El esquema completo de tablas, índices y datos iniciales se encuentra en
