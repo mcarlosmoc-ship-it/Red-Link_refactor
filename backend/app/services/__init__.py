@@ -6,6 +6,7 @@ from .resellers import ResellerService
 from .expenses import ExpenseService
 from .inventory import InventoryService
 from .metrics import MetricsService
+from .pos import PosService, PosServiceError
 from .billing_periods import BillingPeriodService
 from .operating_costs import OperatingCostService
 from .financial_snapshots import FinancialSnapshotService
@@ -18,6 +19,8 @@ __all__ = [
     "ExpenseService",
     "InventoryService",
     "MetricsService",
+    "PosService",
+    "PosServiceError",
     "BillingPeriodService",
     "OperatingCostService",
     "FinancialSnapshotService",

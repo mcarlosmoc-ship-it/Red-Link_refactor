@@ -6,6 +6,12 @@ export const queryKeys = {
   resellers: () => ['resellers'],
   expenses: () => ['expenses'],
   inventory: () => ['inventory'],
+  posProducts: ({ includeInactive = false } = {}) => [
+    'pos',
+    'products',
+    includeInactive ? 'all' : 'active',
+  ],
+  posSales: ({ limit = 10 } = {}) => ['pos', 'sales', limit],
   metrics: ({ periodKey, statusFilter, searchTerm, currentPeriod }) => [
     'metrics',
     normalizePeriodKey(periodKey),

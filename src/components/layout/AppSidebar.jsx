@@ -7,6 +7,7 @@ import {
   FileText,
   Home,
   Package,
+  ShoppingCart,
   Settings,
   Users,
   Wifi,
@@ -23,6 +24,7 @@ const navItems = [
   { to: '/expenses', label: 'Gastos', icon: FileText },
   { to: '/reports', label: 'Reportes', icon: BarChart3 },
   { to: '/inventory', label: 'Equipos / Inventario', icon: Package },
+  { to: '/ventas', label: 'Ventas', icon: ShoppingCart },
   { to: '/settings', label: 'Configuración', icon: Settings },
 ]
 

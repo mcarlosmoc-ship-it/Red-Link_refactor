@@ -31,6 +31,15 @@ from .metrics import (
     StatusFilter,
 )
 from .payment import PaymentBase, PaymentCreate, PaymentListResponse, PaymentRead
+from .pos import (
+    PosProductCreate,
+    PosProductListResponse,
+    PosProductRead,
+    PosProductUpdate,
+    PosSaleCreate,
+    PosSaleListResponse,
+    PosSaleRead,
+)
 from .reseller import (
     ResellerBase,
     ResellerCreate,
@@ -56,6 +65,13 @@ __all__ = [
     "PaymentCreate",
     "PaymentRead",
     "PaymentListResponse",
+    "PosProductCreate",
+    "PosProductRead",
+    "PosProductUpdate",
+    "PosProductListResponse",
+    "PosSaleCreate",
+    "PosSaleRead",
+    "PosSaleListResponse",
     "ExpenseBase",
     "ExpenseCreate",
     "ExpenseRead",
