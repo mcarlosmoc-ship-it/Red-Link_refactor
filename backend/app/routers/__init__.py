@@ -1,5 +1,6 @@
 """Routers package."""
 
+from .account_management import router as account_management_router
 from .clients import router as clients_router
 from .expenses import router as expenses_router
 from .inventory import router as inventory_router
@@ -9,6 +10,7 @@ from .sales import router as sales_router
 from .resellers import router as resellers_router
 
 __all__ = [
+    "account_management_router",
     "clients_router",
     "payments_router",
     "resellers_router",

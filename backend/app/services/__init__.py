@@ -1,5 +1,13 @@
 """Service layer encapsulating business logic for API routers."""
 
+from .account_management import (
+    AccountService,
+    AccountServiceError,
+    ClientAccountLimitReached,
+    PrincipalAccountNotFoundError,
+    start_overdue_monitor,
+    stop_overdue_monitor,
+)
 from .clients import ClientService
 from .payments import PaymentService, PaymentServiceError
 from .resellers import ResellerService
@@ -12,6 +20,12 @@ from .operating_costs import OperatingCostService
 from .financial_snapshots import FinancialSnapshotService
 
 __all__ = [
+    "AccountService",
+    "AccountServiceError",
+    "ClientAccountLimitReached",
+    "PrincipalAccountNotFoundError",
+    "start_overdue_monitor",
+    "stop_overdue_monitor",
     "ClientService",
     "PaymentService",
     "PaymentServiceError",

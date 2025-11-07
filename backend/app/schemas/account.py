@@ -1,0 +1,124 @@
+"""Schemas for principal and client account management."""
+
+from __future__ import annotations
+
+from datetime import date, datetime
+from decimal import Decimal
+from typing import Optional
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from .common import PaginatedResponse
+
+
+class PrincipalAccountBase(BaseModel):
+    """Shared fields for principal account operations."""
+
+    email_principal: str = Field(..., min_length=3)
+    nota: Optional[str] = None
+
+
+class PrincipalAccountCreate(PrincipalAccountBase):
+    """Payload for creating a principal account."""
+
+    pass
+
+
+class PrincipalAccountUpdate(BaseModel):
+    """Payload for updating a principal account."""
+
+    email_principal: Optional[str] = Field(default=None, min_length=3)
+    nota: Optional[str] = None
+
+
+class PrincipalAccountRead(PrincipalAccountBase):
+    """Representation of a principal account returned by the API."""
+
+    id: UUID
+    fecha_alta: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PrincipalAccountListResponse(PaginatedResponse[PrincipalAccountRead]):
+    """Paginated principal account listing."""
+
+    pass
+
+
+class ClientAccountBase(BaseModel):
+    """Shared fields for client account operations."""
+
+    principal_account_id: UUID
+    correo_cliente: str = Field(..., min_length=3)
+    contrasena_cliente: str = Field(..., min_length=1)
+    perfil: str = Field(..., min_length=1)
+    nombre_cliente: str = Field(..., min_length=1)
+    estatus: str = Field(..., min_length=1)
+    fecha_registro: Optional[datetime] = None
+    fecha_proximo_pago: Optional[date] = None
+
+
+class ClientAccountCreate(ClientAccountBase):
+    """Payload for creating a client account."""
+
+    pass
+
+
+class ClientAccountUpdate(BaseModel):
+    """Payload for updating a client account."""
+
+    principal_account_id: Optional[UUID] = None
+    correo_cliente: Optional[str] = Field(default=None, min_length=3)
+    contrasena_cliente: Optional[str] = Field(default=None, min_length=1)
+    perfil: Optional[str] = Field(default=None, min_length=1)
+    nombre_cliente: Optional[str] = Field(default=None, min_length=1)
+    estatus: Optional[str] = Field(default=None, min_length=1)
+    fecha_registro: Optional[datetime] = None
+    fecha_proximo_pago: Optional[date] = None
+
+
+class ClientAccountRead(ClientAccountBase):
+    """Representation of a client account returned by the API."""
+
+    id: UUID
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ClientAccountListResponse(PaginatedResponse[ClientAccountRead]):
+    """Paginated client account listing."""
+
+    pass
+
+
+class ClientAccountPaymentBase(BaseModel):
+    """Fields shared by payment operations."""
+
+    monto: Decimal = Field(..., ge=0)
+    fecha_pago: date
+    periodo_correspondiente: Optional[str] = None
+    metodo_pago: str = Field(..., min_length=1)
+    notas: Optional[str] = None
+
+
+class ClientAccountPaymentCreate(ClientAccountPaymentBase):
+    """Payload for registering a payment."""
+
+    pass
+
+
+class ClientAccountPaymentRead(ClientAccountPaymentBase):
+    """Payment representation returned by the API."""
+
+    id: UUID
+    client_account_id: UUID
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ClientAccountPaymentListResponse(PaginatedResponse[ClientAccountPaymentRead]):
+    """Paginated list of payments for a client account."""
+
+    pass

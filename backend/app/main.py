@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .migrations import run_database_migrations
 from .routers import (
+    account_management_router,
     clients_router,
     expenses_router,
     inventory_router,
@@ -18,6 +19,7 @@ from .routers import (
     sales_router,
     resellers_router,
 )
+from .services.account_management import start_overdue_monitor, stop_overdue_monitor
 
 DEFAULT_ALLOWED_ORIGINS = {
     "http://localhost:5173",
@@ -80,6 +82,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(
+    account_management_router,
+    prefix="/account-management",
+    tags=["account-management"],
+)
 app.include_router(clients_router, prefix="/clients", tags=["clients"])
 app.include_router(payments_router, prefix="/payments", tags=["payments"])
 app.include_router(resellers_router, prefix="/resellers", tags=["resellers"])
@@ -97,7 +104,21 @@ def ensure_database_is_ready() -> None:
     run_database_migrations()
 
 
+@app.on_event("startup")
+def start_background_jobs() -> None:
+    """Start background tasks required by the service."""
+
+    start_overdue_monitor()
+
+
 @app.get("/", tags=["health"])
 def read_root() -> dict[str, str]:
     """Return a simple health check response."""
     return {"status": "ok"}
+
+
+@app.on_event("shutdown")
+def stop_background_jobs() -> None:
+    """Ensure background tasks are stopped when the application shuts down."""
+
+    stop_overdue_monitor()
