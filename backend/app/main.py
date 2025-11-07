@@ -15,6 +15,7 @@ from .routers import (
     inventory_router,
     metrics_router,
     payments_router,
+    sales_router,
     resellers_router,
 )
 
@@ -85,6 +86,7 @@ app.include_router(resellers_router, prefix="/resellers", tags=["resellers"])
 app.include_router(expenses_router, prefix="/expenses", tags=["expenses"])
 app.include_router(inventory_router, prefix="/inventory", tags=["inventory"])
 app.include_router(metrics_router, prefix="/metrics", tags=["metrics"])
+app.include_router(sales_router, prefix="/sales", tags=["sales"])
 
 
 @app.on_event("startup")

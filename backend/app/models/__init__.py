@@ -12,6 +12,7 @@ from .financial_snapshot import FinancialSnapshot
 from .inventory import InventoryItem, InventoryStatus
 from .inventory_movement import InventoryMovement, InventoryMovementType
 from .payment import Payment, PaymentMethod
+from .pos import PosProduct, PosSale, PosSaleItem
 from .reseller import Reseller
 from .reseller_delivery import (
     DeliverySettlementStatus,
@@ -41,6 +42,9 @@ __all__ = [
     "Expense",
     "ExpenseCategory",
     "Reseller",
+    "PosProduct",
+    "PosSale",
+    "PosSaleItem",
     "VoucherType",
     "VoucherPrice",
     "Voucher",
