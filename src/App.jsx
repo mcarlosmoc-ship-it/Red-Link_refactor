@@ -10,6 +10,7 @@ import SettingsPage from './pages/Settings.jsx'
 import ReportsPage from './pages/Reports.jsx'
 import InventoryPage from './pages/Inventory.jsx'
 import PointOfSalePage from './pages/PointOfSale.jsx'
+import PrincipalAccountsPage from './pages/PrincipalAccounts.jsx'
 
 export default function App() {
   return (
@@ -18,6 +19,7 @@ export default function App() {
         <Route index element={<Navigate to="dashboard" replace />} />
         <Route path="dashboard" element={<DashboardPage />} />
         <Route path="clients" element={<ClientsPage />} />
+        <Route path="principal-accounts" element={<PrincipalAccountsPage />} />
         <Route path="resellers" element={<ResellersPage />} />
         <Route path="payments" element={<PaymentsPage />} />
         <Route path="expenses" element={<ExpensesPage />} />
