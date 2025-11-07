@@ -29,6 +29,7 @@ const resolveBrowserDefaultBaseUrl = () => {
 const FALLBACK_BASE_URL = resolveBrowserDefaultBaseUrl() ?? 'http://localhost:8000'
 
 export const ACCESS_TOKEN_STORAGE_KEY = 'red-link.backoffice.accessToken'
+const LEGACY_ACCESS_TOKEN_STORAGE_KEYS = ['red-link.accessToken']
 
 const readAccessTokenFromEnv = () => {
   const rawFromVite =
@@ -73,12 +74,12 @@ const detectPersistentStorage = () => {
 
 const persistentStorage = detectPersistentStorage()
 
-const readStoredAccessToken = () => {
+const tryReadStorageValue = (key) => {
   if (!persistentStorage) {
     return null
   }
   try {
-    const raw = persistentStorage.getItem(ACCESS_TOKEN_STORAGE_KEY)
+    const raw = persistentStorage.getItem(key)
     if (!raw) {
       return null
     }
@@ -89,6 +90,50 @@ const readStoredAccessToken = () => {
   }
 }
 
+const removeLegacyTokens = () => {
+  if (!persistentStorage) {
+    return
+  }
+  LEGACY_ACCESS_TOKEN_STORAGE_KEYS.forEach((key) => {
+    if (key === ACCESS_TOKEN_STORAGE_KEY) {
+      return
+    }
+    try {
+      persistentStorage.removeItem(key)
+    } catch (error) {
+      // ignore legacy cleanup errors
+    }
+  })
+}
+
+const readStoredAccessToken = () => {
+  const currentValue = tryReadStorageValue(ACCESS_TOKEN_STORAGE_KEY)
+  if (currentValue) {
+    removeLegacyTokens()
+    return currentValue
+  }
+
+  for (const legacyKey of LEGACY_ACCESS_TOKEN_STORAGE_KEYS) {
+    if (legacyKey === ACCESS_TOKEN_STORAGE_KEY) {
+      continue
+    }
+    const legacyValue = tryReadStorageValue(legacyKey)
+    if (legacyValue) {
+      if (persistentStorage) {
+        try {
+          persistentStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, legacyValue)
+        } catch (error) {
+          // ignore persistence issues when migrating
+        }
+      }
+      removeLegacyTokens()
+      return legacyValue
+    }
+  }
+
+  return null
+}
+
 const persistAccessToken = (token) => {
   if (!persistentStorage) {
     return
@@ -96,8 +141,10 @@ const persistAccessToken = (token) => {
   try {
     if (!token) {
       persistentStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY)
+      removeLegacyTokens()
     } else {
       persistentStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, token)
+      removeLegacyTokens()
     }
   } catch (error) {
     // Silently ignore persistence errors to keep the client usable.
