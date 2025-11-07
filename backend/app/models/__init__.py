@@ -1,6 +1,12 @@
 """Expose SQLAlchemy models for convenient imports."""
 
-from .audit import ClientChangeLog, PaymentAuditAction, PaymentAuditLog
+from .audit import (
+    ClientAccountSecurityAction,
+    ClientAccountSecurityEvent,
+    ClientChangeLog,
+    PaymentAuditAction,
+    PaymentAuditLog,
+)
 from .base_operating_cost import BaseOperatingCost
 from .base_station import BaseStation
 from .billing_period import BillingPeriod
@@ -44,6 +50,8 @@ __all__ = [
     "ClientStatusHistory",
     "ContactType",
     "ClientChangeLog",
+    "ClientAccountSecurityEvent",
+    "ClientAccountSecurityAction",
     "Payment",
     "PaymentAuditAction",
     "PaymentAuditLog",

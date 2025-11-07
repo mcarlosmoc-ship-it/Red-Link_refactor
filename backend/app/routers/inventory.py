@@ -10,9 +10,10 @@ from sqlalchemy.orm import Session
 from .. import schemas
 from ..models.inventory import InventoryStatus
 from ..database import get_db
+from ..security import require_admin
 from ..services import InventoryService
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_admin)])
 
 
 @router.get("/", response_model=schemas.InventoryListResponse)

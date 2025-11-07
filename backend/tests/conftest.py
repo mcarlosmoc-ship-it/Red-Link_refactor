@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+import base64
+import os
+import sys
 from pathlib import Path
 from typing import Generator
-
-import sys
 
 import pytest
 from fastapi.testclient import TestClient
@@ -20,6 +21,36 @@ if str(PROJECT_ROOT) not in sys.path:
 from backend.app.database import Base, get_db
 from backend.app.main import app
 from backend.app import models
+from backend.app.security import generate_password_hash, generate_totp_code
+
+
+@pytest.fixture(scope="session")
+def security_settings(tmp_path_factory) -> dict:
+    password = "Adm1nS3cret!"
+    otp_secret = base64.b32encode(os.urandom(20)).decode("ascii").rstrip("=")
+    backup_dir = tmp_path_factory.mktemp("db_backups")
+
+    os.environ["CLIENT_PASSWORD_KEY"] = base64.urlsafe_b64encode(b"\x01" * 32).decode()
+    os.environ["ADMIN_USERNAME"] = "admin@example.com"
+    os.environ["ADMIN_JWT_SECRET"] = base64.urlsafe_b64encode(os.urandom(32)).decode()
+    os.environ["ADMIN_TOTP_SECRET"] = otp_secret
+    os.environ["ACCESS_TOKEN_EXPIRE_MINUTES"] = "60"
+    os.environ["DATABASE_BACKUP_DIR"] = str(backup_dir)
+    os.environ["DATABASE_BACKUP_FREQUENCY"] = "24h"
+
+    os.environ["ADMIN_PASSWORD_HASH"] = generate_password_hash(password)
+
+    return {
+        "username": os.environ["ADMIN_USERNAME"],
+        "password": password,
+        "otp_secret": otp_secret,
+        "backup_dir": backup_dir,
+    }
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _ensure_security_settings(security_settings: dict) -> Generator[None, None, None]:
+    yield
 
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
 engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
@@ -47,7 +78,7 @@ def db_session() -> Generator[Session, None, None]:
 
 
 @pytest.fixture
-def client(db_session: Session) -> Generator[TestClient, None, None]:
+def client(db_session: Session, security_settings: dict) -> Generator[TestClient, None, None]:
     def override_get_db() -> Generator[Session, None, None]:
         try:
             yield db_session
@@ -56,6 +87,18 @@ def client(db_session: Session) -> Generator[TestClient, None, None]:
 
     app.dependency_overrides[get_db] = override_get_db
     with TestClient(app) as test_client:
+        otp_code = generate_totp_code(security_settings["otp_secret"])
+        response = test_client.post(
+            "/auth/token",
+            json={
+                "username": security_settings["username"],
+                "password": security_settings["password"],
+                "otp_code": otp_code,
+            },
+        )
+        assert response.status_code == 200
+        token = response.json()["access_token"]
+        test_client.headers.update({"Authorization": f"Bearer {token}"})
         yield test_client
     app.dependency_overrides.pop(get_db, None)
 

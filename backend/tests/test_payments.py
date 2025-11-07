@@ -12,6 +12,7 @@ from backend.app import models
 from backend.app.database import Base, get_db
 from backend.app.models import BillingPeriod
 from backend.app.main import app
+from backend.app.security import generate_totp_code
 
 
 def test_create_payment_updates_client_balance(client, db_session, seed_basic_data):
@@ -296,7 +297,7 @@ def test_payment_returns_400_when_commit_fails(
     assert response.json()["detail"] == "Unable to record payment at this time."
 
 
-def test_preloaded_sqlite_database_allows_creating_payments(tmp_path, monkeypatch):
+def test_preloaded_sqlite_database_allows_creating_payments(tmp_path, monkeypatch, security_settings):
     """Ensure a pre-seeded SQLite database without Alembic metadata still works."""
 
     db_path = tmp_path / "clients.db"
@@ -345,6 +346,18 @@ def test_preloaded_sqlite_database_allows_creating_payments(tmp_path, monkeypatc
     app.dependency_overrides[get_db] = override_get_db
     try:
         with TestClient(app) as api_client:
+            token_response = api_client.post(
+                "/auth/token",
+                json={
+                    "username": security_settings["username"],
+                    "password": security_settings["password"],
+                    "otp_code": generate_totp_code(security_settings["otp_secret"]),
+                },
+            )
+            assert token_response.status_code == 200, token_response.text
+            token = token_response.json()["access_token"]
+            api_client.headers.update({"Authorization": f"Bearer {token}"})
+
             payload = {
                 "client_id": client_id,
                 "period_key": period_key,

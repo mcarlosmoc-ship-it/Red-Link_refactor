@@ -6,7 +6,7 @@ import logging
 import threading
 from calendar import monthrange
 from datetime import date, datetime, time, timedelta, timezone
-from typing import Iterable, Optional, Tuple
+from typing import Any, Iterable, Optional, Tuple
 from uuid import UUID
 
 from sqlalchemy import func
@@ -14,7 +14,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
+from ..models.audit import ClientAccountSecurityAction
 from ..database import session_scope
+from ..security import AdminIdentity
 
 LOGGER = logging.getLogger(__name__)
 
@@ -114,6 +116,7 @@ class AccountService:
         skip: int = 0,
         limit: int = 50,
         principal_account_id: Optional[UUID] = None,
+        actor: Optional[AdminIdentity] = None,
     ) -> Tuple[Iterable[models.ClientAccount], int]:
         query = db.query(models.ClientAccount)
         if principal_account_id is not None:
@@ -127,15 +130,27 @@ class AccountService:
             .limit(max(limit, 1))
             .all()
         )
+        AccountService._record_bulk_access_events(db, [item.id for item in items], actor)
         return items, total
 
     @staticmethod
-    def get_client_account(db: Session, client_id: UUID) -> Optional[models.ClientAccount]:
-        return (
+    def get_client_account(
+        db: Session, client_id: UUID, *, actor: Optional[AdminIdentity] = None
+    ) -> Optional[models.ClientAccount]:
+        account = (
             db.query(models.ClientAccount)
             .filter(models.ClientAccount.id == client_id)
             .first()
         )
+        if account is not None:
+            AccountService._record_security_event(
+                db,
+                account.id,
+                ClientAccountSecurityAction.DATA_ACCESSED,
+                actor,
+                context={"operation": "get_client_account"},
+            )
+        return account
 
     @staticmethod
     def _resolve_principal_or_raise(
@@ -160,7 +175,7 @@ class AccountService:
 
     @staticmethod
     def create_client_account(
-        db: Session, data: schemas.ClientAccountCreate
+        db: Session, data: schemas.ClientAccountCreate, *, actor: Optional[AdminIdentity] = None
     ) -> models.ClientAccount:
         principal = AccountService._resolve_principal_or_raise(
             db, data.principal_account_id
@@ -179,7 +194,14 @@ class AccountService:
         payload["fecha_proximo_pago"] = _add_one_month(fecha_registro.date())
 
         account = models.ClientAccount(**payload)
+        security_event = models.ClientAccountSecurityEvent(
+            client_account=account,
+            action=ClientAccountSecurityAction.PASSWORD_CREATED,
+            performed_by=actor.username if actor else None,
+            context={"operation": "create_client_account"},
+        )
         db.add(account)
+        db.add(security_event)
         try:
             db.commit()
         except IntegrityError as exc:
@@ -193,6 +215,8 @@ class AccountService:
         db: Session,
         account: models.ClientAccount,
         data: schemas.ClientAccountUpdate,
+        *,
+        actor: Optional[AdminIdentity] = None,
     ) -> models.ClientAccount:
         update_data = data.model_dump(exclude_unset=True)
         principal_id = update_data.get("principal_account_id")
@@ -205,8 +229,11 @@ class AccountService:
         fecha_registro = update_data.get("fecha_registro")
         if isinstance(fecha_registro, datetime) and fecha_registro.tzinfo is None:
             update_data["fecha_registro"] = fecha_registro.replace(tzinfo=timezone.utc)
+        password_changed = False
         for field, value in update_data.items():
             setattr(account, field, value)
+            if field == "contrasena_cliente":
+                password_changed = True
         db.add(account)
         try:
             db.commit()
@@ -214,6 +241,14 @@ class AccountService:
             db.rollback()
             raise AccountServiceError("El correo del cliente ya está registrado.") from exc
         db.refresh(account)
+        if password_changed:
+            AccountService._record_security_event(
+                db,
+                account.id,
+                ClientAccountSecurityAction.PASSWORD_CHANGED,
+                actor,
+                context={"operation": "update_client_account"},
+            )
         return account
 
     @staticmethod
@@ -226,6 +261,8 @@ class AccountService:
         db: Session,
         account: models.ClientAccount,
         data: schemas.ClientAccountPaymentCreate,
+        *,
+        actor: Optional[AdminIdentity] = None,
     ) -> models.ClientAccountPayment:
         payment = models.ClientAccountPayment(
             client_account_id=account.id, **data.model_dump()
@@ -236,7 +273,50 @@ class AccountService:
         db.commit()
         db.refresh(payment)
         db.refresh(account)
+        AccountService._record_security_event(
+            db,
+            account.id,
+            ClientAccountSecurityAction.DATA_ACCESSED,
+            actor,
+            context={"operation": "register_payment"},
+        )
         return payment
+
+    @staticmethod
+    def _record_security_event(
+        db: Session,
+        account_id: UUID,
+        action: ClientAccountSecurityAction,
+        actor: Optional[AdminIdentity],
+        *,
+        context: Optional[dict[str, Any]] = None,
+    ) -> None:
+        event = models.ClientAccountSecurityEvent(
+            client_account_id=account_id,
+            action=action,
+            performed_by=actor.username if actor else None,
+            context=context,
+        )
+        db.add(event)
+        db.commit()
+
+    @staticmethod
+    def _record_bulk_access_events(
+        db: Session, account_ids: Iterable[UUID], actor: Optional[AdminIdentity]
+    ) -> None:
+        events = [
+            models.ClientAccountSecurityEvent(
+                client_account_id=account_id,
+                action=ClientAccountSecurityAction.DATA_ACCESSED,
+                performed_by=actor.username if actor else None,
+                context={"operation": "list_client_accounts"},
+            )
+            for account_id in account_ids
+        ]
+        if not events:
+            return
+        db.add_all(events)
+        db.commit()
 
     @staticmethod
     def mark_overdue_accounts(
