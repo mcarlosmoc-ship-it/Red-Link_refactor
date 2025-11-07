@@ -47,8 +47,8 @@ CREATE TABLE billing_periods (
   UNIQUE (starts_on, ends_on)
 );
 
--- Payments recorded against clients and periods.
-CREATE TABLE payments (
+-- Legacy payments recorded against clients and periods.
+CREATE TABLE legacy_payments (
   payment_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   client_id UUID NOT NULL REFERENCES clients(client_id) ON DELETE CASCADE,
   period_key TEXT NOT NULL REFERENCES billing_periods(period_key) ON DELETE RESTRICT,
@@ -60,8 +60,42 @@ CREATE TABLE payments (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX payments_client_idx ON payments(client_id);
-CREATE INDEX payments_period_idx ON payments(period_key);
+CREATE INDEX legacy_payments_client_idx ON legacy_payments(client_id);
+CREATE INDEX legacy_payments_period_idx ON legacy_payments(period_key);
+
+-- Principal accounts and their client accounts for the portal.
+CREATE TABLE principal_accounts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email_principal TEXT NOT NULL UNIQUE,
+  nota TEXT,
+  fecha_alta TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE client_accounts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  principal_account_id UUID NOT NULL REFERENCES principal_accounts(id) ON DELETE CASCADE,
+  correo_cliente TEXT NOT NULL UNIQUE,
+  contrasena_cliente TEXT NOT NULL,
+  perfil TEXT NOT NULL,
+  nombre_cliente TEXT NOT NULL,
+  fecha_registro TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  fecha_proximo_pago DATE,
+  estatus TEXT NOT NULL
+);
+
+CREATE INDEX client_accounts_fecha_proximo_pago_idx ON client_accounts(fecha_proximo_pago);
+CREATE INDEX client_accounts_estatus_idx ON client_accounts(estatus);
+
+-- Payments tracked for client accounts.
+CREATE TABLE payments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_account_id UUID NOT NULL REFERENCES client_accounts(id) ON DELETE CASCADE,
+  monto NUMERIC(12,2) NOT NULL CHECK (monto >= 0),
+  fecha_pago DATE NOT NULL,
+  periodo_correspondiente TEXT,
+  metodo_pago TEXT NOT NULL CHECK (metodo_pago IN ('Efectivo', 'Transferencia', 'Tarjeta', 'Revendedor', 'Otro')),
+  notas TEXT
+);
 
 -- Voucher catalog used by resellers.
 CREATE TABLE voucher_types (

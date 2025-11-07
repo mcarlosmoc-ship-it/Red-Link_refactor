@@ -58,7 +58,7 @@ class PaymentAuditLog(Base):
     id = Column(GUID(), primary_key=True, default=uuid.uuid4)
     payment_id = Column(
         GUID(),
-        ForeignKey("payments.payment_id", ondelete="CASCADE"),
+        ForeignKey("legacy_payments.payment_id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
