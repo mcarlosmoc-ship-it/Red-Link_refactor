@@ -1,5 +1,43 @@
 import wait from './wait.js'
 
+const resolveStatusCode = (error) => {
+  if (!error || typeof error !== 'object') {
+    return null
+  }
+
+  const { status, statusCode, status_code: statusCodeSnake, response, data } = error
+  if (typeof status === 'number') {
+    return status
+  }
+  if (typeof statusCode === 'number') {
+    return statusCode
+  }
+  if (typeof statusCodeSnake === 'number') {
+    return statusCodeSnake
+  }
+  if (typeof response?.status === 'number') {
+    return response.status
+  }
+  if (typeof data?.status === 'number') {
+    return data.status
+  }
+  return null
+}
+
+const resolveErrorMessage = (error, fallback = 'Ocurrió un error inesperado.') => {
+  const defaultMessage = error?.message ?? fallback
+  const statusCode = resolveStatusCode(error)
+
+  if (statusCode === 401) {
+    return (
+      'La API rechazó la solicitud (401). Configura un token válido en VITE_API_ACCESS_TOKEN ' +
+      'o ejecuta window.__RED_LINK_API_CLIENT__.setAccessToken("tu-token") desde la consola.'
+    )
+  }
+
+  return defaultMessage
+}
+
 export const createResourceStatus = () => ({
   isLoading: false,
   isMutating: false,
@@ -52,7 +90,7 @@ export const runWithStatus = async ({
     })
     return result
   } catch (error) {
-    const message = error?.message ?? 'Ocurrió un error inesperado.'
+    const message = resolveErrorMessage(error)
     const currentRetries = (get().status?.[resource]?.retries ?? 0) + 1
     setStatus(set, resource, {
       isLoading: false,
@@ -87,7 +125,7 @@ export const runMutation = async ({ set, resources, action }) => {
     targetResources.forEach((resource) => setStatus(set, resource, { isMutating: false }))
     return result
   } catch (error) {
-    const message = error?.message ?? 'Ocurrió un error inesperado.'
+    const message = resolveErrorMessage(error)
     targetResources.forEach((resource) =>
       setStatus(set, resource, { isMutating: false, error: message }),
     )
