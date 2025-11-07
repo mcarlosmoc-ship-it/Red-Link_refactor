@@ -15,7 +15,10 @@ import {
   mapExpense,
   mapInventoryItem,
   mapReseller,
+  mapPrincipalAccount,
+  mapClientAccount,
   serializeClientPayload,
+  serializeClientAccountPayload,
   convertBaseCosts,
   VOUCHER_TYPE_IDS,
 } from './mappers/index.js'
@@ -39,6 +42,8 @@ export { CLIENT_PRICE, INVENTORY_IP_RANGES } from './constants.js'
 
 const createInitialState = () => ({
   clients: [],
+  principalAccounts: [],
+  clientAccounts: [],
   payments: [],
   resellers: [],
   expenses: [],
@@ -128,6 +133,88 @@ export const useBackofficeStore = create((set, get) => ({
           force,
         })
         set({ clients: data })
+        return data
+      },
+    })
+  },
+  loadPrincipalAccounts: async ({ force = false, retries = 1 } = {}) => {
+    const queryKey = queryKeys.principalAccounts()
+
+    if (force) {
+      invalidateQuery(queryKey)
+    } else {
+      const cached = getCachedQueryData(queryKey, { ttl: RESOURCE_TTL_MS })
+      if (cached) {
+        set({ principalAccounts: cached })
+        return cached
+      }
+    }
+
+    return runWithStatus({
+      set,
+      get,
+      resource: 'principalAccounts',
+      retries,
+      action: async () => {
+        const data = await queryClient.fetchQuery({
+          queryKey,
+          queryFn: async () => {
+            const response = await apiClient.get('/principal-accounts', {
+              query: { limit: 200 },
+            })
+            const payload = response.data
+            const items = Array.isArray(payload?.items)
+              ? payload.items
+              : Array.isArray(payload)
+                ? payload
+                : []
+            return items.map(mapPrincipalAccount)
+          },
+          staleTime: RESOURCE_TTL_MS,
+          force,
+        })
+        set({ principalAccounts: data })
+        return data
+      },
+    })
+  },
+  loadClientAccounts: async ({ force = false, retries = 1 } = {}) => {
+    const queryKey = queryKeys.clientAccounts()
+
+    if (force) {
+      invalidateQuery(queryKey)
+    } else {
+      const cached = getCachedQueryData(queryKey, { ttl: RESOURCE_TTL_MS })
+      if (cached) {
+        set({ clientAccounts: cached })
+        return cached
+      }
+    }
+
+    return runWithStatus({
+      set,
+      get,
+      resource: 'clientAccounts',
+      retries,
+      action: async () => {
+        const data = await queryClient.fetchQuery({
+          queryKey,
+          queryFn: async () => {
+            const response = await apiClient.get('/client-accounts', {
+              query: { limit: 500 },
+            })
+            const payload = response.data
+            const items = Array.isArray(payload?.items)
+              ? payload.items
+              : Array.isArray(payload)
+                ? payload
+                : []
+            return items.map(mapClientAccount)
+          },
+          staleTime: RESOURCE_TTL_MS,
+          force,
+        })
+        set({ clientAccounts: data })
         return data
       },
     })
@@ -395,6 +482,64 @@ export const useBackofficeStore = create((set, get) => ({
       get().loadClients({ force: true, retries: 1 }),
       get().loadMetrics({ force: true, retries: 1 }),
     ])
+  },
+  createClientAccount: async (payload) => {
+    await runMutation({
+      set,
+      resources: ['clientAccounts', 'principalAccounts'],
+      action: async () => {
+        await apiClient.post('/client-accounts', serializeClientAccountPayload(payload))
+      },
+    })
+
+    invalidateQuery(queryKeys.clientAccounts())
+    invalidateQuery(queryKeys.principalAccounts())
+
+    await Promise.all([
+      get().loadClientAccounts({ force: true, retries: 1 }),
+      get().loadPrincipalAccounts({ force: true, retries: 1 }),
+    ])
+  },
+  registerClientAccountPayment: async ({
+    clientAccountId,
+    amount,
+    paymentDate,
+    method,
+    period,
+    notes,
+  }) => {
+    await runMutation({
+      set,
+      resources: 'clientAccounts',
+      action: async () => {
+        await apiClient.post(`/client-accounts/${clientAccountId}/payments`, {
+          monto: amount,
+          fecha_pago: paymentDate,
+          metodo_pago: method ?? 'Transferencia',
+          periodo_correspondiente: period ?? null,
+          notas: notes ?? null,
+        })
+      },
+    })
+
+    invalidateQuery(queryKeys.clientAccounts())
+
+    await get().loadClientAccounts({ force: true, retries: 1 })
+  },
+  updateClientAccountPassword: async ({ clientAccountId, password }) => {
+    await runMutation({
+      set,
+      resources: 'clientAccounts',
+      action: async () => {
+        await apiClient.put(`/client-accounts/${clientAccountId}`, {
+          contrasena_cliente: password,
+        })
+      },
+    })
+
+    invalidateQuery(queryKeys.clientAccounts())
+
+    await get().loadClientAccounts({ force: true, retries: 1 })
   },
   importClients: async (file) => {
     if (!file || typeof file.text !== 'function') {

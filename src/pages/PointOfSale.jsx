@@ -1,3 +1,4 @@
+/* global Blob, URL */
 import React, { useMemo, useState } from 'react'
 import {
   BadgeCheck,

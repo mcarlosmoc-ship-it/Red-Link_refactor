@@ -10,6 +10,8 @@ export const createResourceStatus = () => ({
 
 export const createInitialStatus = () => ({
   clients: createResourceStatus(),
+  principalAccounts: createResourceStatus(),
+  clientAccounts: createResourceStatus(),
   payments: createResourceStatus(),
   resellers: createResourceStatus(),
   expenses: createResourceStatus(),

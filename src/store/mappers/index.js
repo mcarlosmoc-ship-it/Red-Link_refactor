@@ -146,6 +146,24 @@ export const mapReseller = (reseller) => {
   }
 }
 
+export const mapPrincipalAccount = (account) => ({
+  id: account.id,
+  email: account.email_principal,
+  note: account.nota ?? '',
+  createdAt: account.fecha_alta,
+})
+
+export const mapClientAccount = (account) => ({
+  id: account.id,
+  principalId: account.principal_account_id ?? null,
+  email: account.correo_cliente ?? '',
+  profile: account.perfil ?? '',
+  name: account.nombre_cliente ?? '',
+  status: account.estatus ?? 'activo',
+  registeredAt: account.fecha_registro,
+  nextPayment: account.fecha_proximo_pago,
+})
+
 export const serializeClientPayload = (payload) => ({
   client_type: payload.type,
   full_name: payload.name,
@@ -161,6 +179,27 @@ export const serializeClientPayload = (payload) => ({
   debt_months: payload.debtMonths ?? 0,
   service_status: payload.service ?? 'Activo',
 })
+
+export const serializeClientAccountPayload = (payload) => {
+  const body = {
+    principal_account_id: payload.principalAccountId,
+    correo_cliente: payload.email?.trim(),
+    contrasena_cliente: payload.password,
+    perfil: payload.profile?.trim(),
+    nombre_cliente: payload.name?.trim(),
+    estatus: (payload.status ?? 'activo').trim(),
+  }
+
+  if (payload.registeredAt) {
+    body.fecha_registro = payload.registeredAt
+  }
+
+  if (payload.nextPayment) {
+    body.fecha_proximo_pago = payload.nextPayment
+  }
+
+  return body
+}
 
 export const convertBaseCosts = (baseCosts = {}) =>
   Object.entries(baseCosts).reduce((acc, [baseId, value]) => {

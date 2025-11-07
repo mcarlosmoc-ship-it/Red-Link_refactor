@@ -2,6 +2,8 @@ const normalizePeriodKey = (periodKey) => periodKey ?? 'current'
 
 export const queryKeys = {
   clients: () => ['clients'],
+  principalAccounts: () => ['principal-accounts'],
+  clientAccounts: () => ['client-accounts'],
   payments: (periodKey) => ['payments', normalizePeriodKey(periodKey)],
   resellers: () => ['resellers'],
   expenses: () => ['expenses'],
