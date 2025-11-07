@@ -29,18 +29,7 @@ const resolveBrowserDefaultBaseUrl = () => {
 const FALLBACK_BASE_URL = resolveBrowserDefaultBaseUrl() ?? 'http://localhost:8000'
 
 export const ACCESS_TOKEN_STORAGE_KEY = 'red-link.backoffice.accessToken'
-const LEGACY_ACCESS_TOKEN_STORAGE_KEYS = [
-  'red-link.accessToken',
-  'red-link.access_token',
-  'red-link.backoffice.access_token',
-  'redlink.accessToken',
-  'redlink.access_token',
-  'accessToken',
-  'access_token',
-]
-
-const STORAGE_CANDIDATES = ['localStorage', 'sessionStorage']
-const STORAGE_TEST_KEY = '__red_link_storage_test__'
+const LEGACY_ACCESS_TOKEN_STORAGE_KEYS = ['red-link.accessToken']
 
 const readAccessTokenFromEnv = () => {
   const rawFromVite =
@@ -84,12 +73,12 @@ const detectAccessibleStorages = () => {
 const storageEntries = detectAccessibleStorages()
 const persistentStorage = storageEntries[0]?.storage ?? null
 
-const tryReadStorageValue = (storage, key) => {
-  if (!storage) {
+const tryReadStorageValue = (key) => {
+  if (!persistentStorage) {
     return null
   }
   try {
-    const raw = storage.getItem(key)
+    const raw = persistentStorage.getItem(key)
     if (!raw) {
       return null
     }
@@ -100,24 +89,62 @@ const tryReadStorageValue = (storage, key) => {
   }
 }
 
-const trySetStorageValue = (storage, key, value) => {
-  if (!storage) {
-    return false
+const removeLegacyTokens = () => {
+  if (!persistentStorage) {
+    return
   }
-  try {
-    storage.setItem(key, value)
-    return true
-  } catch (error) {
-    return false
-  }
+  LEGACY_ACCESS_TOKEN_STORAGE_KEYS.forEach((key) => {
+    if (key === ACCESS_TOKEN_STORAGE_KEY) {
+      return
+    }
+    try {
+      persistentStorage.removeItem(key)
+    } catch (error) {
+      // ignore legacy cleanup errors
+    }
+  })
 }
 
-const tryRemoveStorageKey = (storage, key) => {
-  if (!storage) {
+const readStoredAccessToken = () => {
+  const currentValue = tryReadStorageValue(ACCESS_TOKEN_STORAGE_KEY)
+  if (currentValue) {
+    removeLegacyTokens()
+    return currentValue
+  }
+
+  for (const legacyKey of LEGACY_ACCESS_TOKEN_STORAGE_KEYS) {
+    if (legacyKey === ACCESS_TOKEN_STORAGE_KEY) {
+      continue
+    }
+    const legacyValue = tryReadStorageValue(legacyKey)
+    if (legacyValue) {
+      if (persistentStorage) {
+        try {
+          persistentStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, legacyValue)
+        } catch (error) {
+          // ignore persistence issues when migrating
+        }
+      }
+      removeLegacyTokens()
+      return legacyValue
+    }
+  }
+
+  return null
+}
+
+const persistAccessToken = (token) => {
+  if (!persistentStorage) {
     return
   }
   try {
-    storage.removeItem(key)
+    if (!token) {
+      persistentStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY)
+      removeLegacyTokens()
+    } else {
+      persistentStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, token)
+      removeLegacyTokens()
+    }
   } catch (error) {
     // ignore legacy cleanup errors
   }
