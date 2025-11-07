@@ -5,6 +5,7 @@ from .base_operating_cost import BaseOperatingCost
 from .base_station import BaseStation
 from .billing_period import BillingPeriod
 from .client import Client, ClientType, ServiceStatus
+from .client_account import ClientAccount, ClientAccountPayment, PrincipalAccount
 from .client_contact import ClientContact, ClientStatusHistory, ContactType
 from .client_ledger import ClientLedgerEntry, LedgerEntryType
 from .expense import Expense, ExpenseCategory
@@ -29,6 +30,9 @@ __all__ = [
     "BaseStation",
     "BillingPeriod",
     "Client",
+    "ClientAccount",
+    "ClientAccountPayment",
+    "PrincipalAccount",
     "ClientType",
     "ServiceStatus",
     "ClientContact",

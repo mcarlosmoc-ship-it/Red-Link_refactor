@@ -46,7 +46,7 @@ PAYMENT_METHOD_ENUM = Enum(
 class Payment(Base):
     """Represents a payment made by a client for a billing period."""
 
-    __tablename__ = "payments"
+    __tablename__ = "legacy_payments"
     __table_args__ = (
         CheckConstraint("amount >= 0", name="ck_payments_amount_non_negative"),
         CheckConstraint("months_paid > 0", name="ck_payments_months_paid_positive"),
@@ -79,8 +79,8 @@ class Payment(Base):
     )
 
 
-Index("payments_client_idx", Payment.client_id)
-Index("payments_period_idx", Payment.period_key)
-Index("payments_client_period_idx", Payment.client_id, Payment.period_key)
-Index("payments_client_paid_on_idx", Payment.client_id, Payment.paid_on)
-Index("payments_period_paid_on_idx", Payment.period_key, Payment.paid_on)
+Index("legacy_payments_client_idx", Payment.client_id)
+Index("legacy_payments_period_idx", Payment.period_key)
+Index("legacy_payments_client_period_idx", Payment.client_id, Payment.period_key)
+Index("legacy_payments_client_paid_on_idx", Payment.client_id, Payment.paid_on)
+Index("legacy_payments_period_paid_on_idx", Payment.period_key, Payment.paid_on)
