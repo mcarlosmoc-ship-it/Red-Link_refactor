@@ -16,10 +16,11 @@ from sqlalchemy import (
     Text,
     func,
 )
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, synonym
 
 from ..database import Base
 from ..db_types import GUID
+from ..security import decrypt_client_password, encrypt_client_password
 
 
 class PrincipalAccount(Base):
@@ -51,7 +52,7 @@ class ClientAccount(Base):
         nullable=False,
     )
     correo_cliente = Column(String(255), nullable=False, unique=True)
-    contrasena_cliente = Column(String(255), nullable=False)
+    contrasena_cliente_encrypted = Column("contrasena_cliente", String(255), nullable=False)
     perfil = Column(String(100), nullable=False)
     nombre_cliente = Column(String(255), nullable=False)
     fecha_registro = Column(
@@ -63,6 +64,11 @@ class ClientAccount(Base):
     estatus = Column(String(100), nullable=False)
 
     principal_account = relationship("PrincipalAccount", back_populates="client_accounts")
+    security_events = relationship(
+        "ClientAccountSecurityEvent",
+        back_populates="client_account",
+        cascade="all, delete-orphan",
+    )
     payments = relationship(
         "ClientAccountPayment",
         back_populates="client_account",
@@ -72,6 +78,23 @@ class ClientAccount(Base):
 
 Index("client_accounts_fecha_proximo_pago_idx", ClientAccount.fecha_proximo_pago)
 Index("client_accounts_estatus_idx", ClientAccount.estatus)
+
+
+def _get_password(instance: "ClientAccount") -> str:
+    encrypted = instance.contrasena_cliente_encrypted
+    return decrypt_client_password(encrypted) if encrypted else ""
+
+
+def _set_password(instance: "ClientAccount", value: str) -> None:
+    if value is None:
+        raise ValueError("Client password cannot be null")
+    instance.contrasena_cliente_encrypted = encrypt_client_password(value)
+
+
+ClientAccount.contrasena_cliente = synonym(
+    "contrasena_cliente_encrypted",
+    descriptor=property(_get_password, _set_password),
+)
 
 
 class ClientAccountPayment(Base):

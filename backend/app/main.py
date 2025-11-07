@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .migrations import run_database_migrations
 from .routers import (
     account_management_router,
+    auth_router,
     clients_router,
     expenses_router,
     inventory_router,
@@ -20,6 +21,7 @@ from .routers import (
     resellers_router,
 )
 from .services.account_management import start_overdue_monitor, stop_overdue_monitor
+from .services.backups import start_backup_scheduler, stop_backup_scheduler
 from .services.payment_reminders import (
     start_payment_reminder_scheduler,
     stop_payment_reminder_scheduler,
@@ -91,6 +93,7 @@ app.include_router(
     prefix="/account-management",
     tags=["account-management"],
 )
+app.include_router(auth_router)
 app.include_router(clients_router, prefix="/clients", tags=["clients"])
 app.include_router(payments_router, prefix="/payments", tags=["payments"])
 app.include_router(resellers_router, prefix="/resellers", tags=["resellers"])
@@ -114,6 +117,7 @@ def start_background_jobs() -> None:
 
     start_overdue_monitor()
     start_payment_reminder_scheduler()
+    start_backup_scheduler()
 
 
 @app.get("/", tags=["health"])
@@ -128,3 +132,4 @@ def stop_background_jobs() -> None:
 
     stop_overdue_monitor()
     stop_payment_reminder_scheduler()
+    stop_backup_scheduler()

@@ -11,9 +11,10 @@ from sqlalchemy.orm import Session
 from .. import schemas
 from ..database import get_db
 from ..models.payment import PaymentMethod
+from ..security import require_admin
 from ..services import PosService, PosServiceError
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_admin)])
 
 
 @router.get("/products", response_model=schemas.PosProductListResponse)

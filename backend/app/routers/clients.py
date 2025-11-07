@@ -11,9 +11,10 @@ from sqlalchemy.orm import Session
 from .. import schemas
 from ..models.client import ServiceStatus
 from ..database import get_db
+from ..security import require_admin
 from ..services import ClientService
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_admin)])
 
 
 @router.get("/", response_model=schemas.ClientListResponse)

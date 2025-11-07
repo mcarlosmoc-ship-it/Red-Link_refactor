@@ -69,3 +69,32 @@ class PaymentAuditLog(Base):
     snapshot = Column(JSON, nullable=True)
 
     payment = relationship("Payment", back_populates="audit_trail")
+
+
+class ClientAccountSecurityAction(str, enum.Enum):
+    """Actions performed on sensitive client account information."""
+
+    PASSWORD_CREATED = "password_created"
+    PASSWORD_CHANGED = "password_changed"
+    PASSWORD_ACCESSED = "password_accessed"
+    DATA_ACCESSED = "data_accessed"
+
+
+class ClientAccountSecurityEvent(Base):
+    """Audit log for sensitive operations over client accounts."""
+
+    __tablename__ = "client_account_security_events"
+
+    id = Column(GUID(), primary_key=True, default=uuid.uuid4)
+    client_account_id = Column(
+        GUID(),
+        ForeignKey("client_accounts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    action = Column(Enum(ClientAccountSecurityAction), nullable=False)
+    performed_by = Column(String(255), nullable=True)
+    context = Column(JSON, nullable=True)
+    occurred_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    client_account = relationship("ClientAccount", back_populates="security_events")

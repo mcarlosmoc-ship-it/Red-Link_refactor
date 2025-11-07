@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from .. import schemas
 from ..database import get_db
+from ..security import AdminIdentity, require_admin
 from ..services.account_management import (
     AccountService,
     AccountServiceError,
@@ -28,6 +29,7 @@ def list_principal_accounts(
     skip: int = Query(0, ge=0, description="Número de cuentas a omitir"),
     limit: int = Query(50, ge=1, le=200, description="Cantidad máxima de cuentas"),
     db: Session = Depends(get_db),
+    current_admin: AdminIdentity = Depends(require_admin),
 ) -> schemas.PrincipalAccountListResponse:
     items, total = AccountService.list_principal_accounts(db, skip=skip, limit=limit)
     return schemas.PrincipalAccountListResponse(items=items, total=total, limit=limit, skip=skip)
@@ -41,6 +43,7 @@ def list_principal_accounts(
 def create_principal_account(
     payload: schemas.PrincipalAccountCreate,
     db: Session = Depends(get_db),
+    current_admin: AdminIdentity = Depends(require_admin),
 ) -> schemas.PrincipalAccountRead:
     try:
         return AccountService.create_principal_account(db, payload)
@@ -55,6 +58,7 @@ def create_principal_account(
 def get_principal_account(
     principal_id: UUID,
     db: Session = Depends(get_db),
+    current_admin: AdminIdentity = Depends(require_admin),
 ) -> schemas.PrincipalAccountRead:
     account = AccountService.get_principal_account(db, principal_id)
     if account is None:
@@ -87,6 +91,7 @@ def update_principal_account(
 def delete_principal_account(
     principal_id: UUID,
     db: Session = Depends(get_db),
+    current_admin: AdminIdentity = Depends(require_admin),
 ) -> None:
     account = AccountService.get_principal_account(db, principal_id)
     if account is None:
@@ -105,12 +110,14 @@ def list_client_accounts(
         None, description="Filtrar por el identificador de la cuenta principal"
     ),
     db: Session = Depends(get_db),
+    current_admin: AdminIdentity = Depends(require_admin),
 ) -> schemas.ClientAccountListResponse:
     items, total = AccountService.list_client_accounts(
         db,
         skip=skip,
         limit=limit,
         principal_account_id=principal_account_id,
+        actor=current_admin,
     )
     return schemas.ClientAccountListResponse(items=items, total=total, limit=limit, skip=skip)
 
@@ -123,9 +130,10 @@ def list_client_accounts(
 def create_client_account(
     payload: schemas.ClientAccountCreate,
     db: Session = Depends(get_db),
+    current_admin: AdminIdentity = Depends(require_admin),
 ) -> schemas.ClientAccountRead:
     try:
-        return AccountService.create_client_account(db, payload)
+        return AccountService.create_client_account(db, payload, actor=current_admin)
     except PrincipalAccountNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except ClientAccountLimitReached as exc:
@@ -141,8 +149,9 @@ def create_client_account(
 def get_client_account(
     client_account_id: UUID,
     db: Session = Depends(get_db),
+    current_admin: AdminIdentity = Depends(require_admin),
 ) -> schemas.ClientAccountRead:
-    account = AccountService.get_client_account(db, client_account_id)
+    account = AccountService.get_client_account(db, client_account_id, actor=current_admin)
     if account is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Cuenta de cliente no encontrada")
     return account
@@ -156,12 +165,13 @@ def update_client_account(
     client_account_id: UUID,
     payload: schemas.ClientAccountUpdate,
     db: Session = Depends(get_db),
+    current_admin: AdminIdentity = Depends(require_admin),
 ) -> schemas.ClientAccountRead:
-    account = AccountService.get_client_account(db, client_account_id)
+    account = AccountService.get_client_account(db, client_account_id, actor=current_admin)
     if account is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Cuenta de cliente no encontrada")
     try:
-        return AccountService.update_client_account(db, account, payload)
+        return AccountService.update_client_account(db, account, payload, actor=current_admin)
     except PrincipalAccountNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except AccountServiceError as exc:
@@ -175,8 +185,9 @@ def update_client_account(
 def delete_client_account(
     client_account_id: UUID,
     db: Session = Depends(get_db),
+    current_admin: AdminIdentity = Depends(require_admin),
 ) -> None:
-    account = AccountService.get_client_account(db, client_account_id)
+    account = AccountService.get_client_account(db, client_account_id, actor=current_admin)
     if account is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Cuenta de cliente no encontrada")
     AccountService.delete_client_account(db, account)
@@ -191,12 +202,13 @@ def register_client_payment(
     client_account_id: UUID,
     payload: schemas.ClientAccountPaymentCreate,
     db: Session = Depends(get_db),
+    current_admin: AdminIdentity = Depends(require_admin),
 ) -> schemas.ClientAccountPaymentRead:
-    account = AccountService.get_client_account(db, client_account_id)
+    account = AccountService.get_client_account(db, client_account_id, actor=current_admin)
     if account is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Cuenta de cliente no encontrada")
     try:
-        return AccountService.register_payment(db, account, payload)
+        return AccountService.register_payment(db, account, payload, actor=current_admin)
     except AccountServiceError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
