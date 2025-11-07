@@ -101,6 +101,74 @@ cd ..
 El comando creará/actualizará `backend/.venv`, instalará dependencias, aplicará
 las migraciones y abrirá tanto Uvicorn como `npm run dev` en paralelo.
 
+## Recordatorios automáticos de pago
+
+El backend incluye una tarea diaria que revisa `client_accounts` para enviar
+recordatorios de pago y registrar el resultado en la tabla
+`payment_reminder_logs`. El servicio consulta:
+
+- Cuentas con `fecha_proximo_pago` en los próximos `N` días (por defecto `3`) y
+  envía un recordatorio preventivo.
+- Cuentas con `fecha_proximo_pago` vencida para avisar sobre la suspensión (o
+  indicar que ya están suspendidas).
+
+### Activación del programador interno
+
+El programador se ejecuta en un hilo en segundo plano cuando la API arranca si
+se define la variable:
+
+- `PAYMENT_REMINDER_SCHEDULER_ENABLED=1`
+
+Opcionalmente puedes ajustar la ventana y horario de ejecución con:
+
+- `PAYMENT_REMINDER_DAYS_AHEAD` (entero, default `3`).
+- `PAYMENT_REMINDER_RUN_HOUR` y `PAYMENT_REMINDER_RUN_MINUTE` para especificar
+  la hora exacta en UTC (default `09:00`).
+- `PAYMENT_REMINDER_RUN_ON_START` (booleano) para ejecutar inmediatamente al
+  iniciar el servidor además de la corrida diaria.
+
+Si prefieres un cron externo o un servicio en la nube (Cloud Scheduler, AWS
+EventBridge, etc.), ejecuta el comando manual que realiza exactamente las mismas
+acciones:
+
+```bash
+cd backend
+python -m backend.app.scripts.payment_reminder_job
+```
+
+Por ejemplo, el siguiente `crontab` envía recordatorios todos los días a las
+09:00 UTC desde un entorno virtual instalado en `backend/.venv`:
+
+```cron
+0 9 * * * cd /ruta/al/repositorio/backend && \
+  ./.venv/bin/python -m backend.app.scripts.payment_reminder_job >> log.txt 2>&1
+```
+
+### Integración con proveedores de correo o mensajería
+
+El módulo `services.payment_reminders` soporta distintos transportes:
+
+- `console`: imprime el mensaje (útil para pruebas o ambientes sin credenciales).
+- `sendgrid`: envía correos vía SendGrid.
+- `twilio`: envía mensajes SMS/WhatsApp mediante Twilio.
+
+Configura el transporte mediante `PAYMENT_REMINDER_TRANSPORT` (`auto`,
+`console`, `sendgrid`, `twilio`). En modo `auto` se intenta usar SendGrid y, si
+faltan variables obligatorias, se regresa al modo `console` para no perder la
+ejecución.
+
+Variables relevantes por proveedor:
+
+| Proveedor | Variables requeridas |
+|-----------|---------------------|
+| SendGrid  | `SENDGRID_API_KEY`, `SENDGRID_SENDER_EMAIL`, opcional `SENDGRID_SENDER_NAME`, `SENDGRID_SANDBOX_MODE` (habilita el sandbox sin enviar correos reales). |
+| Twilio    | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER`. |
+
+El CLI acepta los mismos parámetros como banderas (`--sendgrid-api-key`,
+`--twilio-from-number`, etc.) para facilitar pipelines que inyectan secretos a
+último momento. Además, `--dry-run` fuerza el modo consola sin modificar la
+base de datos remota ni contactar proveedores externos.
+
 ## Checklist para cambios de esquema
 
 Cuando necesites reestructurar la base de datos sigue el

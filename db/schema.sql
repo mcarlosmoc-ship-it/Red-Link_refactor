@@ -97,6 +97,26 @@ CREATE TABLE payments (
   notas TEXT
 );
 
+-- Audit log for reminders sent to client accounts.
+CREATE TABLE payment_reminder_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_account_id UUID NOT NULL REFERENCES client_accounts(id) ON DELETE CASCADE,
+  reminder_type TEXT NOT NULL CHECK (reminder_type IN ('upcoming', 'overdue')),
+  delivery_status TEXT NOT NULL CHECK (delivery_status IN ('sent', 'failed')),
+  destination TEXT NOT NULL,
+  channel TEXT NOT NULL,
+  due_date DATE,
+  provider_message_id TEXT,
+  response_code INTEGER,
+  error_message TEXT,
+  payload TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX payment_reminder_logs_client_idx ON payment_reminder_logs(client_account_id);
+CREATE INDEX payment_reminder_logs_created_at_idx ON payment_reminder_logs(created_at);
+CREATE INDEX payment_reminder_logs_type_idx ON payment_reminder_logs(reminder_type);
+
 -- Voucher catalog used by resellers.
 CREATE TABLE voucher_types (
   voucher_type_id SERIAL PRIMARY KEY,

@@ -18,6 +18,12 @@ from .pos import PosService, PosServiceError
 from .billing_periods import BillingPeriodService
 from .operating_costs import OperatingCostService
 from .financial_snapshots import FinancialSnapshotService
+from .payment_reminders import (
+    PaymentReminderService,
+    build_notification_client_from_env,
+    start_payment_reminder_scheduler,
+    stop_payment_reminder_scheduler,
+)
 
 __all__ = [
     "AccountService",
@@ -38,4 +44,8 @@ __all__ = [
     "BillingPeriodService",
     "OperatingCostService",
     "FinancialSnapshotService",
+    "PaymentReminderService",
+    "build_notification_client_from_env",
+    "start_payment_reminder_scheduler",
+    "stop_payment_reminder_scheduler",
 ]
