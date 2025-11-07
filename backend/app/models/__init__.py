@@ -13,6 +13,11 @@ from .financial_snapshot import FinancialSnapshot
 from .inventory import InventoryItem, InventoryStatus
 from .inventory_movement import InventoryMovement, InventoryMovementType
 from .payment import Payment, PaymentMethod
+from .payment_reminder import (
+    PaymentReminderLog,
+    ReminderDeliveryStatus,
+    ReminderType,
+)
 from .pos import PosProduct, PosSale, PosSaleItem
 from .reseller import Reseller
 from .reseller_delivery import (
@@ -43,6 +48,9 @@ __all__ = [
     "PaymentAuditAction",
     "PaymentAuditLog",
     "PaymentMethod",
+    "PaymentReminderLog",
+    "ReminderDeliveryStatus",
+    "ReminderType",
     "Expense",
     "ExpenseCategory",
     "Reseller",

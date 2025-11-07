@@ -20,6 +20,10 @@ from .routers import (
     resellers_router,
 )
 from .services.account_management import start_overdue_monitor, stop_overdue_monitor
+from .services.payment_reminders import (
+    start_payment_reminder_scheduler,
+    stop_payment_reminder_scheduler,
+)
 
 DEFAULT_ALLOWED_ORIGINS = {
     "http://localhost:5173",
@@ -109,6 +113,7 @@ def start_background_jobs() -> None:
     """Start background tasks required by the service."""
 
     start_overdue_monitor()
+    start_payment_reminder_scheduler()
 
 
 @app.get("/", tags=["health"])
@@ -122,3 +127,4 @@ def stop_background_jobs() -> None:
     """Ensure background tasks are stopped when the application shuts down."""
 
     stop_overdue_monitor()
+    stop_payment_reminder_scheduler()
