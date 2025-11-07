@@ -691,26 +691,6 @@ export default function DashboardPage() {
     )
   }
 
-  const renderDesktopPaymentPanel = () => {
-    if (!isCurrentPeriod) {
-      return (
-        <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700">
-          Para registrar pagos regresa al periodo actual ({currentPeriodLabel}).
-        </div>
-      )
-    }
-
-    if (!paymentForm.open || !activeClient) {
-      return (
-        <div className="rounded-md border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-          Selecciona «Registrar pago» en la lista para ver el formulario aquí mismo.
-        </div>
-      )
-    }
-
-    return <QuickPaymentForm refCallback={paymentFormRef} />
-  }
-
   const handleMonthsInputChange = (value) => {
     setPaymentForm((prev) => {
       if (value === '') {
@@ -1042,8 +1022,7 @@ export default function DashboardPage() {
             </div>
           )}
 
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
-            <div className="overflow-x-auto">
+          <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-slate-200 text-left text-sm" role="grid">
               <thead className="bg-slate-50 text-slate-600">
                 <tr>
@@ -1142,7 +1121,7 @@ export default function DashboardPage() {
                         </td>
                       </tr>
                       {isPaymentActive && (
-                        <tr className="lg:hidden">
+                        <tr>
                           <td colSpan={5} className="bg-slate-50 px-3 py-3">
                             <QuickPaymentForm refCallback={paymentFormRef} />
                           </td>
@@ -1284,10 +1263,6 @@ export default function DashboardPage() {
               </tbody>
             </table>
           </div>
-          <aside className="hidden lg:block">
-            {renderDesktopPaymentPanel()}
-          </aside>
-        </div>
         </div>
       </section>
     </div>
