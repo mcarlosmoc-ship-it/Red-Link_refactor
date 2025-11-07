@@ -31,6 +31,9 @@ const FALLBACK_BASE_URL = resolveBrowserDefaultBaseUrl() ?? 'http://localhost:80
 export const ACCESS_TOKEN_STORAGE_KEY = 'red-link.backoffice.accessToken'
 const LEGACY_ACCESS_TOKEN_STORAGE_KEYS = ['red-link.accessToken']
 
+const STORAGE_CANDIDATES = ['localStorage', 'sessionStorage']
+const STORAGE_TEST_KEY = '__red-link.storage.test__'
+
 const readAccessTokenFromEnv = () => {
   const rawFromVite =
     typeof import.meta !== 'undefined' && typeof import.meta.env?.VITE_API_ACCESS_TOKEN === 'string'
@@ -73,12 +76,13 @@ const detectAccessibleStorages = () => {
 const storageEntries = detectAccessibleStorages()
 const persistentStorage = storageEntries[0]?.storage ?? null
 
-const tryReadStorageValue = (key) => {
-  if (!persistentStorage) {
+const tryReadStorageValue = (storage, key) => {
+  if (!storage) {
     return null
   }
+
   try {
-    const raw = persistentStorage.getItem(key)
+    const raw = storage.getItem(key)
     if (!raw) {
       return null
     }
@@ -89,64 +93,29 @@ const tryReadStorageValue = (key) => {
   }
 }
 
-const removeLegacyTokens = () => {
-  if (!persistentStorage) {
-    return
-  }
-  LEGACY_ACCESS_TOKEN_STORAGE_KEYS.forEach((key) => {
-    if (key === ACCESS_TOKEN_STORAGE_KEY) {
-      return
-    }
-    try {
-      persistentStorage.removeItem(key)
-    } catch (error) {
-      // ignore legacy cleanup errors
-    }
-  })
-}
-
-const readStoredAccessToken = () => {
-  const currentValue = tryReadStorageValue(ACCESS_TOKEN_STORAGE_KEY)
-  if (currentValue) {
-    removeLegacyTokens()
-    return currentValue
+const trySetStorageValue = (storage, key, value) => {
+  if (!storage) {
+    return false
   }
 
-  for (const legacyKey of LEGACY_ACCESS_TOKEN_STORAGE_KEYS) {
-    if (legacyKey === ACCESS_TOKEN_STORAGE_KEY) {
-      continue
-    }
-    const legacyValue = tryReadStorageValue(legacyKey)
-    if (legacyValue) {
-      if (persistentStorage) {
-        try {
-          persistentStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, legacyValue)
-        } catch (error) {
-          // ignore persistence issues when migrating
-        }
-      }
-      removeLegacyTokens()
-      return legacyValue
-    }
-  }
-
-  return null
-}
-
-const persistAccessToken = (token) => {
-  if (!persistentStorage) {
-    return
-  }
   try {
-    if (!token) {
-      persistentStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY)
-      removeLegacyTokens()
-    } else {
-      persistentStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, token)
-      removeLegacyTokens()
-    }
+    storage.setItem(key, value)
+    return true
   } catch (error) {
-    // ignore legacy cleanup errors
+    return false
+  }
+}
+
+const tryRemoveStorageKey = (storage, key) => {
+  if (!storage) {
+    return false
+  }
+
+  try {
+    storage.removeItem(key)
+    return true
+  } catch (error) {
+    return false
   }
 }
 
@@ -154,12 +123,15 @@ const removeLegacyTokens = () => {
   if (!storageEntries.length) {
     return
   }
+
   const keysToRemove = LEGACY_ACCESS_TOKEN_STORAGE_KEYS.filter(
     (key) => key && key !== ACCESS_TOKEN_STORAGE_KEY,
   )
+
   if (keysToRemove.length === 0) {
     return
   }
+
   storageEntries.forEach(({ storage }) => {
     keysToRemove.forEach((key) => {
       tryRemoveStorageKey(storage, key)
@@ -171,10 +143,12 @@ const removeDuplicateTokens = () => {
   if (!persistentStorage) {
     return
   }
+
   storageEntries.forEach(({ storage }) => {
     if (storage === persistentStorage) {
       return
     }
+
     tryRemoveStorageKey(storage, ACCESS_TOKEN_STORAGE_KEY)
   })
 }
@@ -198,17 +172,21 @@ const readStoredAccessToken = () => {
       if (storage === persistentStorage && key === ACCESS_TOKEN_STORAGE_KEY) {
         continue
       }
+
       const value = tryReadStorageValue(storage, key)
       if (value) {
         const persisted =
           persistentStorage &&
           trySetStorageValue(persistentStorage, ACCESS_TOKEN_STORAGE_KEY, value)
+
         if (persisted && (storage !== persistentStorage || key !== ACCESS_TOKEN_STORAGE_KEY)) {
           tryRemoveStorageKey(storage, key)
         }
+
         if (persisted) {
           cleanTokenStorage()
         }
+
         return value
       }
     }
