@@ -559,20 +559,18 @@ export default function DashboardPage() {
     return (
       <form
         ref={refCallback}
-        className={`grid gap-3 rounded-md border border-slate-200 bg-white p-4 shadow-sm ${className}`}
+        className={`w-full max-w-md space-y-4 rounded-xl border border-slate-200 bg-white/90 p-4 shadow-sm sm:p-5 ${className}`}
         onSubmit={handleSubmitPayment}
       >
-        <h3 className="text-sm font-semibold text-slate-800">Registrar pago rápido</h3>
-        <p className="text-xs text-slate-500">
-          {activeClient.name} tiene {formatPeriods(activeClient.debtMonths)} periodo(s) pendientes y
-          {" "}
-          {formatPeriods(activeClient.paidMonthsAhead)} adelantados.
-        </p>
-        <p className="text-xs text-slate-500">
-          Pago mensual acordado: {peso(activeMonthlyFee)}. Adeudo total: {peso(outstandingAmount)}.
-        </p>
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold text-slate-800">Registrar pago rápido</h3>
+          <p className="text-xs text-slate-500">
+            {activeClient.name} adeuda {formatPeriods(activeClient.debtMonths)} periodo(s). Pago mensual:{' '}
+            {peso(activeMonthlyFee)}. Adeudo total: {peso(outstandingAmount)}.
+          </p>
+        </div>
         <div className="flex flex-wrap items-center gap-3 text-xs font-medium text-slate-600">
-          <span className="text-slate-500">Registrar por:</span>
+          <span className="text-slate-500">Registrar por</span>
           <label className="inline-flex items-center gap-1">
             <input
               type="radio"
@@ -602,7 +600,7 @@ export default function DashboardPage() {
             Monto
           </label>
         </div>
-        <div className="grid gap-2 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2">
           <label className="grid gap-1 text-xs font-medium text-slate-600">
             Periodos pagados
             <input
@@ -611,7 +609,7 @@ export default function DashboardPage() {
               step="0.01"
               value={paymentForm.months}
               onChange={(event) => handleMonthsInputChange(event.target.value)}
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
               type="number"
               required
               disabled={paymentForm.mode === 'amount'}
@@ -625,27 +623,14 @@ export default function DashboardPage() {
               step="0.01"
               value={paymentForm.amount}
               onChange={(event) => handleAmountInputChange(event.target.value)}
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
               type="number"
               required
               disabled={paymentForm.mode === 'months'}
             />
           </label>
-          <label className="grid gap-1 text-xs font-medium text-slate-600">
-            Método
-            <select
-              value={paymentForm.method}
-              onChange={(event) => setPaymentForm((prev) => ({ ...prev, method: event.target.value }))}
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-              required
-            >
-              <option value="Efectivo">Efectivo</option>
-              <option value="Transferencia">Transferencia</option>
-              <option value="Tarjeta">Tarjeta</option>
-            </select>
-          </label>
         </div>
-        <div className="grid gap-1 text-xs text-slate-500">
+        <div className="space-y-1 rounded-lg bg-slate-50/80 p-3 text-xs text-slate-500">
           <p>
             Pago a registrar: {peso(plannedAmount)} ({formatPeriods(plannedMonths)}{' '}
             {isApproximatelyOne(plannedMonths) ? 'periodo' : 'periodos'}).
@@ -665,16 +650,14 @@ export default function DashboardPage() {
           <textarea
             value={paymentForm.note}
             onChange={(event) => setPaymentForm((prev) => ({ ...prev, note: event.target.value }))}
-            className="min-h-[60px] rounded-md border border-slate-300 px-3 py-2 text-sm"
+            className="min-h-[60px] rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
           />
         </label>
-        <div
-          className="sticky bottom-0 z-10 mt-3 flex flex-col gap-2 border-t border-slate-200 bg-white pt-3 sm:flex-row sm:items-center sm:justify-end"
-        >
+        <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:items-center sm:justify-end">
           <Button
             type="button"
             variant="ghost"
-            className="w-full border border-slate-200 bg-white text-slate-700 hover:border-blue-200 sm:w-auto"
+            className="w-full border border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:bg-blue-50 sm:w-auto"
             onClick={handleClosePaymentForm}
           >
             Cancelar
@@ -682,7 +665,7 @@ export default function DashboardPage() {
           <Button
             type="submit"
             disabled={isSubmittingPayment}
-            className="w-full disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+            className="w-full sm:w-auto"
           >
             {isSubmittingPayment ? 'Registrando…' : 'Confirmar pago'}
           </Button>
