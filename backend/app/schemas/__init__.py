@@ -1,5 +1,18 @@
 """Expose Pydantic schemas for convenient imports."""
 
+from .account import (
+    ClientAccountCreate,
+    ClientAccountListResponse,
+    ClientAccountPaymentCreate,
+    ClientAccountPaymentListResponse,
+    ClientAccountPaymentRead,
+    ClientAccountRead,
+    ClientAccountUpdate,
+    PrincipalAccountCreate,
+    PrincipalAccountListResponse,
+    PrincipalAccountRead,
+    PrincipalAccountUpdate,
+)
 from .common import PaginatedResponse
 from .client import (
     ClientBase,
@@ -52,6 +65,17 @@ from .reseller import (
 )
 
 __all__ = [
+    "PrincipalAccountCreate",
+    "PrincipalAccountRead",
+    "PrincipalAccountUpdate",
+    "PrincipalAccountListResponse",
+    "ClientAccountCreate",
+    "ClientAccountRead",
+    "ClientAccountUpdate",
+    "ClientAccountListResponse",
+    "ClientAccountPaymentCreate",
+    "ClientAccountPaymentRead",
+    "ClientAccountPaymentListResponse",
     "ClientBase",
     "ClientCreate",
     "ClientRead",
