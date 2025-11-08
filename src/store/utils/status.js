@@ -94,6 +94,7 @@ export const runWithStatus = async ({
   } catch (error) {
     const message = resolveErrorMessage(error)
     const currentRetries = (get().status?.[resource]?.retries ?? 0) + 1
+    const statusCode = resolveStatusCode(error)
     setStatus(set, resource, {
       isLoading: false,
       error: message,
@@ -131,6 +132,7 @@ export const runMutation = async ({ set, resources, action }) => {
     return result
   } catch (error) {
     const message = resolveErrorMessage(error)
+    const statusCode = resolveStatusCode(error)
     targetResources.forEach((resource) =>
       setStatus(set, resource, {
         isMutating: false,
