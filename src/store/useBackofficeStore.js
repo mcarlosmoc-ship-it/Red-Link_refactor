@@ -78,7 +78,7 @@ export const useBackofficeStore = create((set, get) => ({
     if (!resource || !get().status?.[resource]) {
       return
     }
-    setStatus(set, resource, { error: null })
+    setStatus(set, resource, { error: null, errorCode: null })
   },
   syncCurrentPeriod: () =>
     set((state) => ({
