@@ -500,19 +500,92 @@ const resolveErrorMessage = (data, response) => {
   return parts.join('\n')
 }
 
+const isNetworkError = (error) => {
+  if (!error) {
+    return false
+  }
+
+  const message = typeof error.message === 'string' ? error.message.toLowerCase() : ''
+  if (!message) {
+    return false
+  }
+
+  return (
+    message.includes('failed to fetch') ||
+    message.includes('networkerror when attempting to fetch resource') ||
+    message.includes('load failed') ||
+    message.includes('network request failed')
+  )
+}
+
+const resolveNetworkErrorDetails = (error) => {
+  const rawMessage = typeof error?.message === 'string' ? error.message.trim() : ''
+  if (!rawMessage) {
+    return ''
+  }
+
+  const lowerMessage = rawMessage.toLowerCase()
+  const KNOWN_TRANSLATIONS = [
+    {
+      match: 'failed to fetch',
+      detail: 'La solicitud no pudo completarse porque el navegador no logró contactar al servidor.',
+    },
+    {
+      match: 'networkerror when attempting to fetch resource',
+      detail: 'El navegador no pudo comunicarse con el servidor (error de red durante la solicitud).',
+    },
+    {
+      match: 'load failed',
+      detail: 'La conexión con el servidor falló antes de que la respuesta estuviera disponible.',
+    },
+    {
+      match: 'network request failed',
+      detail: 'El dispositivo perdió la conexión con el servidor mientras se realizaba la solicitud.',
+    },
+  ]
+
+  const translation = KNOWN_TRANSLATIONS.find(({ match }) => lowerMessage.includes(match))
+  if (!translation) {
+    return ` Detalles: ${rawMessage}`
+  }
+
+  const sameMessage = translation.detail.toLowerCase() === lowerMessage
+  if (sameMessage) {
+    return ` Detalles: ${translation.detail}`
+  }
+
+  return ` Detalles: ${translation.detail} (mensaje original: ${rawMessage})`
+}
+
 const request = async (method, path, { body, headers, query, signal, auth = true, ...restOptions } = {}) => {
   const fetchFn = typeof globalThis !== 'undefined' && globalThis.fetch ? globalThis.fetch.bind(globalThis) : undefined
   if (!fetchFn) {
     throw new Error('Global fetch implementation is required to use apiClient')
   }
   const resolvedHeaders = resolveHeaders(body, headers, { auth })
-  const response = await fetchFn(buildUrl(path, query), {
-    method,
-    body: parseBody(body),
-    headers: resolvedHeaders,
-    signal,
-    ...restOptions,
-  })
+  let response
+  try {
+    response = await fetchFn(buildUrl(path, query), {
+      method,
+      body: parseBody(body),
+      headers: resolvedHeaders,
+      signal,
+      ...restOptions,
+    })
+  } catch (error) {
+    if (isNetworkError(error)) {
+      const details = resolveNetworkErrorDetails(error)
+      const apiError = new ApiError(
+        `No se pudo conectar con la API. Verifica que el backend esté en ejecución y que la URL configurada sea correcta.${details}`,
+        { status: 0 },
+      )
+      if (apiError && error && typeof error === 'object') {
+        apiError.cause = error
+      }
+      throw apiError
+    }
+    throw error
+  }
 
   const data = await extractResponseData(response)
 
