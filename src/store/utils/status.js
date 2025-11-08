@@ -35,6 +35,27 @@ const resolveErrorMessage = (error, fallback = 'Ocurrió un error inesperado.') 
     )
   }
 
+  if (statusCode === 403) {
+    return (
+      'La API rechazó la solicitud (403). El token configurado no tiene permisos suficientes para acceder a este recurso. ' +
+      'Solicita un token con mayores privilegios o ajusta los permisos del usuario.'
+    )
+  }
+
+  if (statusCode === 404) {
+    return (
+      'La API respondió 404. El recurso solicitado no existe o la ruta es incorrecta. ' +
+      'Verifica que la versión del backend coincida con el frontend que estás ejecutando.'
+    )
+  }
+
+  if (typeof statusCode === 'number' && statusCode >= 500) {
+    return (
+      `La API respondió con un error interno (${statusCode}). Revisa los logs del backend para obtener más detalles ` +
+      'y vuelve a intentar la operación una vez resuelto.'
+    )
+  }
+
   return defaultMessage
 }
 
