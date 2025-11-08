@@ -5,14 +5,51 @@ const DEFAULT_TOAST_DURATION = 5000
 
 const ToastContext = createContext(null)
 
+const UNAUTHORIZED_GUIDANCE_MARKERS = [
+  'VITE_API_ACCESS_TOKEN',
+  'window.__RED_LINK_API_CLIENT__.setAccessToken',
+]
+
+const normalizeDedupeValue = (value) =>
+  typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : value
+
+const resolveDedupeKey = (options) => {
+  if (options?.dedupeKey !== undefined) {
+    return options.dedupeKey
+  }
+
+  const type = options?.type ?? 'info'
+  const description = options?.description
+
+  if (!description) {
+    return null
+  }
+
+  const normalizedDescription = normalizeDedupeValue(description)
+
+  if (
+    typeof normalizedDescription === 'string' &&
+    UNAUTHORIZED_GUIDANCE_MARKERS.some((marker) =>
+      normalizedDescription.includes(marker),
+    )
+  ) {
+    return 'toast:unauthorized-guidance'
+  }
+
+  return `${type}|${normalizedDescription}`
+}
+
 const createToast = (options) => {
   const id = options.id ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`
+  const duration =
+    typeof options.duration === 'number' ? options.duration : DEFAULT_TOAST_DURATION
   return {
     id,
     type: options.type ?? 'info',
     title: options.title ?? '',
     description: options.description ?? '',
-    duration: typeof options.duration === 'number' ? options.duration : DEFAULT_TOAST_DURATION,
+    duration,
+    dedupeKey: resolveDedupeKey(options),
   }
 }
 
@@ -26,31 +63,88 @@ const toastStylesByType = {
 export function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([])
   const timersRef = useRef(new Map())
+  const dedupeIndexRef = useRef(new Map())
+  const dedupeKeyByIdRef = useRef(new Map())
 
   const removeToast = useCallback((toastId) => {
     setToasts((prev) => prev.filter((toast) => toast.id !== toastId))
+
     const timer = timersRef.current.get(toastId)
     if (timer) {
       clearTimeout(timer)
       timersRef.current.delete(toastId)
     }
+
+    const dedupeKey = dedupeKeyByIdRef.current.get(toastId)
+    if (dedupeKey) {
+      dedupeKeyByIdRef.current.delete(toastId)
+      if (dedupeIndexRef.current.get(dedupeKey) === toastId) {
+        dedupeIndexRef.current.delete(dedupeKey)
+      }
+    }
   }, [])
+
+  const registerTimer = useCallback(
+    (toastId, duration) => {
+      if (duration <= 0) return
+
+      const timer = setTimeout(() => {
+        removeToast(toastId)
+      }, duration)
+      timersRef.current.set(toastId, timer)
+    },
+    [removeToast],
+  )
 
   const showToast = useCallback(
     (options) => {
-      const toast = createToast(options ?? {})
+      const resolvedOptions = options ?? {}
+      const tentativeToast = createToast(resolvedOptions)
+      const { dedupeKey } = tentativeToast
+
+      if (dedupeKey) {
+        const existingId = dedupeIndexRef.current.get(dedupeKey)
+        if (existingId) {
+          setToasts((prev) =>
+            prev.map((toast) =>
+              toast.id === existingId
+                ? {
+                    ...toast,
+                    type: tentativeToast.type,
+                    title: tentativeToast.title,
+                    description: tentativeToast.description,
+                    duration: tentativeToast.duration,
+                    dedupeKey,
+                  }
+                : toast,
+            ),
+          )
+
+          const existingTimer = timersRef.current.get(existingId)
+          if (existingTimer) {
+            clearTimeout(existingTimer)
+            timersRef.current.delete(existingId)
+          }
+
+          dedupeKeyByIdRef.current.set(existingId, dedupeKey)
+          registerTimer(existingId, tentativeToast.duration)
+          return existingId
+        }
+      }
+
+      const toast = tentativeToast
       setToasts((prev) => [...prev, toast])
 
-      if (toast.duration > 0) {
-        const timer = setTimeout(() => {
-          removeToast(toast.id)
-        }, toast.duration)
-        timersRef.current.set(toast.id, timer)
+      if (toast.dedupeKey) {
+        dedupeIndexRef.current.set(toast.dedupeKey, toast.id)
+        dedupeKeyByIdRef.current.set(toast.id, toast.dedupeKey)
       }
+
+      registerTimer(toast.id, toast.duration)
 
       return toast.id
     },
-    [removeToast],
+    [registerTimer],
   )
 
   const contextValue = useMemo(
