@@ -5,14 +5,6 @@ const DEFAULT_TOAST_DURATION = 5000
 
 const ToastContext = createContext(null)
 
-const UNAUTHORIZED_GUIDANCE_MARKERS = [
-  'VITE_API_ACCESS_TOKEN',
-  'window.__RED_LINK_API_CLIENT__.setAccessToken',
-]
-
-const normalizeDedupeValue = (value) =>
-  typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : value
-
 const resolveDedupeKey = (options) => {
   if (options?.dedupeKey !== undefined) {
     return options.dedupeKey
@@ -25,18 +17,7 @@ const resolveDedupeKey = (options) => {
     return null
   }
 
-  const normalizedDescription = normalizeDedupeValue(description)
-
-  if (
-    typeof normalizedDescription === 'string' &&
-    UNAUTHORIZED_GUIDANCE_MARKERS.some((marker) =>
-      normalizedDescription.includes(marker),
-    )
-  ) {
-    return 'toast:unauthorized-guidance'
-  }
-
-  return `${type}|${normalizedDescription}`
+  return `${type}|${description}`
 }
 
 const createToast = (options) => {

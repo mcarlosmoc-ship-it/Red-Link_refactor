@@ -145,15 +145,6 @@ export function ApiAccessTokenBanner() {
               ))}
             </ul>
             <div className="space-y-2 text-xs text-red-700">
-              <ol className="list-decimal space-y-1 pl-5">
-                <li>Abre una terminal donde tengas corriendo el backend de Red-Link.</li>
-                <li>
-                  Ejecuta el endpoint <code>POST /auth/token</code> para generar un token temporal (ver ejemplo más
-                  abajo).
-                </li>
-                <li>Copia el valor del campo <code>access_token</code> que devuelva el backend.</li>
-                <li>Pégalo en el campo &quot;Token de acceso&quot; y haz clic en &quot;Guardar token&quot;.</li>
-              </ol>
               <p>
                 Obtén un token ejecutando el endpoint <code>POST /auth/token</code> en tu backend. Por ejemplo:
               </p>
