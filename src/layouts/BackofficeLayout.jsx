@@ -8,7 +8,6 @@ import { useBackofficeStore } from '../store/useBackofficeStore.js'
 import { useToast } from '../hooks/useToast.js'
 import { BackofficeRefreshProvider } from '../contexts/BackofficeRefreshContext.jsx'
 import { useInitializeBackoffice } from '../hooks/useInitializeBackoffice.js'
-import { ApiAccessTokenBanner } from '../components/layout/ApiAccessTokenBanner.jsx'
 
 const cx = (...classes) => classes.filter(Boolean).join(' ')
 
@@ -165,7 +164,6 @@ export default function BackofficeLayout() {
           <BackofficeRefreshProvider value={{ isRefreshing }}>
             <main className="flex-1 overflow-y-auto bg-gradient-to-b from-white/70 via-white to-slate-50 px-6 py-8 sm:px-10">
               <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
-                <ApiAccessTokenBanner />
                 <BackofficeErrorBoundary onRetry={retry}>
                   <Outlet />
                 </BackofficeErrorBoundary>
