@@ -518,15 +518,33 @@ const isNetworkError = (error) => {
   )
 }
 
+const logError = (message, payload, error) => {
+  if (typeof console === 'undefined') {
+    return
+  }
+  const logger =
+    (typeof console.error === 'function' && console.error.bind(console)) ||
+    (typeof console.log === 'function' && console.log.bind(console))
+  if (typeof logger !== 'function') {
+    return
+  }
+  if (error) {
+    logger(message, payload, error)
+  } else {
+    logger(message, payload)
+  }
+}
+
 const request = async (method, path, { body, headers, query, signal, auth = true, ...restOptions } = {}) => {
   const fetchFn = typeof globalThis !== 'undefined' && globalThis.fetch ? globalThis.fetch.bind(globalThis) : undefined
   if (!fetchFn) {
     throw new Error('Global fetch implementation is required to use apiClient')
   }
   const resolvedHeaders = resolveHeaders(body, headers, { auth })
+  const url = buildUrl(path, query)
   let response
   try {
-    response = await fetchFn(buildUrl(path, query), {
+    response = await fetchFn(url, {
       method,
       body: parseBody(body),
       headers: resolvedHeaders,
@@ -535,15 +553,18 @@ const request = async (method, path, { body, headers, query, signal, auth = true
     })
   } catch (error) {
     if (isNetworkError(error)) {
+      logError('[apiClient] Network error while calling API', { method, path, url, error: error?.message ?? error }, error)
       const details = error?.message ? ` Detalles: ${error.message}` : ''
       const apiError = new ApiError(
-        `No se pudo conectar con la API. Verifica que el backend esté en ejecución y que la URL configurada sea correcta.${details}`,
+        `No se pudo conectar con la API. Verifica que el backend esté en ejecución y que la URL configurada sea correcta.${details} ` +
+          'Si el frontend se ejecuta en un origen diferente, asegúrate de agregarlo a BACKEND_ALLOWED_ORIGINS o habilitar el puerto en FastAPI.',
       )
       if (apiError && error && typeof error === 'object') {
         apiError.cause = error
       }
       throw apiError
     }
+    logError('[apiClient] Unexpected error while preparing request', { method, path, url }, error)
     throw error
   }
 
@@ -551,6 +572,7 @@ const request = async (method, path, { body, headers, query, signal, auth = true
 
   if (!response.ok) {
     const errorMessage = resolveErrorMessage(data, response)
+    logError('[apiClient] API responded with an error', { method, path, url, status: response.status, data })
     throw new ApiError(errorMessage, {
       status: response.status,
       data,
