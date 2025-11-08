@@ -29,10 +29,7 @@ const resolveErrorMessage = (error, fallback = 'Ocurrió un error inesperado.') 
   const statusCode = resolveStatusCode(error)
 
   if (statusCode === 401) {
-    return (
-      'La API rechazó la solicitud (401). Configura un token válido en VITE_API_ACCESS_TOKEN ' +
-      'o ejecuta window.__RED_LINK_API_CLIENT__.setAccessToken("tu-token") desde la consola.'
-    )
+    return 'La API rechazó la solicitud (401). Verifica la configuración del servidor o tus permisos.'
   }
 
   return defaultMessage
@@ -94,6 +91,7 @@ export const runWithStatus = async ({
   } catch (error) {
     const message = resolveErrorMessage(error)
     const currentRetries = (get().status?.[resource]?.retries ?? 0) + 1
+    const statusCode = resolveStatusCode(error)
     setStatus(set, resource, {
       isLoading: false,
       error: message,
@@ -131,6 +129,7 @@ export const runMutation = async ({ set, resources, action }) => {
     return result
   } catch (error) {
     const message = resolveErrorMessage(error)
+    const statusCode = resolveStatusCode(error)
     targetResources.forEach((resource) =>
       setStatus(set, resource, {
         isMutating: false,
