@@ -34,6 +34,45 @@ const LEGACY_ACCESS_TOKEN_STORAGE_KEYS = ['red-link.accessToken']
 const STORAGE_CANDIDATES = ['localStorage', 'sessionStorage']
 const STORAGE_TEST_KEY = '__red-link.storage.test__'
 
+export const ACCESS_TOKEN_EVENT = 'red-link:access-token-changed'
+
+const accessTokenListeners = new Set()
+
+const notifyAccessTokenChange = (token) => {
+  accessTokenListeners.forEach((listener) => {
+    try {
+      listener(token ?? null)
+    } catch (error) {
+      // Ignore listener failures so they do not interrupt other subscribers
+    }
+  })
+
+  if (
+    typeof globalThis !== 'undefined' &&
+    typeof globalThis.dispatchEvent === 'function' &&
+    typeof globalThis.CustomEvent === 'function'
+  ) {
+    try {
+      const event = new globalThis.CustomEvent(ACCESS_TOKEN_EVENT, {
+        detail: { token: token ?? null },
+      })
+      globalThis.dispatchEvent(event)
+    } catch (error) {
+      // Ignore failures when CustomEvent initialization is not supported
+    }
+  }
+}
+
+export const subscribeToAccessToken = (listener) => {
+  if (typeof listener !== 'function') {
+    return () => {}
+  }
+  accessTokenListeners.add(listener)
+  return () => {
+    accessTokenListeners.delete(listener)
+  }
+}
+
 const readAccessTokenFromEnv = () => {
   const rawFromVite =
     typeof import.meta !== 'undefined' && typeof import.meta.env?.VITE_API_ACCESS_TOKEN === 'string'
@@ -242,11 +281,15 @@ const getAccessToken = () => {
 }
 
 const setAccessToken = (token, { persist = true } = {}) => {
+  const previousToken = didLoadInitialToken ? accessToken : loadInitialAccessToken()
   const normalized = normalizeToken(token)
   accessToken = normalized
   didLoadInitialToken = true
   if (persist) {
     persistAccessToken(accessToken)
+  }
+  if (previousToken !== accessToken) {
+    notifyAccessTokenChange(accessToken)
   }
   return accessToken
 }
@@ -381,7 +424,7 @@ const buildUrl = (path, searchParams) => {
   return applySearchParams(url, searchParams)
 }
 
-const resolveHeaders = (body, customHeaders = {}) => {
+const resolveHeaders = (body, customHeaders = {}, { auth = true } = {}) => {
   const headers = { ...customHeaders }
   const ensureHeader = (name, value) => {
     const hasHeader = Object.keys(headers).some((key) => key.toLowerCase() === name.toLowerCase())
@@ -393,9 +436,11 @@ const resolveHeaders = (body, customHeaders = {}) => {
     ensureHeader('Content-Type', 'application/json')
   }
   ensureHeader('Accept', 'application/json')
-  const token = getAccessToken()
-  if (token) {
-    ensureHeader('Authorization', `Bearer ${token}`)
+  if (auth) {
+    const token = getAccessToken()
+    if (token) {
+      ensureHeader('Authorization', `Bearer ${token}`)
+    }
   }
   return headers
 }
@@ -455,12 +500,12 @@ const resolveErrorMessage = (data, response) => {
   return parts.join('\n')
 }
 
-const request = async (method, path, { body, headers, query, signal, ...restOptions } = {}) => {
+const request = async (method, path, { body, headers, query, signal, auth = true, ...restOptions } = {}) => {
   const fetchFn = typeof globalThis !== 'undefined' && globalThis.fetch ? globalThis.fetch.bind(globalThis) : undefined
   if (!fetchFn) {
     throw new Error('Global fetch implementation is required to use apiClient')
   }
-  const resolvedHeaders = resolveHeaders(body, headers)
+  const resolvedHeaders = resolveHeaders(body, headers, { auth })
   const response = await fetchFn(buildUrl(path, query), {
     method,
     body: parseBody(body),
@@ -497,6 +542,7 @@ export const apiClient = {
   getAccessToken,
   setAccessToken,
   clearAccessToken,
+  subscribeToAccessToken,
 }
 
 if (typeof globalThis !== 'undefined') {
@@ -507,6 +553,8 @@ if (typeof globalThis !== 'undefined') {
     setAccessToken,
     clearAccessToken,
     storageKey: ACCESS_TOKEN_STORAGE_KEY,
+    subscribe: subscribeToAccessToken,
+    accessTokenEvent: ACCESS_TOKEN_EVENT,
   }
 }
 
