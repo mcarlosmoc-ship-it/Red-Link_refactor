@@ -424,7 +424,7 @@ const buildUrl = (path, searchParams) => {
   return applySearchParams(url, searchParams)
 }
 
-const resolveHeaders = (body, customHeaders = {}) => {
+const resolveHeaders = (body, customHeaders = {}, { auth = true } = {}) => {
   const headers = { ...customHeaders }
   const ensureHeader = (name, value) => {
     const hasHeader = Object.keys(headers).some((key) => key.toLowerCase() === name.toLowerCase())
@@ -436,9 +436,11 @@ const resolveHeaders = (body, customHeaders = {}) => {
     ensureHeader('Content-Type', 'application/json')
   }
   ensureHeader('Accept', 'application/json')
-  const token = getAccessToken()
-  if (token) {
-    ensureHeader('Authorization', `Bearer ${token}`)
+  if (auth) {
+    const token = getAccessToken()
+    if (token) {
+      ensureHeader('Authorization', `Bearer ${token}`)
+    }
   }
   return headers
 }
@@ -498,12 +500,12 @@ const resolveErrorMessage = (data, response) => {
   return parts.join('\n')
 }
 
-const request = async (method, path, { body, headers, query, signal, ...restOptions } = {}) => {
+const request = async (method, path, { body, headers, query, signal, auth = true, ...restOptions } = {}) => {
   const fetchFn = typeof globalThis !== 'undefined' && globalThis.fetch ? globalThis.fetch.bind(globalThis) : undefined
   if (!fetchFn) {
     throw new Error('Global fetch implementation is required to use apiClient')
   }
-  const resolvedHeaders = resolveHeaders(body, headers)
+  const resolvedHeaders = resolveHeaders(body, headers, { auth })
   const response = await fetchFn(buildUrl(path, query), {
     method,
     body: parseBody(body),
