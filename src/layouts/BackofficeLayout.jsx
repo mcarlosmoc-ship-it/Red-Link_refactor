@@ -3,12 +3,12 @@ import { Outlet } from 'react-router-dom'
 import { CalendarDays } from 'lucide-react'
 import Button from '../components/ui/Button.jsx'
 import { AppSidebar } from '../components/layout/AppSidebar.jsx'
+import { AccessTokenAlert } from '../components/layout/AccessTokenAlert.jsx'
 import { formatDate } from '../utils/formatters.js'
 import { useBackofficeStore } from '../store/useBackofficeStore.js'
 import { useToast } from '../hooks/useToast.js'
 import { BackofficeRefreshProvider } from '../contexts/BackofficeRefreshContext.jsx'
 import { useInitializeBackoffice } from '../hooks/useInitializeBackoffice.js'
-import { ApiAccessTokenBanner } from '../components/layout/ApiAccessTokenBanner.jsx'
 
 const cx = (...classes) => classes.filter(Boolean).join(' ')
 
@@ -161,11 +161,11 @@ export default function BackofficeLayout() {
                 Hubo un problema al sincronizar la información. Intenta nuevamente más tarde.
               </div>
             )}
+            <AccessTokenAlert />
           </header>
           <BackofficeRefreshProvider value={{ isRefreshing }}>
             <main className="flex-1 overflow-y-auto bg-gradient-to-b from-white/70 via-white to-slate-50 px-6 py-8 sm:px-10">
               <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
-                <ApiAccessTokenBanner />
                 <BackofficeErrorBoundary onRetry={retry}>
                   <Outlet />
                 </BackofficeErrorBoundary>
