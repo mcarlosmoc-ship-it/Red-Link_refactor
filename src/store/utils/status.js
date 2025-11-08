@@ -42,6 +42,7 @@ export const createResourceStatus = () => ({
   isLoading: false,
   isMutating: false,
   error: null,
+  errorCode: null,
   lastFetchedAt: null,
   retries: 0,
 })
@@ -78,13 +79,14 @@ export const runWithStatus = async ({
   retries = 0,
   updateTimestamp = true,
 }) => {
-  setStatus(set, resource, { isLoading: true, error: null })
+  setStatus(set, resource, { isLoading: true, error: null, errorCode: null })
 
   try {
     const result = await action()
     setStatus(set, resource, {
       isLoading: false,
       error: null,
+      errorCode: null,
       retries: 0,
       ...(updateTimestamp ? { lastFetchedAt: Date.now() } : {}),
     })
@@ -95,6 +97,7 @@ export const runWithStatus = async ({
     setStatus(set, resource, {
       isLoading: false,
       error: message,
+      errorCode: statusCode,
       retries: currentRetries,
     })
 
@@ -117,17 +120,23 @@ export const runWithStatus = async ({
 export const runMutation = async ({ set, resources, action }) => {
   const targetResources = Array.isArray(resources) ? resources : [resources]
   targetResources.forEach((resource) =>
-    setStatus(set, resource, { isMutating: true, error: null }),
+    setStatus(set, resource, { isMutating: true, error: null, errorCode: null }),
   )
 
   try {
     const result = await action()
-    targetResources.forEach((resource) => setStatus(set, resource, { isMutating: false }))
+    targetResources.forEach((resource) =>
+      setStatus(set, resource, { isMutating: false, error: null, errorCode: null }),
+    )
     return result
   } catch (error) {
     const message = resolveErrorMessage(error)
     targetResources.forEach((resource) =>
-      setStatus(set, resource, { isMutating: false, error: message }),
+      setStatus(set, resource, {
+        isMutating: false,
+        error: message,
+        errorCode: statusCode,
+      }),
     )
     throw error
   }
