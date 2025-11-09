@@ -167,3 +167,18 @@ from .service import (
     ClientServiceRead,
     ClientServiceUpdate,
 )
+
+# Resolve forward references for schemas that rely on cross-module types.
+ServicePaymentRead.model_rebuild(
+    _types_namespace={
+        "ClientRead": ClientRead,
+        "ClientServiceRead": ClientServiceRead,
+    }
+)
+ClientListResponse.model_rebuild(_types_namespace={"ClientRead": ClientRead})
+ClientServiceListResponse.model_rebuild(
+    _types_namespace={"ClientServiceRead": ClientServiceRead}
+)
+ServicePaymentListResponse.model_rebuild(
+    _types_namespace={"ServicePaymentRead": ServicePaymentRead}
+)
