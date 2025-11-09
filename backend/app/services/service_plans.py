@@ -19,6 +19,8 @@ DEFAULT_SERVICE_PLANS = [
         "description": "Plan base de internet residencial",
         "default_monthly_fee": Decimal("300"),
         "is_active": True,
+        "requires_ip": True,
+        "requires_base": True,
     }
 ]
 

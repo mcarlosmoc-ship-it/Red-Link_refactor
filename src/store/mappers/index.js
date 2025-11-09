@@ -38,6 +38,8 @@ export const mapServicePlan = (plan) => ({
   defaultMonthlyFee: normalizeDecimal(plan.default_monthly_fee),
   description: plan.description ?? '',
   isActive: plan.is_active ?? true,
+  requiresIp: Boolean(plan.requires_ip),
+  requiresBase: Boolean(plan.requires_base),
   createdAt: plan.created_at ?? null,
 })
 
@@ -299,6 +301,8 @@ export const serializeServicePlanPayload = (payload) => {
     service_type: payload.serviceType,
     default_monthly_fee: payload.defaultMonthlyFee ?? 0,
     is_active: payload.isActive ?? true,
+    requires_ip: payload.requiresIp ?? false,
+    requires_base: payload.requiresBase ?? false,
   }
 
   if (Object.prototype.hasOwnProperty.call(payload, 'description')) {

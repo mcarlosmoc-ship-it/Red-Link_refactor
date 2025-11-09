@@ -14,6 +14,8 @@ class ServicePlanBase(BaseModel):
     default_monthly_fee: Decimal = Field(default=Decimal("0"), ge=0)
     description: Optional[str] = None
     is_active: bool = True
+    requires_ip: bool = False
+    requires_base: bool = False
 
 
 class ServicePlanCreate(ServicePlanBase):
@@ -26,6 +28,8 @@ class ServicePlanUpdate(BaseModel):
     default_monthly_fee: Optional[Decimal] = Field(default=None, ge=0)
     description: Optional[str] = None
     is_active: Optional[bool] = None
+    requires_ip: Optional[bool] = None
+    requires_base: Optional[bool] = None
 
 
 class ServicePlanRead(ServicePlanBase):
