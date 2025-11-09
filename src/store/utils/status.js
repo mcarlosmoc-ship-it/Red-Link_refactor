@@ -70,6 +70,7 @@ export const createResourceStatus = () => ({
 
 export const createInitialStatus = () => ({
   clients: createResourceStatus(),
+  clientServices: createResourceStatus(),
   principalAccounts: createResourceStatus(),
   clientAccounts: createResourceStatus(),
   payments: createResourceStatus(),
