@@ -116,7 +116,9 @@ Recuerda detener los servicios cerrando las ventanas que se abren al final.
    ```
 
 2. Define la variable `DATABASE_URL` si quieres usar un motor distinto a SQLite.
-   Si la omites, la API usará automáticamente `sqlite:///./clients.db`.
+   Si la omites, la API crea y usa `backend/clients.db` como base de datos
+   SQLite. (La ruta se resuelve automáticamente a su versión absoluta dentro
+   de `backend/`.)
 
 3. Aplica las migraciones para crear todas las tablas necesarias:
 
