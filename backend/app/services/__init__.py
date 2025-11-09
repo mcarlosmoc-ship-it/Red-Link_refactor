@@ -10,6 +10,7 @@ from .account_management import (
 )
 from .clients import ClientService
 from .client_contracts import ClientContractService, ClientContractError
+from .service_plans import ServicePlanService, ServicePlanError
 from .payments import PaymentService, PaymentServiceError
 from .resellers import ResellerService
 from .expenses import ExpenseService
@@ -37,6 +38,8 @@ __all__ = [
     "ClientService",
     "ClientContractService",
     "ClientContractError",
+    "ServicePlanService",
+    "ServicePlanError",
     "PaymentService",
     "PaymentServiceError",
     "ResellerService",

@@ -17,10 +17,12 @@ from backend.app.security import generate_totp_code
 
 def test_create_payment_updates_client_balance(client, db_session, seed_basic_data):
     client_model = seed_basic_data["client"]
+    client_service = seed_basic_data["client_service"]
     billing_period = seed_basic_data["period"]
 
     payload = {
         "client_id": client_model.id,
+        "client_service_id": client_service.id,
         "period_key": billing_period.period_key,
         "paid_on": date(2025, 1, 10).isoformat(),
         "amount": "300.00",
@@ -56,6 +58,7 @@ def test_create_payment_updates_client_balance(client, db_session, seed_basic_da
 
 def test_delete_payment_restores_client_and_snapshots(client, db_session, seed_basic_data):
     client_model = seed_basic_data["client"]
+    client_service = seed_basic_data["client_service"]
     billing_period = seed_basic_data["period"]
 
     original_debt = Decimal(client_model.debt_months)
@@ -64,6 +67,7 @@ def test_delete_payment_restores_client_and_snapshots(client, db_session, seed_b
 
     payload = {
         "client_id": client_model.id,
+        "client_service_id": client_service.id,
         "period_key": billing_period.period_key,
         "paid_on": date(2025, 1, 12).isoformat(),
         "amount": "300.00",
@@ -114,10 +118,12 @@ def test_delete_payment_restores_client_and_snapshots(client, db_session, seed_b
 def test_payment_clears_debt_and_sets_service_active(client, db_session, seed_basic_data):
     """A payment covering all debt activates the service and tracks credit ahead."""
     client_model = seed_basic_data["client"]
+    client_service = seed_basic_data["client_service"]
     billing_period = seed_basic_data["period"]
 
     payload = {
         "client_id": client_model.id,
+        "client_service_id": client_service.id,
         "period_key": billing_period.period_key,
         "paid_on": date(2025, 1, 15).isoformat(),
         "amount": "900.00",
@@ -151,9 +157,10 @@ def test_payment_clears_debt_and_sets_service_active(client, db_session, seed_ba
     assert updated_client.service_status == models.ServiceStatus.ACTIVE
 
 
-def test_payment_validation_requires_existing_client(client):
+def test_payment_validation_requires_existing_service(client, seed_basic_data):
     payload = {
-        "client_id": "non-existent",
+        "client_id": seed_basic_data["client"].id,
+        "client_service_id": "non-existent",
         "period_key": "2025-01",
         "paid_on": date(2025, 1, 10).isoformat(),
         "amount": "100.00",
@@ -167,10 +174,12 @@ def test_payment_validation_requires_existing_client(client):
 
 def test_payment_rejects_zero_amount(client, seed_basic_data):
     client_model = seed_basic_data["client"]
+    client_service = seed_basic_data["client_service"]
     billing_period = seed_basic_data["period"]
 
     payload = {
         "client_id": client_model.id,
+        "client_service_id": client_service.id,
         "period_key": billing_period.period_key,
         "paid_on": date(2025, 1, 10).isoformat(),
         "amount": "0.00",
@@ -187,10 +196,12 @@ def test_payment_rejects_zero_amount(client, seed_basic_data):
 
 def test_payment_rejects_negative_amount(client, seed_basic_data):
     client_model = seed_basic_data["client"]
+    client_service = seed_basic_data["client_service"]
     billing_period = seed_basic_data["period"]
 
     payload = {
         "client_id": client_model.id,
+        "client_service_id": client_service.id,
         "period_key": billing_period.period_key,
         "paid_on": date(2025, 1, 10).isoformat(),
         "amount": "-10.00",
@@ -207,9 +218,11 @@ def test_payment_rejects_negative_amount(client, seed_basic_data):
 
 def test_payment_creates_missing_period(client, db_session, seed_basic_data):
     client_model = seed_basic_data["client"]
+    client_service = seed_basic_data["client_service"]
 
     payload = {
         "client_id": client_model.id,
+        "client_service_id": client_service.id,
         "period_key": "2025-02",
         "paid_on": date(2025, 2, 10).isoformat(),
         "amount": "300.00",
@@ -254,10 +267,29 @@ def test_payment_reuses_period_with_mismatched_key(client, db_session):
         service_status=models.ServiceStatus.SUSPENDED,
     )
     db_session.add(client_model)
+
+    plan = models.ServicePlan(
+        name="Internet mensual legado",
+        service_type=models.ClientServiceType.INTERNET_PRIVATE,
+        default_monthly_fee=Decimal("300"),
+    )
+    db_session.add(plan)
+    db_session.flush()
+
+    client_service = models.ClientService(
+        client=client_model,
+        service_plan=plan,
+        service_type=plan.service_type,
+        display_name=plan.name,
+        status=models.ClientServiceStatus.ACTIVE,
+        price=plan.default_monthly_fee,
+    )
+    db_session.add(client_service)
     db_session.commit()
 
     payload = {
         "client_id": client_model.id,
+        "client_service_id": client_service.id,
         "period_key": "2025-01",
         "paid_on": date(2025, 1, 12).isoformat(),
         "amount": "300.00",
@@ -276,6 +308,7 @@ def test_payment_returns_400_when_commit_fails(
     client, db_session, seed_basic_data, monkeypatch
 ):
     client_model = seed_basic_data["client"]
+    client_service = seed_basic_data["client_service"]
     billing_period = seed_basic_data["period"]
 
     def failing_commit() -> None:
@@ -285,6 +318,7 @@ def test_payment_returns_400_when_commit_fails(
 
     payload = {
         "client_id": client_model.id,
+        "client_service_id": client_service.id,
         "period_key": billing_period.period_key,
         "paid_on": date(2025, 1, 20).isoformat(),
         "amount": "300.00",
@@ -330,8 +364,27 @@ def test_preloaded_sqlite_database_allows_creating_payments(tmp_path, monkeypatc
         )
         session.add(client_model)
 
+        plan = models.ServicePlan(
+            name="Internet mensual",
+            service_type=models.ClientServiceType.INTERNET_PRIVATE,
+            default_monthly_fee=Decimal("300"),
+        )
+        session.add(plan)
+        session.flush()
+
+        client_service = models.ClientService(
+            client=client_model,
+            service_plan=plan,
+            service_type=plan.service_type,
+            display_name=plan.name,
+            status=models.ClientServiceStatus.ACTIVE,
+            price=plan.default_monthly_fee,
+        )
+        session.add(client_service)
+
         session.commit()
         client_id = client_model.id
+        client_service_id = client_service.id
         period_key = billing_period.period_key
 
     monkeypatch.setenv("DATABASE_URL", database_url)
@@ -360,6 +413,7 @@ def test_preloaded_sqlite_database_allows_creating_payments(tmp_path, monkeypatc
 
             payload = {
                 "client_id": client_id,
+                "client_service_id": client_service_id,
                 "period_key": period_key,
                 "paid_on": date(2025, 1, 10).isoformat(),
                 "amount": "150.00",

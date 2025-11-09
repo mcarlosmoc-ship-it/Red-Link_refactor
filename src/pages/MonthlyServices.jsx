@@ -1,45 +1,42 @@
 import React, { useCallback, useMemo, useState } from 'react'
 import Button from '../components/ui/Button.jsx'
 import { Card, CardContent } from '../components/ui/Card.jsx'
-import { useClientServices } from '../hooks/useClientServices.js'
-import { useClients } from '../hooks/useClients.js'
+import { useServicePlans } from '../hooks/useServicePlans.js'
 import { useToast } from '../hooks/useToast.js'
 import {
   SERVICE_TYPE_OPTIONS,
-  SERVICE_STATUS_OPTIONS,
   getServiceTypeLabel,
-  getServiceStatusLabel,
 } from '../constants/serviceTypes.js'
-import { computeServiceFormErrors } from '../utils/serviceFormValidation.js'
-import { peso, formatDate } from '../utils/formatters.js'
-
-const normalizeId = (value) => {
-  if (value === null || value === undefined) {
-    return null
-  }
-  return String(value)
-}
-
-const statusStyles = {
-  active: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-  suspended: 'border-amber-200 bg-amber-50 text-amber-700',
-  cancelled: 'border-slate-200 bg-slate-100 text-slate-600',
-}
+import { peso } from '../utils/formatters.js'
+import { computeServicePlanFormErrors } from '../utils/servicePlanFormValidation.js'
 
 const SUB_TABS = [
   { id: 'list', label: 'Servicios disponibles' },
   { id: 'create', label: 'Agregar servicio mensual' },
 ]
 
-const createDefaultServiceForm = () => ({
-  clientId: '',
+const STATUS_FILTER_OPTIONS = [
+  { value: 'all', label: 'Todos los estados' },
+  { value: 'active', label: 'Activos' },
+  { value: 'inactive', label: 'Inactivos' },
+]
+
+const STATUS_BADGE_STYLES = {
+  active: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  inactive: 'border-slate-200 bg-slate-100 text-slate-600',
+}
+
+const STATUS_LABELS = {
+  active: 'Activo',
+  inactive: 'Inactivo',
+}
+
+const createDefaultPlanForm = () => ({
+  name: 'Internet mensual',
   serviceType: 'internet_private',
-  displayName: getServiceTypeLabel('internet_private'),
-  price: '',
-  billingDay: '',
-  baseId: '',
+  defaultMonthlyFee: '300',
+  description: '',
   status: 'active',
-  notes: '',
 })
 
 const formatCurrency = (value) => {
@@ -55,16 +52,15 @@ const formatCurrency = (value) => {
 
 export default function MonthlyServicesPage({ variant = 'page' }) {
   const {
-    clientServices,
-    status: servicesStatus,
-    isLoading: isLoadingServices,
-    isMutating: isMutatingServices,
-    reload: reloadServices,
-    createClientService,
-    updateClientService,
-    deleteClientService,
-  } = useClientServices()
-  const { clients, status: clientsStatus } = useClients()
+    servicePlans,
+    status: plansStatus,
+    isLoading: isLoadingPlans,
+    isMutating: isMutatingPlans,
+    reload: reloadPlans,
+    createServicePlan,
+    updateServicePlan,
+    deleteServicePlan,
+  } = useServicePlans()
   const { showToast } = useToast()
 
   const isEmbedded = variant === 'embedded'
@@ -73,67 +69,48 @@ export default function MonthlyServicesPage({ variant = 'page' }) {
   const [typeFilter, setTypeFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
   const [activeTab, setActiveTab] = useState('list')
-  const [editingServiceId, setEditingServiceId] = useState(null)
-  const [formState, setFormState] = useState(() => createDefaultServiceForm())
+  const [editingPlanId, setEditingPlanId] = useState(null)
+  const [formState, setFormState] = useState(() => createDefaultPlanForm())
   const [formErrors, setFormErrors] = useState({})
 
-  const clientsMap = useMemo(() => {
-    return new Map(
-      clients.map((client) => [normalizeId(client.id), { name: client.name, location: client.location }]),
-    )
-  }, [clients])
+  const plansWithStatus = useMemo(
+    () =>
+      servicePlans.map((plan) => ({
+        ...plan,
+        status: plan.isActive ? 'active' : 'inactive',
+      })),
+    [servicePlans],
+  )
 
-  const clientOptions = useMemo(() => {
-    return clients
-      .map((client) => ({ value: normalizeId(client.id), label: client.name }))
-      .filter((option) => option.value)
-      .sort((a, b) => a.label.localeCompare(b.label, 'es', { sensitivity: 'base' }))
-  }, [clients])
-
-  const servicesWithClient = useMemo(() => {
-    return clientServices.map((service) => {
-      const client = clientsMap.get(normalizeId(service.clientId)) ?? null
-      return {
-        ...service,
-        clientName: client?.name ?? 'Cliente sin nombre',
-        clientLocation: client?.location ?? '',
-      }
-    })
-  }, [clientServices, clientsMap])
-
-  const filteredServices = useMemo(() => {
+  const filteredPlans = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase()
-    return servicesWithClient.filter((service) => {
-      if (typeFilter !== 'all' && service.type !== typeFilter) {
+    return plansWithStatus.filter((plan) => {
+      if (typeFilter !== 'all' && plan.serviceType !== typeFilter) {
         return false
       }
-      if (statusFilter !== 'all' && service.status !== statusFilter) {
+      if (statusFilter !== 'all' && plan.status !== statusFilter) {
         return false
       }
       if (!normalizedSearch) {
         return true
       }
-      const haystack = [service.name, service.clientName, service.clientLocation]
+      const haystack = [plan.name, plan.description]
         .filter(Boolean)
         .map((value) => value.toLowerCase())
       return haystack.some((value) => value.includes(normalizedSearch))
     })
-  }, [servicesWithClient, typeFilter, statusFilter, searchTerm])
+  }, [plansWithStatus, typeFilter, statusFilter, searchTerm])
 
-  const sortedServices = useMemo(() => {
-    return [...filteredServices].sort((a, b) => {
-      const clientCompare = a.clientName.localeCompare(b.clientName, 'es', { sensitivity: 'base' })
-      if (clientCompare !== 0) {
-        return clientCompare
-      }
-      return (a.name ?? '').localeCompare(b.name ?? '', 'es', { sensitivity: 'base' })
-    })
-  }, [filteredServices])
+  const sortedPlans = useMemo(() => {
+    return [...filteredPlans].sort((a, b) =>
+      a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }),
+    )
+  }, [filteredPlans])
 
   const resetForm = useCallback(() => {
-    setFormState(createDefaultServiceForm())
+    setFormState(createDefaultPlanForm())
     setFormErrors({})
-    setEditingServiceId(null)
+    setEditingPlanId(null)
   }, [])
 
   const handleSelectTab = useCallback(
@@ -145,66 +122,53 @@ export default function MonthlyServicesPage({ variant = 'page' }) {
       }
 
       setActiveTab('create')
-      if (!editingServiceId) {
+      if (!editingPlanId) {
         resetForm()
       }
     },
-    [editingServiceId, resetForm],
+    [editingPlanId, resetForm],
   )
-
-  const isEditing = Boolean(editingServiceId)
-  const clientsAreLoading = Boolean(clientsStatus?.isLoading)
-  const servicesAreMutating = Boolean(isMutatingServices)
 
   const validateForm = useCallback(() => {
-    const errors = computeServiceFormErrors(formState, { requireClientId: !isEditing })
+    const errors = computeServicePlanFormErrors(formState)
     setFormErrors(errors)
     return Object.keys(errors).length === 0
-  }, [formState, isEditing])
+  }, [formState])
 
-  const handleEditService = useCallback(
-    (service) => {
-      if (!service) {
+  const handleEditPlan = useCallback((plan) => {
+    if (!plan) {
+      return
+    }
+    setActiveTab('create')
+    setEditingPlanId(plan.id)
+    setFormErrors({})
+    setFormState({
+      name: plan.name ?? '',
+      serviceType: plan.serviceType ?? 'internet_private',
+      defaultMonthlyFee:
+        plan.defaultMonthlyFee === null || plan.defaultMonthlyFee === undefined
+          ? ''
+          : String(plan.defaultMonthlyFee),
+      description: plan.description ?? '',
+      status: plan.isActive ? 'active' : 'inactive',
+    })
+  }, [])
+
+  const handleDeletePlan = useCallback(
+    async (plan) => {
+      if (!plan) {
         return
       }
-      setActiveTab('create')
-      setEditingServiceId(service.id)
-      setFormErrors({})
-      setFormState({
-        clientId: normalizeId(service.clientId) ?? '',
-        serviceType: service.type,
-        displayName: service.name ?? '',
-        price:
-          service.price === null || service.price === undefined || service.price === ''
-            ? ''
-            : String(service.price),
-        billingDay: service.billingDay ?? '',
-        baseId:
-          service.baseId === null || service.baseId === undefined || service.baseId === ''
-            ? ''
-            : String(service.baseId),
-        status: service.status ?? 'active',
-        notes: service.notes ?? '',
-      })
-    },
-    [],
-  )
-
-  const handleDeleteService = useCallback(
-    async (service) => {
-      if (!service) {
-        return
-      }
-      const confirmed = window.confirm(`¿Eliminar ${service.name} de ${service.clientName}?`)
+      const confirmed = window.confirm(`¿Eliminar ${plan.name}?`)
       if (!confirmed) {
         return
       }
       try {
-        await deleteClientService(service.id)
+        await deleteServicePlan(plan.id)
         showToast({
           type: 'success',
           title: 'Servicio eliminado',
-          description: `${service.name} se eliminó correctamente.`,
+          description: `${plan.name} se eliminó correctamente.`,
         })
       } catch (error) {
         showToast({
@@ -214,77 +178,72 @@ export default function MonthlyServicesPage({ variant = 'page' }) {
         })
       }
     },
-    [deleteClientService, showToast],
+    [deleteServicePlan, showToast],
   )
 
-  const handleSubmit = async (event) => {
-    event.preventDefault()
-    if (!validateForm()) {
-      return
-    }
+  const handleSubmit = useCallback(
+    async (event) => {
+      event.preventDefault()
+      if (!validateForm()) {
+        return
+      }
 
-    const trimmedName = formState.displayName.trim()
-    const normalizedPrice =
-      formState.price === '' || formState.price === null ? undefined : Number(formState.price)
-    const normalizedBillingDay =
-      formState.billingDay === '' || formState.billingDay === null
-        ? undefined
-        : Number(formState.billingDay)
-    const normalizedBaseId =
-      formState.baseId === '' || formState.baseId === null ? undefined : Number(formState.baseId)
-    const trimmedNotes = formState.notes?.trim() ? formState.notes.trim() : null
+      const trimmedName = formState.name.trim()
+      const trimmedDescription = formState.description?.trim() ?? ''
+      const priceValue = formState.defaultMonthlyFee
+      const parsedPrice =
+        priceValue === '' || priceValue === null
+          ? null
+          : Number(priceValue)
+      const normalizedPrice = Number.isFinite(parsedPrice) ? parsedPrice : null
 
-    try {
-      if (isEditing && editingServiceId) {
-        await updateClientService(editingServiceId, {
-          displayName: trimmedName,
-          price: normalizedPrice,
-          billingDay: normalizedBillingDay,
-          baseId: normalizedBaseId,
-          status: formState.status,
-          notes: trimmedNotes,
-        })
+      const payload = {
+        name: trimmedName,
+        serviceType: formState.serviceType,
+        defaultMonthlyFee: normalizedPrice ?? 0,
+        description: trimmedDescription,
+        isActive: formState.status === 'active',
+      }
+
+      try {
+        if (editingPlanId) {
+          await updateServicePlan(editingPlanId, payload)
+          showToast({
+            type: 'success',
+            title: 'Servicio actualizado',
+            description: `${trimmedName} se actualizó correctamente.`,
+          })
+        } else {
+          await createServicePlan(payload)
+          showToast({
+            type: 'success',
+            title: 'Servicio registrado',
+            description: `${trimmedName} se creó correctamente.`,
+          })
+        }
+        resetForm()
+        setActiveTab('list')
+      } catch (error) {
         showToast({
-          type: 'success',
-          title: 'Servicio actualizado',
-          description: `${trimmedName || 'Servicio'} se actualizó correctamente.`,
-        })
-      } else {
-        await createClientService({
-          clientId: formState.clientId,
-          serviceType: formState.serviceType,
-          displayName: trimmedName || getServiceTypeLabel(formState.serviceType),
-          price: normalizedPrice,
-          billingDay: normalizedBillingDay,
-          baseId: normalizedBaseId,
-          status: formState.status,
-          notes: trimmedNotes,
-        })
-        showToast({
-          type: 'success',
-          title: 'Servicio registrado',
-          description: `${trimmedName || getServiceTypeLabel(formState.serviceType)} se creó correctamente.`,
+          type: 'error',
+          title: 'No se pudo guardar el servicio',
+          description: error?.message ?? 'Intenta nuevamente.',
         })
       }
-      resetForm()
-      setActiveTab('list')
-    } catch (error) {
-      showToast({
-        type: 'error',
-        title: 'No se pudo guardar el servicio',
-        description: error?.message ?? 'Intenta nuevamente.',
-      })
-    }
-  }
+    },
+    [
+      createServicePlan,
+      editingPlanId,
+      formState,
+      resetForm,
+      showToast,
+      updateServicePlan,
+      validateForm,
+    ],
+  )
 
-  const editingClientName = useMemo(() => {
-    if (!isEditing) {
-      return ''
-    }
-    const client = clientsMap.get(formState.clientId)
-    return client?.name ?? 'Cliente'
-  }, [clientsMap, formState.clientId, isEditing])
-
+  const isEditing = Boolean(editingPlanId)
+  const plansAreMutating = Boolean(isMutatingPlans)
   const headingId = isEmbedded ? 'services-heading-embedded' : 'services-heading'
 
   return (
@@ -296,24 +255,24 @@ export default function MonthlyServicesPage({ variant = 'page' }) {
           </h2>
           <p className="text-sm text-slate-600">
             {isEmbedded
-              ? 'Consulta, agrega y modifica planes mensuales sin salir del panel de clientes.'
-              : 'Administra los servicios contratados por tus clientes, ajusta precios y controla su estado.'}
+              ? 'Consulta y reutiliza los servicios mensuales disponibles sin salir del panel de clientes.'
+              : 'Administra el catálogo de servicios mensuales, define precios por defecto y controla su disponibilidad.'}
           </p>
         </div>
         <Button
           type="button"
           variant="ghost"
           className="border border-slate-200 bg-white text-slate-700 hover:border-blue-200"
-          onClick={() => reloadServices().catch(() => {})}
-          disabled={isLoadingServices || servicesAreMutating}
+          onClick={() => reloadPlans().catch(() => {})}
+          disabled={isLoadingPlans || plansAreMutating}
         >
           Actualizar listado
         </Button>
       </div>
 
-      {servicesStatus?.error && (
+      {plansStatus?.error && (
         <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">
-          {servicesStatus.error}
+          {plansStatus.error}
         </div>
       )}
 
@@ -339,9 +298,7 @@ export default function MonthlyServicesPage({ variant = 'page' }) {
               })}
             </div>
             {isEditing && activeTab === 'create' ? (
-              <span className="text-xs font-medium text-slate-600">
-                Editando servicio de {editingClientName}
-              </span>
+              <span className="text-xs font-medium text-slate-600">Editando servicio existente</span>
             ) : null}
           </div>
 
@@ -350,64 +307,39 @@ export default function MonthlyServicesPage({ variant = 'page' }) {
               onSubmit={handleSubmit}
               className="grid gap-4 rounded-lg border border-slate-200 bg-white/90 p-4 shadow-sm"
             >
-              {!isEditing ? (
-                <label className="grid gap-1 text-xs font-semibold text-slate-700">
-                  <span>Cliente</span>
-                  <select
-                    value={formState.clientId}
-                    onChange={(event) =>
-                      setFormState((prev) => ({ ...prev, clientId: event.target.value }))
-                    }
-                    className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
-                      formErrors.clientId
-                        ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
-                        : 'border-slate-300'
-                    }`}
-                    disabled={clientsAreLoading}
-                  >
-                    <option value="">Selecciona un cliente</option>
-                    {clientOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                  {formErrors.clientId && (
-                    <span className="text-xs font-medium text-red-600">{formErrors.clientId}</span>
-                  )}
-                </label>
-              ) : (
-                <div className="text-xs">
-                  <p className="font-semibold text-slate-700">Cliente</p>
-                  <p className="text-slate-600">{editingClientName}</p>
-                </div>
-              )}
+              <label className="grid gap-1 text-xs font-semibold text-slate-700">
+                <span>Nombre del servicio</span>
+                <input
+                  value={formState.name}
+                  onChange={(event) =>
+                    setFormState((prev) => ({ ...prev, name: event.target.value }))
+                  }
+                  className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
+                    formErrors.name
+                      ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
+                      : 'border-slate-300'
+                  }`}
+                  placeholder="Servicio mensual"
+                  autoComplete="off"
+                />
+                {formErrors.name && (
+                  <span className="text-xs font-medium text-red-600">{formErrors.name}</span>
+                )}
+              </label>
 
-              <div className="grid gap-4 md:grid-cols-3">
+              <div className="grid gap-4 md:grid-cols-2">
                 <label className="grid gap-1 text-xs font-semibold text-slate-700">
                   <span>Tipo de servicio</span>
                   <select
                     value={formState.serviceType}
-                    onChange={(event) => {
-                      const nextType = event.target.value
-                      setFormState((prev) => {
-                        const currentName = prev.displayName?.trim() ?? ''
-                        const previousDefault = getServiceTypeLabel(prev.serviceType)
-                        const nextDefault = getServiceTypeLabel(nextType)
-                        const hasCustomName = currentName && currentName !== previousDefault
-                        return {
-                          ...prev,
-                          serviceType: nextType,
-                          displayName: hasCustomName ? prev.displayName : nextDefault,
-                        }
-                      })
-                    }}
+                    onChange={(event) =>
+                      setFormState((prev) => ({ ...prev, serviceType: event.target.value }))
+                    }
                     className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
                       formErrors.serviceType
                         ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
                         : 'border-slate-300'
                     }`}
-                    disabled={isEditing}
                   >
                     {SERVICE_TYPE_OPTIONS.map((option) => (
                       <option key={option.value} value={option.value}>
@@ -416,167 +348,106 @@ export default function MonthlyServicesPage({ variant = 'page' }) {
                     ))}
                   </select>
                   {formErrors.serviceType && (
-                    <span className="text-xs font-medium text-red-600">{formErrors.serviceType}</span>
+                    <span className="text-xs font-medium text-red-600">
+                      {formErrors.serviceType}
+                    </span>
                   )}
                 </label>
 
                 <label className="grid gap-1 text-xs font-semibold text-slate-700">
-                  <span>Nombre del servicio</span>
+                  <span>Tarifa mensual predeterminada (MXN)</span>
                   <input
-                    value={formState.displayName}
+                    value={formState.defaultMonthlyFee}
                     onChange={(event) =>
-                      setFormState((prev) => ({ ...prev, displayName: event.target.value }))
-                    }
-                    className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
-                      formErrors.displayName
-                        ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
-                        : 'border-slate-300'
-                    }`}
-                  />
-                  {formErrors.displayName && (
-                    <span className="text-xs font-medium text-red-600">{formErrors.displayName}</span>
-                  )}
-                </label>
-
-                <label className="grid gap-1 text-xs font-semibold text-slate-700">
-                  <span>Estado</span>
-                  <select
-                    value={formState.status}
-                    onChange={(event) =>
-                      setFormState((prev) => ({ ...prev, status: event.target.value }))
-                    }
-                    className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
-                      formErrors.status
-                        ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
-                        : 'border-slate-300'
-                    }`}
-                  >
-                    {SERVICE_STATUS_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                  {formErrors.status && (
-                    <span className="text-xs font-medium text-red-600">{formErrors.status}</span>
-                  )}
-                </label>
-
-                <label className="grid gap-1 text-xs font-semibold text-slate-700">
-                  <span>Tarifa mensual (MXN)</span>
-                  <input
-                    value={formState.price}
-                    onChange={(event) =>
-                      setFormState((prev) => ({ ...prev, price: event.target.value }))
+                      setFormState((prev) => ({
+                        ...prev,
+                        defaultMonthlyFee: event.target.value,
+                      }))
                     }
                     type="number"
                     inputMode="decimal"
                     step="0.01"
                     min="0"
                     className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
-                      formErrors.price
+                      formErrors.defaultMonthlyFee
                         ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
                         : 'border-slate-300'
                     }`}
                   />
-                  {formErrors.price && (
-                    <span className="text-xs font-medium text-red-600">{formErrors.price}</span>
-                  )}
-                </label>
-
-                <label className="grid gap-1 text-xs font-semibold text-slate-700">
-                  <span>Día de cobro</span>
-                  <input
-                    value={formState.billingDay}
-                    onChange={(event) =>
-                      setFormState((prev) => ({ ...prev, billingDay: event.target.value }))
-                    }
-                    type="number"
-                    inputMode="numeric"
-                    min="1"
-                    max="31"
-                    className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
-                      formErrors.billingDay
-                        ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
-                        : 'border-slate-300'
-                    }`}
-                  />
-                  {formErrors.billingDay && (
-                    <span className="text-xs font-medium text-red-600">{formErrors.billingDay}</span>
-                  )}
-                </label>
-
-                <label className="grid gap-1 text-xs font-semibold text-slate-700">
-                  <span>Base</span>
-                  <select
-                    value={formState.baseId}
-                    onChange={(event) =>
-                      setFormState((prev) => ({ ...prev, baseId: event.target.value }))
-                    }
-                    className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
-                      formErrors.baseId
-                        ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
-                        : 'border-slate-300'
-                    }`}
-                  >
-                    <option value="">Sin base específica</option>
-                    <option value="1">Base 1</option>
-                    <option value="2">Base 2</option>
-                  </select>
-                  {formErrors.baseId && (
-                    <span className="text-xs font-medium text-red-600">{formErrors.baseId}</span>
+                  {formErrors.defaultMonthlyFee && (
+                    <span className="text-xs font-medium text-red-600">
+                      {formErrors.defaultMonthlyFee}
+                    </span>
                   )}
                 </label>
               </div>
 
               <label className="grid gap-1 text-xs font-semibold text-slate-700">
-                <span>Notas</span>
+                <span>Descripción (opcional)</span>
                 <textarea
-                  value={formState.notes}
+                  value={formState.description}
                   onChange={(event) =>
-                    setFormState((prev) => ({ ...prev, notes: event.target.value }))
+                    setFormState((prev) => ({ ...prev, description: event.target.value }))
                   }
                   rows={3}
                   className="rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200"
-                  placeholder="Ej. Incluye mantenimiento trimestral"
+                  placeholder="Detalles para identificar este servicio"
                 />
               </label>
 
-              <div className="flex items-center justify-end gap-3">
+              <label className="grid gap-1 text-xs font-semibold text-slate-700">
+                <span>Estado</span>
+                <select
+                  value={formState.status}
+                  onChange={(event) =>
+                    setFormState((prev) => ({ ...prev, status: event.target.value }))
+                  }
+                  className="rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200"
+                >
+                  <option value="active">Activo</option>
+                  <option value="inactive">Inactivo</option>
+                </select>
+              </label>
+
+              <div className="flex flex-wrap justify-end gap-2">
                 <Button
                   type="button"
+                  size="sm"
                   variant="ghost"
                   className="border border-slate-200 bg-white text-slate-700 hover:border-blue-200"
-                  onClick={resetForm}
+                  onClick={() => {
+                    resetForm()
+                    setActiveTab('list')
+                  }}
+                  disabled={plansAreMutating}
                 >
-                  Limpiar
+                  Cancelar
                 </Button>
-                <Button type="submit" disabled={servicesAreMutating}>
+                <Button type="submit" size="sm" disabled={plansAreMutating}>
                   {isEditing ? 'Guardar cambios' : 'Guardar servicio'}
                 </Button>
               </div>
             </form>
           ) : (
-            <>
+            <div className="space-y-4">
               <div className="grid gap-3 md:grid-cols-3">
-                <label className="grid gap-1 text-xs font-medium text-slate-600">
-                  Buscar
+                <label className="grid gap-1 text-xs font-semibold text-slate-700">
+                  <span>Buscar</span>
                   <input
                     value={searchTerm}
                     onChange={(event) => setSearchTerm(event.target.value)}
-                    type="search"
-                    placeholder="Servicio o cliente"
-                    className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+                    className="rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200"
+                    placeholder="Nombre o descripción"
                   />
                 </label>
-                <label className="grid gap-1 text-xs font-medium text-slate-600">
-                  Tipo de servicio
+                <label className="grid gap-1 text-xs font-semibold text-slate-700">
+                  <span>Tipo de servicio</span>
                   <select
                     value={typeFilter}
                     onChange={(event) => setTypeFilter(event.target.value)}
-                    className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+                    className="rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200"
                   >
-                    <option value="all">Todos</option>
+                    <option value="all">Todos los tipos</option>
                     {SERVICE_TYPE_OPTIONS.map((option) => (
                       <option key={option.value} value={option.value}>
                         {option.label}
@@ -584,15 +455,14 @@ export default function MonthlyServicesPage({ variant = 'page' }) {
                     ))}
                   </select>
                 </label>
-                <label className="grid gap-1 text-xs font-medium text-slate-600">
-                  Estado
+                <label className="grid gap-1 text-xs font-semibold text-slate-700">
+                  <span>Estado</span>
                   <select
                     value={statusFilter}
                     onChange={(event) => setStatusFilter(event.target.value)}
-                    className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+                    className="rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200"
                   >
-                    <option value="all">Todos</option>
-                    {SERVICE_STATUS_OPTIONS.map((option) => (
+                    {STATUS_FILTER_OPTIONS.map((option) => (
                       <option key={option.value} value={option.value}>
                         {option.label}
                       </option>
@@ -601,103 +471,73 @@ export default function MonthlyServicesPage({ variant = 'page' }) {
                 </label>
               </div>
 
-              {isLoadingServices && (
-                <div
-                  className="rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-700"
-                  role="status"
-                >
-                  Cargando servicios…
+              {isLoadingPlans && servicePlans.length === 0 ? (
+                <p className="text-sm text-slate-500">Cargando servicios…</p>
+              ) : sortedPlans.length === 0 ? (
+                <div className="rounded-md border border-slate-200 bg-slate-50 p-6 text-center">
+                  <p className="text-sm font-medium text-slate-600">
+                    No hay servicios que coincidan con los filtros seleccionados.
+                  </p>
+                  <p className="text-sm text-slate-500">
+                    Crea un nuevo servicio mensual y asígnalo a tus clientes desde su registro.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {sortedPlans.map((plan) => {
+                    const status = plan.status ?? 'inactive'
+                    const statusLabel = STATUS_LABELS[status] ?? 'Inactivo'
+                    const badgeClasses = STATUS_BADGE_STYLES[status] ?? STATUS_BADGE_STYLES.inactive
+
+                    return (
+                      <div
+                        key={plan.id}
+                        className="flex h-full flex-col justify-between rounded-md border border-slate-200 bg-white p-4"
+                      >
+                        <div className="space-y-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-semibold text-slate-900">{plan.name}</p>
+                              <p className="text-xs uppercase text-slate-500">
+                                {getServiceTypeLabel(plan.serviceType)}
+                              </p>
+                            </div>
+                            <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${badgeClasses}`}>
+                              {statusLabel}
+                            </span>
+                          </div>
+                          <div className="space-y-1 text-xs text-slate-600">
+                            <p>Tarifa predeterminada: {formatCurrency(plan.defaultMonthlyFee)}</p>
+                            {plan.description ? <p className="text-slate-500">{plan.description}</p> : null}
+                          </div>
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => handleEditPlan(plan)}
+                            disabled={plansAreMutating}
+                          >
+                            Editar
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className="border border-slate-200 text-slate-700 hover:border-red-200 hover:text-red-600"
+                            onClick={() => handleDeletePlan(plan)}
+                            disabled={plansAreMutating}
+                          >
+                            Eliminar
+                          </Button>
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
               )}
-
-              <div className="overflow-x-auto rounded-lg border border-slate-200">
-                <table className="min-w-full divide-y divide-slate-200 text-sm">
-                  <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-                    <tr>
-                      <th className="px-4 py-3 text-left">Servicio</th>
-                      <th className="px-4 py-3 text-left">Cliente</th>
-                      <th className="px-4 py-3 text-left">Tipo</th>
-                      <th className="px-4 py-3 text-left">Tarifa</th>
-                      <th className="px-4 py-3 text-left">Día de cobro</th>
-                      <th className="px-4 py-3 text-left">Estado</th>
-                      <th className="px-4 py-3 text-left">Actualizado</th>
-                      <th className="px-4 py-3 text-right">Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 bg-white">
-                    {sortedServices.length === 0 && !isLoadingServices ? (
-                      <tr>
-                        <td colSpan={8} className="px-4 py-6 text-center text-sm text-slate-500">
-                          No hay servicios que coincidan con los filtros seleccionados.{' '}
-                          <button
-                            type="button"
-                            onClick={() => handleSelectTab('create')}
-                            className="font-semibold text-blue-600 hover:underline"
-                          >
-                            Crea un nuevo servicio mensual
-                          </button>
-                          .
-                        </td>
-                      </tr>
-                    ) : (
-                      sortedServices.map((service) => {
-                        const statusClass = statusStyles[service.status] ?? statusStyles.cancelled
-                        return (
-                          <tr key={service.id} className="hover:bg-slate-50/70">
-                            <td className="px-4 py-3">
-                              <div className="font-medium text-slate-800">
-                                {service.name || getServiceTypeLabel(service.type)}
-                              </div>
-                              <div className="text-xs text-slate-500">{formatCurrency(service.price)}</div>
-                            </td>
-                            <td className="px-4 py-3">
-                              <div className="font-medium text-slate-800">{service.clientName}</div>
-                              {service.clientLocation && (
-                                <div className="text-xs text-slate-500">{service.clientLocation}</div>
-                              )}
-                            </td>
-                            <td className="px-4 py-3 text-slate-600">{getServiceTypeLabel(service.type)}</td>
-                            <td className="px-4 py-3">{formatCurrency(service.price)}</td>
-                            <td className="px-4 py-3">{service.billingDay ? `Día ${service.billingDay}` : '—'}</td>
-                            <td className="px-4 py-3">
-                              <span
-                                className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium ${statusClass}`}
-                              >
-                                {getServiceStatusLabel(service.status)}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3 text-slate-600">
-                              {service.updatedAt ? formatDate(service.updatedAt) : '—'}
-                            </td>
-                            <td className="px-4 py-3">
-                              <div className="flex justify-end gap-2">
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  className="border border-slate-200 bg-white text-slate-700 hover:border-blue-200"
-                                  onClick={() => handleEditService(service)}
-                                >
-                                  Editar
-                                </Button>
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  className="border border-red-200 bg-white text-red-600 hover:border-red-300"
-                                  onClick={() => handleDeleteService(service)}
-                                  disabled={servicesAreMutating}
-                                >
-                                  Eliminar
-                                </Button>
-                              </div>
-                            </td>
-                          </tr>
-                        )
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </>
+            </div>
           )}
         </CardContent>
       </Card>
