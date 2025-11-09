@@ -46,6 +46,14 @@ beforeEach(() => {
         location: 'Centro',
         service: 'Activo',
         monthlyFee: 0,
+        services: [
+          {
+            id: 'service-1',
+            name: 'Servicio general',
+            status: 'active',
+            price: 0,
+          },
+        ],
       },
     ],
     loadClients: vi.fn().mockResolvedValue([]),
@@ -70,6 +78,7 @@ describe('useBackofficeStore.recordPayment', () => {
       '/payments',
       expect.objectContaining({
         client_id: 'client-1',
+        client_service_id: 'service-1',
         amount: 500,
         months_paid: 1,
       }),
@@ -91,6 +100,7 @@ describe('useBackofficeStore.recordPayment', () => {
       '/payments',
       expect.objectContaining({
         client_id: 'client-1',
+        client_service_id: 'service-1',
         amount: 0,
         months_paid: 3,
       }),

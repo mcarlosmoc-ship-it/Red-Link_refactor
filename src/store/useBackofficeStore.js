@@ -635,14 +635,19 @@ export const useBackofficeStore = create((set, get) => ({
     }
 
     const availableServices = Array.isArray(client.services) ? client.services : []
-    const normalizedServiceId =
-      serviceId ?? availableServices[0]?.id ?? null
+    const normalizedServiceId = serviceId ?? availableServices[0]?.id ?? null
 
     const service = availableServices.find(
       (item) => String(item.id) === String(normalizedServiceId),
     )
 
     if (!service) {
+      if (availableServices.length === 0) {
+        throw new Error(
+          'El cliente no tiene servicios configurados. Asigna uno para registrar pagos.',
+        )
+      }
+
       throw new Error('Selecciona un servicio válido para registrar el pago')
     }
 
@@ -664,19 +669,22 @@ export const useBackofficeStore = create((set, get) => ({
       return computedAmount > 0 ? 1 : 0
     })()
 
+    const payload = {
+      client_service_id: service.id,
+      client_id: client.id,
+      period_key: periodKey ?? state.periods?.selected ?? state.periods?.current,
+      paid_on: paidOn ?? today(),
+      amount: computedAmount,
+      months_paid: computedMonths > 0 ? computedMonths : null,
+      method: method ?? 'Efectivo',
+      note: note ?? '',
+    }
+
     await runMutation({
       set,
       resources: 'payments',
       action: async () => {
-        await apiClient.post('/payments', {
-          client_service_id: service.id,
-          period_key: periodKey ?? state.periods?.selected ?? state.periods?.current,
-          paid_on: paidOn ?? today(),
-          amount: computedAmount,
-          months_paid: computedMonths > 0 ? computedMonths : null,
-          method: method ?? 'Efectivo',
-          note: note ?? '',
-        })
+        await apiClient.post('/payments', payload)
       },
     })
 
