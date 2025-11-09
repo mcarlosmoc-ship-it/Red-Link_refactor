@@ -419,6 +419,17 @@ export default function DashboardPage() {
     () => getPrimaryService(activeClient),
     [activeClient],
   )
+  const activeMonthlyFee = useMemo(() => {
+    const servicePrice = Number(activeClientPrimaryService?.price)
+    if (Number.isFinite(servicePrice) && servicePrice > 0) {
+      return servicePrice
+    }
+    const mappedFee = Number(activeClient?.monthlyFee)
+    if (Number.isFinite(mappedFee) && mappedFee > 0) {
+      return mappedFee
+    }
+    return CLIENT_PRICE
+  }, [activeClientPrimaryService?.price, activeClient?.monthlyFee])
 
   useEffect(() => {
     if (!expandedClientId) {
@@ -488,17 +499,6 @@ export default function DashboardPage() {
     setPaymentErrors({})
   }
 
-  const activeMonthlyFee = useMemo(() => {
-    const servicePrice = Number(activeClientPrimaryService?.price)
-    if (Number.isFinite(servicePrice) && servicePrice > 0) {
-      return servicePrice
-    }
-    const mappedFee = Number(activeClient?.monthlyFee)
-    if (Number.isFinite(mappedFee) && mappedFee > 0) {
-      return mappedFee
-    }
-    return CLIENT_PRICE
-  }, [activeClientPrimaryService?.price, activeClient?.monthlyFee])
   const outstandingAmount = (activeClient?.debtMonths ?? 0) * activeMonthlyFee
   const plannedAmount =
     paymentForm.mode === 'amount'

@@ -13,7 +13,7 @@ export const voucherTypeKeyById = Object.fromEntries(
   Object.entries(VOUCHER_TYPE_IDS).map(([key, id]) => [String(id), key]),
 )
 
-const mapService = (service) => ({
+export const mapClientService = (service) => ({
   id: service.id,
   type: service.service_type,
   name: service.display_name,
@@ -41,10 +41,29 @@ const mapRecentPayment = (payment) => ({
 })
 
 export const mapClient = (client) => {
-  const services = Array.isArray(client.services) ? client.services.map(mapService) : []
+  const services = Array.isArray(client.services) ? client.services.map(mapClientService) : []
   const internetService = services.find((service) => service.type?.startsWith('internet_'))
   const activeServices = services.filter((service) => service.status === 'active')
-  const serviceStatus = activeServices.length > 0 ? 'Activo' : 'Suspendido'
+  const normalizedServiceStatus = (() => {
+    const rawStatus = client.service_status
+    if (rawStatus === 'Activo' || rawStatus === 'Suspendido') {
+      return rawStatus
+    }
+
+    if (typeof rawStatus === 'string') {
+      const lowerStatus = rawStatus.toLowerCase()
+      if (lowerStatus === 'active') {
+        return 'Activo'
+      }
+      if (lowerStatus === 'suspended') {
+        return 'Suspendido'
+      }
+    }
+
+    return null
+  })()
+
+  const serviceStatus = normalizedServiceStatus ?? (activeServices.length > 0 ? 'Activo' : 'Suspendido')
 
   const recentPayments = Array.isArray(client.recent_payments)
     ? client.recent_payments.map(mapRecentPayment)

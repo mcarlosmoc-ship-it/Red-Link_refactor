@@ -11,6 +11,7 @@ import {
 } from './constants.js'
 import {
   mapClient,
+  mapClientService,
   mapPayment,
   mapExpense,
   mapInventoryItem,
@@ -39,6 +40,8 @@ import { getCachedQueryData, invalidateQuery } from './utils/queryState.js'
 import { normalizeDecimal, normalizeTextOrNull } from './utils/normalizers.js'
 
 export { CLIENT_PRICE, INVENTORY_IP_RANGES } from './constants.js'
+
+const MUTABLE_SERVICE_STATUSES = new Set(['active', 'suspended'])
 
 const createInitialState = () => ({
   clients: [],
@@ -587,32 +590,170 @@ export const useBackofficeStore = create((set, get) => ({
     invalidateQuery(queryKeys.resellers())
     await get().loadResellers({ force: true, retries: 1 })
   },
-  toggleClientService: async (clientId, serviceId) => {
+  deleteClient: async (clientId) => {
     const state = get()
     const client = state.clients.find((item) => String(item.id) === String(clientId))
+
+    if (!client) {
+      throw new Error('Cliente no encontrado')
+    }
+
+    const normalizedClientId = String(client.id ?? clientId)
+
+    await runMutation({
+      set,
+      resources: 'clients',
+      action: async () => {
+        await apiClient.delete(`/clients/${normalizedClientId}`)
+      },
+    })
+
+    invalidateQuery(queryKeys.clients())
+    invalidateQuery(['metrics'])
+
+    await Promise.all([
+      get().loadClients({ force: true, retries: 1 }),
+      get().loadMetrics({ force: true, retries: 1 }),
+    ])
+  },
+  createClientService: async (payload) => {
+    const rawClientId = payload?.clientId ?? payload?.client_id ?? null
+    const normalizedClientId = rawClientId ? String(rawClientId).trim() : ''
+
+    if (!normalizedClientId) {
+      throw new Error('Selecciona un cliente válido para agregar el servicio')
+    }
+
+    const state = get()
+    const client = state.clients.find((item) => String(item.id) === normalizedClientId)
+
+    if (!client) {
+      throw new Error('Cliente no encontrado')
+    }
+
+    const rawName = payload?.displayName ?? payload?.name ?? payload?.serviceName ?? null
+    const serviceName = normalizeTextOrNull(rawName)
+
+    if (!serviceName) {
+      throw new Error('Ingresa un nombre para el nuevo servicio')
+    }
+
+    const rawType = payload?.serviceType ?? payload?.type ?? null
+    const serviceType = typeof rawType === 'string' ? rawType.trim().toLowerCase() : ''
+
+    if (!serviceType) {
+      throw new Error('Selecciona un tipo de servicio válido')
+    }
+
+    const rawStatus = payload?.status ?? payload?.serviceStatus ?? null
+    const serviceStatus = typeof rawStatus === 'string' ? rawStatus.trim().toLowerCase() : 'active'
+
+    if (serviceStatus && !['active', 'suspended', 'pending'].includes(serviceStatus)) {
+      throw new Error('Selecciona un estado válido para el nuevo servicio')
+    }
+
+    const normalizedPrice = normalizeDecimal(payload?.price, 0)
+    const price = normalizedPrice > 0 ? normalizedPrice : 0
+
+    const rawCurrency = payload?.currency ?? 'MXN'
+    const currency = typeof rawCurrency === 'string' ? rawCurrency.trim().toUpperCase() : 'MXN'
+
+    const rawBillingDay = payload?.billingDay ?? payload?.billing_day ?? null
+    const billingDay = (() => {
+      if (rawBillingDay === null || rawBillingDay === undefined || rawBillingDay === '') {
+        return null
+      }
+      const numeric = Number(rawBillingDay)
+      if (!Number.isInteger(numeric) || numeric < 1 || numeric > 31) {
+        throw new Error('Selecciona un día de cobro entre 1 y 31')
+      }
+      return numeric
+    })()
+
+    const rawBaseId = payload?.baseId ?? payload?.base_id ?? client.base ?? null
+    const baseId = (() => {
+      if (rawBaseId === null || rawBaseId === undefined || rawBaseId === '') {
+        return null
+      }
+      const numeric = Number(rawBaseId)
+      if (!Number.isFinite(numeric) || numeric <= 0) {
+        throw new Error('Selecciona una base válida para el servicio')
+      }
+      return numeric
+    })()
+
+    const requestPayload = {
+      client_id: normalizedClientId,
+      service_type: serviceType,
+      display_name: serviceName,
+      status: serviceStatus || 'active',
+      price,
+      currency: currency || 'MXN',
+      billing_day: billingDay,
+      next_billing_date: payload?.nextBillingDate ?? payload?.next_billing_date ?? null,
+      base_id: baseId,
+      notes: normalizeTextOrNull(payload?.notes),
+      metadata: payload?.metadata ?? payload?.serviceMetadata ?? null,
+    }
+
+    const response = await runMutation({
+      set,
+      resources: 'clients',
+      action: async () => {
+        const { data } = await apiClient.post('/client-services', requestPayload)
+        return data
+      },
+    })
+
+    invalidateQuery(queryKeys.clients())
+    invalidateQuery(['metrics'])
+
+    await Promise.all([
+      get().loadClients({ force: true, retries: 1 }),
+      get().loadMetrics({ force: true, retries: 1 }),
+    ])
+
+    return mapClientService(response)
+  },
+  updateClientServiceStatus: async (clientId, serviceId, status) => {
+    const normalizedStatus = typeof status === 'string' ? status.trim().toLowerCase() : ''
+
+    if (!MUTABLE_SERVICE_STATUSES.has(normalizedStatus)) {
+      throw new Error('Selecciona un estado válido para actualizar el servicio')
+    }
+
+    const state = get()
+    const client = state.clients.find((item) => String(item.id) === String(clientId))
+
     if (!client) {
       throw new Error('Cliente no encontrado')
     }
 
     const availableServices = Array.isArray(client.services) ? client.services : []
-    const normalizedServiceId =
-      serviceId ?? availableServices[0]?.id ?? null
+
+    if (availableServices.length === 0) {
+      throw new Error('El cliente no tiene servicios asociados')
+    }
+
+    const normalizedServiceId = serviceId ?? availableServices[0]?.id ?? null
     const targetService = availableServices.find(
       (service) => String(service.id) === String(normalizedServiceId),
     )
 
     if (!targetService) {
-      throw new Error('El cliente no tiene servicios asociados')
+      throw new Error('Selecciona un servicio válido para actualizar')
     }
 
-    const nextStatus = targetService.status === 'active' ? 'suspended' : 'active'
+    if (targetService.status === normalizedStatus) {
+      return normalizedStatus
+    }
 
     await runMutation({
       set,
       resources: 'clients',
       action: async () => {
         await apiClient.put(`/client-services/${targetService.id}`, {
-          status: nextStatus,
+          status: normalizedStatus,
         })
       },
     })
@@ -625,7 +766,29 @@ export const useBackofficeStore = create((set, get) => ({
       get().loadMetrics({ force: true, retries: 1 }),
     ])
 
-    return nextStatus
+    return normalizedStatus
+  },
+  toggleClientService: async (clientId, serviceId) => {
+    const state = get()
+    const client = state.clients.find((item) => String(item.id) === String(clientId))
+
+    if (!client) {
+      throw new Error('Cliente no encontrado')
+    }
+
+    const availableServices = Array.isArray(client.services) ? client.services : []
+    const normalizedServiceId = serviceId ?? availableServices[0]?.id ?? null
+    const targetService = availableServices.find(
+      (service) => String(service.id) === String(normalizedServiceId),
+    )
+
+    if (!targetService) {
+      throw new Error('El cliente no tiene servicios asociados')
+    }
+
+    const nextStatus = targetService.status === 'active' ? 'suspended' : 'active'
+
+    return get().updateClientServiceStatus(clientId, targetService.id, nextStatus)
   },
   recordPayment: async ({ clientId, serviceId, months, amount, method, note, periodKey, paidOn }) => {
     const state = get()

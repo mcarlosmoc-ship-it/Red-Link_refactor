@@ -46,6 +46,17 @@ const formatServiceStatus = (status) => SERVICE_STATUS_LABELS[status] ?? 'Descon
 
 const formatServiceType = (type) => (type ? type.replace(/_/g, ' ') : 'Servicio')
 
+const SERVICE_TYPE_OPTIONS = [
+  { value: 'internet_private', label: 'Internet residencial' },
+  { value: 'internet_tokens', label: 'Internet con fichas' },
+  { value: 'streaming_spotify', label: 'Streaming · Spotify' },
+  { value: 'streaming_netflix', label: 'Streaming · Netflix' },
+  { value: 'streaming_vix', label: 'Streaming · ViX' },
+  { value: 'public_desk', label: 'Ciber o escritorio público' },
+  { value: 'point_of_sale', label: 'Punto de venta' },
+  { value: 'other', label: 'Otro servicio mensual' },
+]
+
 const getPrimaryService = (client) => {
   const services = Array.isArray(client?.services) ? client.services : []
   if (services.length === 0) {
@@ -76,6 +87,9 @@ const defaultForm = {
   monthlyFee: CLIENT_PRICE,
 }
 
+const ACTION_BUTTON_CLASSES =
+  'border border-slate-200 bg-white text-slate-700 hover:border-blue-200 disabled:cursor-not-allowed disabled:opacity-50'
+
 export default function ClientsPage() {
   const { initializeStatus, selectedPeriod, currentPeriod } = useBackofficeStore((state) => ({
     initializeStatus: state.status.initialize,
@@ -88,7 +102,9 @@ export default function ClientsPage() {
     status: clientsStatus,
     reload: reloadClients,
     createClient,
-    toggleClientService,
+    createClientService,
+    updateClientServiceStatus,
+    deleteClient,
     importClients,
   } = useClients()
   const { showToast } = useToast()
@@ -107,6 +123,16 @@ export default function ClientsPage() {
   const [sortField, setSortField] = useState('name')
   const [sortDirection, setSortDirection] = useState('asc')
   const [selectedClientId, setSelectedClientId] = useState(null)
+  const [isAddingService, setIsAddingService] = useState(false)
+  const [serviceFormState, setServiceFormState] = useState({
+    displayName: '',
+    serviceType: 'other',
+    price: '',
+    billingDay: '',
+    baseId: '',
+    notes: '',
+  })
+  const [serviceFormErrors, setServiceFormErrors] = useState({})
   const clientDetailsRef = useRef(null)
   const isMutatingClients = Boolean(clientsStatus?.isMutating)
   const isSyncingClients = Boolean(clientsStatus?.isLoading)
@@ -411,6 +437,22 @@ export default function ClientsPage() {
     },
     [clients, selectedClientId],
   )
+  const buildDefaultServiceFormState = useCallback(
+    () => ({
+      displayName: '',
+      serviceType: 'other',
+      price: '',
+      billingDay: '',
+      baseId: selectedClient?.base ? String(selectedClient.base) : '',
+      notes: '',
+    }),
+    [selectedClient?.base],
+  )
+  useEffect(() => {
+    setServiceFormState(buildDefaultServiceFormState())
+    setServiceFormErrors({})
+    setIsAddingService(false)
+  }, [buildDefaultServiceFormState, selectedClientId])
   const selectedClientServices = useMemo(
     () => (selectedClient?.services ? [...selectedClient.services] : []),
     [selectedClient],
@@ -420,6 +462,13 @@ export default function ClientsPage() {
     [selectedClient],
   )
   const primaryService = useMemo(() => getPrimaryService(selectedClient), [selectedClient])
+  const primaryServiceStatusValue = primaryService?.status ?? null
+  const canActivateSelectedPrimaryService =
+    Boolean(primaryService) &&
+    primaryServiceStatusValue !== 'active' &&
+    primaryServiceStatusValue !== 'cancelled'
+  const canSuspendSelectedPrimaryService =
+    Boolean(primaryService) && primaryServiceStatusValue === 'active'
   const detailAnchorPeriod = selectedPeriod ?? currentPeriod ?? null
   const selectedClientPaymentStatus = useMemo(() => {
     if (!selectedClient || !detailAnchorPeriod) {
@@ -620,25 +669,41 @@ export default function ClientsPage() {
     }
   }
 
-  const handleToggleService = async (client, service) => {
-    if (!service) {
+  const handleUpdateServiceStatus = async (client, service, nextStatus) => {
+    if (!client || !service) {
       showToast({
         type: 'error',
         title: 'Servicio no disponible',
-        description: 'El cliente no tiene servicios configurados para actualizar.',
+        description: 'Selecciona un cliente y servicio válidos para actualizar.',
+      })
+      return
+    }
+
+    const normalizedStatus = typeof nextStatus === 'string' ? nextStatus.trim().toLowerCase() : ''
+
+    if (normalizedStatus !== 'active' && normalizedStatus !== 'suspended') {
+      showToast({
+        type: 'error',
+        title: 'Estado no soportado',
+        description: 'Solo se puede activar o suspender el servicio desde esta vista.',
+      })
+      return
+    }
+
+    if (service.status === normalizedStatus) {
+      const currentStatusLabel = formatServiceStatus(service.status)
+      showToast({
+        type: 'info',
+        title: 'Sin cambios',
+        description: `${service.name} ya está ${currentStatusLabel.toLowerCase()}.`,
       })
       return
     }
 
     try {
-      const nextStatus = await toggleClientService(client.id, service.id)
-      const nextStatusLabel = formatServiceStatus(nextStatus)
-      const isActive = nextStatus === 'active'
-      const toastTitle = isActive
-        ? 'Servicio activado'
-        : nextStatus === 'suspended'
-          ? 'Servicio suspendido'
-          : 'Servicio actualizado'
+      await updateClientServiceStatus(client.id, service.id, normalizedStatus)
+      const nextStatusLabel = formatServiceStatus(normalizedStatus)
+      const toastTitle = normalizedStatus === 'active' ? 'Servicio activado' : 'Servicio suspendido'
       showToast({
         type: 'success',
         title: toastTitle,
@@ -648,6 +713,150 @@ export default function ClientsPage() {
       showToast({
         type: 'error',
         title: 'No se pudo actualizar el servicio',
+        description: error?.message ?? 'Intenta nuevamente.',
+      })
+    }
+  }
+
+  const handleDeleteClient = async (client) => {
+    if (!client || !client.id) {
+      showToast({
+        type: 'error',
+        title: 'Cliente no disponible',
+        description: 'Selecciona un cliente válido para eliminar.',
+      })
+      return
+    }
+
+    const confirmationMessage = `¿Eliminar a ${client.name}? Esta acción no se puede deshacer.`
+    const isConfirmed = window.confirm(confirmationMessage)
+
+    if (!isConfirmed) {
+      return
+    }
+
+    const normalizedClientId = normalizeId(client.id)
+
+    try {
+      await deleteClient(client.id)
+      showToast({
+        type: 'success',
+        title: 'Cliente eliminado',
+        description: `${client.name} se eliminó correctamente.`,
+      })
+
+      if (normalizedClientId && selectedClientId === normalizedClientId) {
+        setSelectedClientId(null)
+      }
+
+      if (normalizedClientId && highlightedClientId === normalizedClientId) {
+        setHighlightedClientId(null)
+      }
+    } catch (error) {
+      showToast({
+        type: 'error',
+        title: 'No se pudo eliminar el cliente',
+        description: error?.message ?? 'Intenta nuevamente.',
+      })
+    }
+  }
+
+  const handleCancelNewService = useCallback(() => {
+    setServiceFormErrors({})
+    setServiceFormState(buildDefaultServiceFormState())
+    setIsAddingService(false)
+  }, [buildDefaultServiceFormState])
+
+  const handleSubmitNewService = async (event) => {
+    event.preventDefault()
+
+    if (!selectedClient) {
+      showToast({
+        type: 'error',
+        title: 'Selecciona un cliente',
+        description: 'Elige un cliente para poder agregar un servicio.',
+      })
+      return
+    }
+
+    const trimmedName = serviceFormState.displayName.trim()
+    const errors = {}
+    setServiceFormErrors({})
+
+    if (!trimmedName) {
+      errors.displayName = 'Ingresa el nombre del servicio.'
+    }
+
+    if (!SERVICE_TYPE_OPTIONS.some((option) => option.value === serviceFormState.serviceType)) {
+      errors.serviceType = 'Selecciona un tipo de servicio válido.'
+    }
+
+    let normalizedPrice = 0
+    if (serviceFormState.price !== '' && serviceFormState.price !== null && serviceFormState.price !== undefined) {
+      const numericPrice = Number(serviceFormState.price)
+      if (!Number.isFinite(numericPrice) || numericPrice < 0) {
+        errors.price = 'Ingresa un monto válido (0 o mayor).'
+      } else {
+        normalizedPrice = numericPrice
+      }
+    }
+
+    let normalizedBillingDay = null
+    if (
+      serviceFormState.billingDay !== '' &&
+      serviceFormState.billingDay !== null &&
+      serviceFormState.billingDay !== undefined
+    ) {
+      const numericBillingDay = Number(serviceFormState.billingDay)
+      if (!Number.isInteger(numericBillingDay) || numericBillingDay < 1 || numericBillingDay > 31) {
+        errors.billingDay = 'Selecciona un día entre 1 y 31.'
+      } else {
+        normalizedBillingDay = numericBillingDay
+      }
+    }
+
+    let normalizedBaseId = null
+    if (serviceFormState.baseId) {
+      const numericBase = Number(serviceFormState.baseId)
+      if (!Number.isFinite(numericBase) || numericBase <= 0) {
+        errors.baseId = 'Selecciona una base válida.'
+      } else {
+        normalizedBaseId = numericBase
+      }
+    } else if (selectedClient.base) {
+      normalizedBaseId = Number(selectedClient.base)
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setServiceFormErrors(errors)
+      return
+    }
+
+    const payload = {
+      clientId: selectedClient.id,
+      displayName: trimmedName,
+      serviceType: serviceFormState.serviceType,
+      price: normalizedPrice,
+      billingDay: normalizedBillingDay,
+      baseId: normalizedBaseId,
+      notes: serviceFormState.notes,
+      currency: 'MXN',
+    }
+
+    try {
+      await createClientService(payload)
+      showToast({
+        type: 'success',
+        title: 'Servicio agregado',
+        description: `${trimmedName} se agregó a ${selectedClient.name}.`,
+      })
+      setServiceFormErrors({})
+      setServiceFormState(buildDefaultServiceFormState())
+      setIsAddingService(false)
+    } catch (error) {
+      showToast({
+        type: 'error',
+        title: 'No se pudo agregar el servicio',
         description: error?.message ?? 'Intenta nuevamente.',
       })
     }
@@ -1212,7 +1421,14 @@ export default function ClientsPage() {
                         const primaryStatusForRow = primaryServiceForRow
                           ? formatServiceStatus(primaryServiceForRow.status)
                           : client.service
-                        const isPrimaryActive = primaryServiceForRow?.status === 'active'
+                        const primaryServiceStatus = primaryServiceForRow?.status ?? null
+                        const isPrimaryActive = primaryServiceStatus === 'active'
+                        const canActivatePrimaryService =
+                          Boolean(primaryServiceForRow) &&
+                          primaryServiceStatus !== 'active' &&
+                          primaryServiceStatus !== 'cancelled'
+                        const canSuspendPrimaryService =
+                          Boolean(primaryServiceForRow) && primaryServiceStatus === 'active'
                         const primaryMonthlyFee = (() => {
                           const parsed = Number(primaryServiceForRow?.price)
                           if (Number.isFinite(parsed) && parsed > 0) {
@@ -1268,11 +1484,11 @@ export default function ClientsPage() {
                             )}
                           </td>
                           <td className="px-3 py-2 text-right">
-                            <div className="flex justify-end gap-2">
+                            <div className="flex flex-wrap justify-end gap-2">
                               <Button
                                 size="sm"
                                 variant="ghost"
-                                className="border border-slate-200 bg-white text-slate-700 hover:border-blue-200"
+                                className={ACTION_BUTTON_CLASSES}
                                 onClick={() =>
                                   setSelectedClientId((prev) => {
                                     if (!clientRowId) {
@@ -1287,11 +1503,32 @@ export default function ClientsPage() {
                               <Button
                                 size="sm"
                                 variant="ghost"
-                                className="border border-slate-200 bg-white text-slate-700 hover:border-blue-200 disabled:cursor-not-allowed disabled:opacity-50"
-                                onClick={() => handleToggleService(client, primaryServiceForRow)}
-                                disabled={isMutatingClients || !primaryServiceForRow}
+                                className={ACTION_BUTTON_CLASSES}
+                                onClick={() =>
+                                  handleUpdateServiceStatus(client, primaryServiceForRow, 'active')
+                                }
+                                disabled={isMutatingClients || !canActivatePrimaryService}
                               >
-                                {isPrimaryActive ? 'Suspender' : 'Activar'}
+                                Activar
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className={ACTION_BUTTON_CLASSES}
+                                onClick={() =>
+                                  handleUpdateServiceStatus(client, primaryServiceForRow, 'suspended')
+                                }
+                                disabled={isMutatingClients || !canSuspendPrimaryService}
+                              >
+                                Suspender
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="danger"
+                                onClick={() => handleDeleteClient(client)}
+                                disabled={isMutatingClients}
+                              >
+                                Eliminar
                               </Button>
                             </div>
                           </td>
@@ -1323,13 +1560,47 @@ export default function ClientsPage() {
         >
           <Card>
             <CardContent className="space-y-6">
-              <div className="flex flex-col gap-1">
-                <h2 id="detalles-cliente" className="text-lg font-semibold text-slate-900">
-                  Detalles de {selectedClient.name}
-                </h2>
-                <p className="text-sm text-slate-500">
-                  Base {selectedClient.base} · {selectedClient.location}
-                </p>
+              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                <div className="flex flex-col gap-1">
+                  <h2 id="detalles-cliente" className="text-lg font-semibold text-slate-900">
+                    Detalles de {selectedClient.name}
+                  </h2>
+                  <p className="text-sm text-slate-500">
+                    Base {selectedClient.base} · {selectedClient.location}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className={ACTION_BUTTON_CLASSES}
+                    onClick={() =>
+                      handleUpdateServiceStatus(selectedClient, primaryService, 'active')
+                    }
+                    disabled={isMutatingClients || !canActivateSelectedPrimaryService}
+                  >
+                    Activar servicio
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className={ACTION_BUTTON_CLASSES}
+                    onClick={() =>
+                      handleUpdateServiceStatus(selectedClient, primaryService, 'suspended')
+                    }
+                    disabled={isMutatingClients || !canSuspendSelectedPrimaryService}
+                  >
+                    Suspender servicio
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    onClick={() => handleDeleteClient(selectedClient)}
+                    disabled={isMutatingClients}
+                  >
+                    Eliminar cliente
+                  </Button>
+                </div>
               </div>
 
               <div className="grid gap-4 md:grid-cols-3">
@@ -1408,7 +1679,213 @@ export default function ClientsPage() {
               </div>
 
               <div className="space-y-3">
-                <h3 className="text-base font-semibold text-slate-900">Servicios contratados</h3>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <h3 className="text-base font-semibold text-slate-900">Servicios contratados</h3>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className={ACTION_BUTTON_CLASSES}
+                    onClick={() => {
+                      if (isAddingService) {
+                        handleCancelNewService()
+                      } else {
+                        setServiceFormErrors({})
+                        setServiceFormState(buildDefaultServiceFormState())
+                        setIsAddingService(true)
+                      }
+                    }}
+                    disabled={isMutatingClients}
+                  >
+                    {isAddingService ? 'Cerrar formulario' : 'Agregar servicio'}
+                  </Button>
+                </div>
+
+                {isAddingService && (
+                  <form
+                    onSubmit={handleSubmitNewService}
+                    className="space-y-4 rounded-md border border-dashed border-slate-300 bg-slate-50/80 p-4"
+                  >
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <label className="grid gap-1 text-xs font-semibold text-slate-700">
+                        <span>Nombre del servicio</span>
+                        <input
+                          value={serviceFormState.displayName}
+                          onChange={(event) =>
+                            setServiceFormState((prev) => ({
+                              ...prev,
+                              displayName: event.target.value,
+                            }))
+                          }
+                          className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
+                            serviceFormErrors.displayName
+                              ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
+                              : 'border-slate-300'
+                          }`}
+                          placeholder="Nombre del nuevo servicio"
+                          autoComplete="off"
+                        />
+                        {serviceFormErrors.displayName && (
+                          <span className="text-xs font-medium text-red-600">
+                            {serviceFormErrors.displayName}
+                          </span>
+                        )}
+                      </label>
+
+                      <label className="grid gap-1 text-xs font-semibold text-slate-700">
+                        <span>Tipo de servicio</span>
+                        <select
+                          value={serviceFormState.serviceType}
+                          onChange={(event) =>
+                            setServiceFormState((prev) => ({
+                              ...prev,
+                              serviceType: event.target.value,
+                            }))
+                          }
+                          className={`rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
+                            serviceFormErrors.serviceType
+                              ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
+                              : 'border-slate-300'
+                          }`}
+                        >
+                          {SERVICE_TYPE_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                        {serviceFormErrors.serviceType && (
+                          <span className="text-xs font-medium text-red-600">
+                            {serviceFormErrors.serviceType}
+                          </span>
+                        )}
+                      </label>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-3">
+                      <label className="grid gap-1 text-xs font-semibold text-slate-700">
+                        <span>Tarifa mensual (MXN)</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={serviceFormState.price}
+                          onChange={(event) =>
+                            setServiceFormState((prev) => ({
+                              ...prev,
+                              price: event.target.value,
+                            }))
+                          }
+                          className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
+                            serviceFormErrors.price
+                              ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
+                              : 'border-slate-300'
+                          }`}
+                          placeholder="0.00"
+                        />
+                        <span className="text-[11px] text-slate-500">
+                          Puedes dejarlo en 0 si el monto cambia cada mes.
+                        </span>
+                        {serviceFormErrors.price && (
+                          <span className="text-xs font-medium text-red-600">
+                            {serviceFormErrors.price}
+                          </span>
+                        )}
+                      </label>
+
+                      <label className="grid gap-1 text-xs font-semibold text-slate-700">
+                        <span>Día de cobro (1-31)</span>
+                        <input
+                          type="number"
+                          min="1"
+                          max="31"
+                          value={serviceFormState.billingDay}
+                          onChange={(event) =>
+                            setServiceFormState((prev) => ({
+                              ...prev,
+                              billingDay: event.target.value,
+                            }))
+                          }
+                          className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
+                            serviceFormErrors.billingDay
+                              ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
+                              : 'border-slate-300'
+                          }`}
+                          placeholder="Opcional"
+                        />
+                        <span className="text-[11px] text-slate-500">
+                          Déjalo vacío si la fecha cambia según la contratación.
+                        </span>
+                        {serviceFormErrors.billingDay && (
+                          <span className="text-xs font-medium text-red-600">
+                            {serviceFormErrors.billingDay}
+                          </span>
+                        )}
+                      </label>
+
+                      <label className="grid gap-1 text-xs font-semibold text-slate-700">
+                        <span>Base (opcional)</span>
+                        <select
+                          value={serviceFormState.baseId}
+                          onChange={(event) =>
+                            setServiceFormState((prev) => ({
+                              ...prev,
+                              baseId: event.target.value,
+                            }))
+                          }
+                          className={`rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
+                            serviceFormErrors.baseId
+                              ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
+                              : 'border-slate-300'
+                          }`}
+                        >
+                          <option value="">
+                            Usar base del cliente {selectedClient?.base ? `(Base ${selectedClient.base})` : ''}
+                          </option>
+                          <option value="1">Base 1</option>
+                          <option value="2">Base 2</option>
+                        </select>
+                        {serviceFormErrors.baseId && (
+                          <span className="text-xs font-medium text-red-600">
+                            {serviceFormErrors.baseId}
+                          </span>
+                        )}
+                      </label>
+                    </div>
+
+                    <label className="grid gap-1 text-xs font-semibold text-slate-700">
+                      <span>Notas (opcional)</span>
+                      <textarea
+                        value={serviceFormState.notes}
+                        onChange={(event) =>
+                          setServiceFormState((prev) => ({
+                            ...prev,
+                            notes: event.target.value,
+                          }))
+                        }
+                        rows={3}
+                        className="rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200"
+                        placeholder="Detalles adicionales para este servicio"
+                      />
+                    </label>
+
+                    <div className="flex flex-wrap justify-end gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className={ACTION_BUTTON_CLASSES}
+                        onClick={handleCancelNewService}
+                        disabled={isMutatingClients}
+                      >
+                        Cancelar
+                      </Button>
+                      <Button type="submit" size="sm" disabled={isMutatingClients}>
+                        Guardar servicio
+                      </Button>
+                    </div>
+                  </form>
+                )}
+
                 {selectedClientServices.length === 0 ? (
                   <p className="text-sm text-slate-500">Este cliente aún no tiene servicios configurados.</p>
                 ) : (
@@ -1419,6 +1896,8 @@ export default function ClientsPage() {
                       const isCancelled = service.status === 'cancelled'
                       const servicePrice = Number(service.price)
                       const hasPrice = Number.isFinite(servicePrice) && servicePrice > 0
+                      const canActivateService = !isCancelled && service.status !== 'active'
+                      const canSuspendService = !isCancelled && service.status === 'active'
 
                       return (
                         <div
@@ -1461,15 +1940,28 @@ export default function ClientsPage() {
                               {service.notes && <p>Notas: {service.notes}</p>}
                             </div>
                           </div>
-                          <div className="mt-3 flex justify-end">
+                          <div className="mt-3 flex flex-wrap justify-end gap-2">
                             <Button
                               size="sm"
                               variant="ghost"
-                              className="border border-slate-200 bg-white text-slate-700 hover:border-blue-200 disabled:cursor-not-allowed disabled:opacity-50"
-                              onClick={() => handleToggleService(selectedClient, service)}
-                              disabled={isMutatingClients || isCancelled}
+                              className={ACTION_BUTTON_CLASSES}
+                              onClick={() =>
+                                handleUpdateServiceStatus(selectedClient, service, 'active')
+                              }
+                              disabled={isMutatingClients || !canActivateService}
                             >
-                              {isActive ? 'Suspender' : 'Activar'}
+                              Activar
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className={ACTION_BUTTON_CLASSES}
+                              onClick={() =>
+                                handleUpdateServiceStatus(selectedClient, service, 'suspended')
+                              }
+                              disabled={isMutatingClients || !canSuspendService}
+                            >
+                              Suspender
                             </Button>
                           </div>
                         </div>
