@@ -13,8 +13,10 @@ from .routers import (
     account_management_router,
     auth_router,
     clients_router,
+    client_services_router,
     expenses_router,
     inventory_router,
+    ip_pools_router,
     metrics_router,
     payments_router,
     sales_router,
@@ -101,10 +103,16 @@ app.include_router(
 )
 app.include_router(auth_router)
 app.include_router(clients_router, prefix="/clients", tags=["clients"])
+app.include_router(
+    client_services_router,
+    prefix="/client-services",
+    tags=["client-services"],
+)
 app.include_router(payments_router, prefix="/payments", tags=["payments"])
 app.include_router(resellers_router, prefix="/resellers", tags=["resellers"])
 app.include_router(expenses_router, prefix="/expenses", tags=["expenses"])
 app.include_router(inventory_router, prefix="/inventory", tags=["inventory"])
+app.include_router(ip_pools_router, prefix="/ip-pools", tags=["ip-pools"])
 app.include_router(metrics_router, prefix="/metrics", tags=["metrics"])
 app.include_router(sales_router, prefix="/sales", tags=["sales"])
 

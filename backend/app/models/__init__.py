@@ -12,11 +12,18 @@ from .base_station import BaseStation
 from .billing_period import BillingPeriod
 from .client import Client, ClientType, ServiceStatus
 from .client_account import ClientAccount, ClientAccountPayment, PrincipalAccount
+from .client_service import (
+    ClientService,
+    ClientServiceStatus,
+    ClientServiceType,
+    ServicePayment,
+)
 from .client_contact import ClientContact, ClientStatusHistory, ContactType
 from .client_ledger import ClientLedgerEntry, LedgerEntryType
 from .expense import Expense, ExpenseCategory
 from .financial_snapshot import FinancialSnapshot
 from .inventory import InventoryItem, InventoryStatus
+from .ip_pool import BaseIpPool, BaseIpReservation, IpReservationStatus
 from .inventory_movement import InventoryMovement, InventoryMovementType
 from .payment import Payment, PaymentMethod
 from .payment_reminder import (
@@ -44,6 +51,10 @@ __all__ = [
     "ClientAccount",
     "ClientAccountPayment",
     "PrincipalAccount",
+    "ClientService",
+    "ClientServiceStatus",
+    "ClientServiceType",
+    "ServicePayment",
     "ClientType",
     "ServiceStatus",
     "ClientContact",
@@ -73,6 +84,9 @@ __all__ = [
     "InventoryStatus",
     "InventoryMovement",
     "InventoryMovementType",
+    "BaseIpPool",
+    "BaseIpReservation",
+    "IpReservationStatus",
     "ResellerDelivery",
     "ResellerDeliveryItem",
     "ResellerSettlement",

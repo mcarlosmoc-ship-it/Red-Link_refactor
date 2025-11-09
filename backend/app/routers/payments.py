@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from .. import schemas
 from ..database import get_db
+from ..models.client_service import ClientServiceType
 from ..models.payment import PaymentMethod
 from ..security import require_admin
 from ..services import PaymentService, PaymentServiceError
@@ -18,10 +19,16 @@ from ..services import PaymentService, PaymentServiceError
 router = APIRouter(dependencies=[Depends(require_admin)])
 
 
-@router.get("/", response_model=schemas.PaymentListResponse)
+@router.get("/", response_model=schemas.ServicePaymentListResponse)
 def list_payments(
     db: Session = Depends(get_db),
     client_id: Optional[str] = Query(None, description="Filter by client identifier"),
+    client_service_id: Optional[str] = Query(
+        None, description="Filter by the specific client service"
+    ),
+    service_type: Optional[ClientServiceType] = Query(
+        None, description="Filter by service type"
+    ),
     period_key: Optional[str] = Query(None, description="Filter by billing period"),
     start_date: Optional[date] = Query(None, description="Return payments on or after this date"),
     end_date: Optional[date] = Query(None, description="Return payments on or before this date"),
@@ -30,7 +37,7 @@ def list_payments(
     max_amount: Optional[Decimal] = Query(None, ge=0, description="Maximum amount threshold"),
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(50, ge=1, le=200, description="Maximum number of records to return"),
-) -> schemas.PaymentListResponse:
+) -> schemas.ServicePaymentListResponse:
     """Return payments with pagination and advanced filters."""
 
     if start_date and end_date and start_date > end_date:
@@ -48,6 +55,8 @@ def list_payments(
     items, total = PaymentService.list_payments(
         db,
         client_id=client_id,
+        client_service_id=client_service_id,
+        service_type=service_type,
         period_key=period_key,
         start_date=start_date,
         end_date=end_date,
@@ -57,11 +66,19 @@ def list_payments(
         skip=skip,
         limit=limit,
     )
-    return schemas.PaymentListResponse(items=items, total=total, limit=limit, skip=skip)
+    return schemas.ServicePaymentListResponse(
+        items=items, total=total, limit=limit, skip=skip
+    )
 
 
-@router.post("/", response_model=schemas.PaymentRead, status_code=status.HTTP_201_CREATED)
-def create_payment(payment_in: schemas.PaymentCreate, db: Session = Depends(get_db)) -> schemas.PaymentRead:
+@router.post(
+    "/",
+    response_model=schemas.ServicePaymentRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_payment(
+    payment_in: schemas.ServicePaymentCreate, db: Session = Depends(get_db)
+) -> schemas.ServicePaymentRead:
     """Record a new payment and update client balances."""
     try:
         return PaymentService.create_payment(db, payment_in)
@@ -69,8 +86,8 @@ def create_payment(payment_in: schemas.PaymentCreate, db: Session = Depends(get_
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
-@router.get("/{payment_id}", response_model=schemas.PaymentRead)
-def get_payment(payment_id: str, db: Session = Depends(get_db)) -> schemas.PaymentRead:
+@router.get("/{payment_id}", response_model=schemas.ServicePaymentRead)
+def get_payment(payment_id: str, db: Session = Depends(get_db)) -> schemas.ServicePaymentRead:
     payment = PaymentService.get_payment(db, payment_id)
     if payment is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Payment not found")

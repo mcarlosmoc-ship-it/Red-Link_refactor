@@ -11,7 +11,7 @@ from typing import Iterable, Optional, Tuple
 from pydantic import ValidationError
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from .. import models, schemas
 
@@ -71,7 +71,9 @@ class ClientService:
         base_id: Optional[int] = None,
         status: Optional[models.ServiceStatus] = None,
     ) -> Tuple[Iterable[models.Client], int]:
-        query = db.query(models.Client)
+        query = db.query(models.Client).options(
+            selectinload(models.Client.services)
+        )
 
         if search:
             normalized = f"%{search.lower()}%"
@@ -94,7 +96,20 @@ class ClientService:
 
     @staticmethod
     def get_client(db: Session, client_id: str) -> Optional[models.Client]:
-        return db.query(models.Client).filter(models.Client.id == client_id).first()
+        client = (
+            db.query(models.Client)
+            .options(
+                selectinload(models.Client.services).selectinload(
+                    models.ClientService.payments
+                ),
+                selectinload(models.Client.payments),
+            )
+            .filter(models.Client.id == client_id)
+            .first()
+        )
+        if client is not None:
+            client.recent_payments = ClientService._recent_payments(db, client.id)
+        return client
 
     @staticmethod
     def create_client(db: Session, data: schemas.ClientCreate) -> models.Client:
@@ -102,6 +117,7 @@ class ClientService:
         db.add(client)
         db.commit()
         db.refresh(client)
+        client.recent_payments = ClientService._recent_payments(db, client.id)
         return client
 
     @staticmethod
@@ -135,6 +151,20 @@ class ClientService:
     def delete_client(db: Session, client: models.Client) -> None:
         db.delete(client)
         db.commit()
+
+    @staticmethod
+    def _recent_payments(db: Session, client_id: str, limit: int = 5) -> list[models.ServicePayment]:
+        return (
+            db.query(models.ServicePayment)
+            .options(
+                selectinload(models.ServicePayment.service),
+                selectinload(models.ServicePayment.client),
+            )
+            .filter(models.ServicePayment.client_id == client_id)
+            .order_by(models.ServicePayment.paid_on.desc())
+            .limit(limit)
+            .all()
+        )
 
     @staticmethod
     def build_import_template() -> str:

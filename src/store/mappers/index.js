@@ -13,20 +13,60 @@ export const voucherTypeKeyById = Object.fromEntries(
   Object.entries(VOUCHER_TYPE_IDS).map(([key, id]) => [String(id), key]),
 )
 
-export const mapClient = (client) => ({
-  id: client.id,
-  type: client.client_type,
-  name: client.full_name,
-  location: client.location,
-  base: client.base_id,
-  ip: client.ip_address,
-  antennaIp: client.antenna_ip,
-  modemIp: client.modem_ip,
-  monthlyFee: normalizeDecimal(client.monthly_fee, CLIENT_PRICE),
-  paidMonthsAhead: normalizeDecimal(client.paid_months_ahead),
-  debtMonths: normalizeDecimal(client.debt_months),
-  service: client.service_status,
+const mapService = (service) => ({
+  id: service.id,
+  type: service.service_type,
+  name: service.display_name,
+  status: service.status,
+  billingDay: service.billing_day ?? null,
+  nextBillingDate: service.next_billing_date ?? null,
+  price: normalizeDecimal(service.price),
+  currency: service.currency ?? 'MXN',
+  baseId: service.base_id ?? null,
+  notes: service.notes ?? '',
+  metadata: service.metadata ?? {},
 })
+
+const mapRecentPayment = (payment) => ({
+  id: payment.id,
+  date: payment.paid_on,
+  method: payment.method,
+  months: normalizeDecimal(payment.months_paid),
+  amount: normalizeDecimal(payment.amount),
+  note: payment.note ?? '',
+  periodKey: payment.period_key ?? null,
+  serviceId: payment.client_service_id ?? null,
+  serviceName: payment.service?.display_name ?? 'Servicio',
+  serviceType: payment.service?.service_type ?? null,
+})
+
+export const mapClient = (client) => {
+  const services = Array.isArray(client.services) ? client.services.map(mapService) : []
+  const internetService = services.find((service) => service.type?.startsWith('internet_'))
+  const activeServices = services.filter((service) => service.status === 'active')
+  const serviceStatus = activeServices.length > 0 ? 'Activo' : 'Suspendido'
+
+  const recentPayments = Array.isArray(client.recent_payments)
+    ? client.recent_payments.map(mapRecentPayment)
+    : []
+
+  return {
+    id: client.id,
+    type: client.client_type,
+    name: client.full_name,
+    location: client.location,
+    base: client.base_id,
+    ip: client.ip_address,
+    antennaIp: client.antenna_ip,
+    modemIp: client.modem_ip,
+    monthlyFee: normalizeDecimal(internetService?.price ?? client.monthly_fee, CLIENT_PRICE),
+    paidMonthsAhead: normalizeDecimal(client.paid_months_ahead),
+    debtMonths: normalizeDecimal(client.debt_months),
+    service: serviceStatus,
+    services,
+    recentPayments,
+  }
+}
 
 export const mapPayment = (payment) => ({
   id: payment.id,
@@ -35,8 +75,12 @@ export const mapPayment = (payment) => ({
   months: normalizeDecimal(payment.months_paid),
   amount: normalizeDecimal(payment.amount),
   note: payment.note ?? '',
-  periodKey: payment.period_key,
+  periodKey: payment.period_key ?? null,
   clientName: payment.client?.full_name ?? 'Cliente',
+  clientId: payment.client_id ?? payment.client?.id ?? null,
+  serviceId: payment.client_service_id ?? payment.service?.id ?? null,
+  serviceName: payment.service?.display_name ?? 'Servicio',
+  serviceType: payment.service?.service_type ?? null,
 })
 
 export const mapExpense = (expense) => ({

@@ -10,6 +10,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from .common import PaginatedResponse
+from ..models.client_service import ClientServiceType
 
 
 class PrincipalAccountBase(BaseModel):
@@ -17,6 +18,7 @@ class PrincipalAccountBase(BaseModel):
 
     email_principal: str = Field(..., min_length=3)
     nota: Optional[str] = None
+    max_slots: int = Field(default=5, ge=1, le=20)
 
 
 class PrincipalAccountCreate(PrincipalAccountBase):
@@ -30,6 +32,7 @@ class PrincipalAccountUpdate(BaseModel):
 
     email_principal: Optional[str] = Field(default=None, min_length=3)
     nota: Optional[str] = None
+    max_slots: Optional[int] = Field(default=None, ge=1, le=20)
 
 
 class PrincipalAccountRead(PrincipalAccountBase):
@@ -51,6 +54,9 @@ class ClientAccountBase(BaseModel):
     """Shared fields for client account operations."""
 
     principal_account_id: UUID
+    client_id: Optional[str] = None
+    client_service_id: Optional[str] = None
+    service_type: Optional[ClientServiceType] = None
     correo_cliente: str = Field(..., min_length=3)
     contrasena_cliente: str = Field(..., min_length=1)
     perfil: str = Field(..., min_length=1)
@@ -70,6 +76,9 @@ class ClientAccountUpdate(BaseModel):
     """Payload for updating a client account."""
 
     principal_account_id: Optional[UUID] = None
+    client_id: Optional[str] = None
+    client_service_id: Optional[str] = None
+    service_type: Optional[ClientServiceType] = None
     correo_cliente: Optional[str] = Field(default=None, min_length=3)
     contrasena_cliente: Optional[str] = Field(default=None, min_length=1)
     perfil: Optional[str] = Field(default=None, min_length=1)

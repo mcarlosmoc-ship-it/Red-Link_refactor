@@ -98,7 +98,13 @@ class Client(Base):
 
     base = relationship("BaseStation", back_populates="clients")
     payments = relationship(
-        "Payment",
+        "ServicePayment",
+        back_populates="client",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    services = relationship(
+        "ClientService",
         back_populates="client",
         cascade="all, delete-orphan",
         passive_deletes=True,
