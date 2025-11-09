@@ -7,8 +7,8 @@ migraciones de Alembic y un esquema inicial derivado de `db/schema.sql`.
 
 - La URL de conexión se comparte con la aplicación a través de la variable de
   entorno `DATABASE_URL`. Si no está definida, se usa SQLite en
-  `sqlite:///./clients.db` y el archivo se crea automáticamente dentro de
-  `backend/`.
+  `backend/clients.db`, que se crea automáticamente (la ruta se resuelve a su
+  versión absoluta dentro de `backend/`).
 - Si defines un `DATABASE_URL` con PostgreSQL (por ejemplo
   `postgresql+psycopg://usuario:clave@localhost/redlink`), SQLAlchemy activa
   automáticamente el chequeo de conexiones (`pool_pre_ping`) y las migraciones

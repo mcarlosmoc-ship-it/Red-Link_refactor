@@ -35,7 +35,7 @@ Una vez validado el archivo normalizado, ejecuta el importador:
 cd backend
 python -m backend.app.scripts.import_accounts_from_excel \
   ../datos/normalizado.xlsx \
-  --database-url "sqlite:///../clients.db"
+  --database-url "sqlite:///clients.db"
 ```
 
 - Usa `--database-url` para apuntar a otra instancia (por ejemplo PostgreSQL en producción).
