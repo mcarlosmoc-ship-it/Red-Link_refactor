@@ -9,6 +9,7 @@ from sqlalchemy import (
     Column,
     Date,
     DateTime,
+    Enum,
     ForeignKey,
     Integer,
     Numeric,
@@ -21,6 +22,7 @@ from sqlalchemy.orm import relationship
 
 from ..database import Base
 from ..db_types import GUID
+from .client_service import ClientServiceType
 
 
 class ServicePlan(Base):
@@ -31,6 +33,15 @@ class ServicePlan(Base):
     id = Column("plan_id", Integer, primary_key=True, autoincrement=True)
     name = Column(String(120), nullable=False, unique=True)
     description = Column(Text, nullable=True)
+    service_type = Column(
+        Enum(
+            ClientServiceType,
+            name="service_plan_type_enum",
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+        ),
+        nullable=False,
+        default=ClientServiceType.INTERNET_PRIVATE,
+    )
     download_speed_mbps = Column(Numeric(8, 2), nullable=True)
     upload_speed_mbps = Column(Numeric(8, 2), nullable=True)
     default_monthly_fee = Column(Numeric(10, 2), nullable=False)
@@ -39,6 +50,7 @@ class ServicePlan(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     client_plans = relationship("ClientPlan", back_populates="service_plan")
+    client_services = relationship("ClientService", back_populates="service_plan")
 
 
 class ClientPlan(Base):

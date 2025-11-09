@@ -31,7 +31,17 @@ def _index_exists(inspector: Inspector, table_name: str, index_name: str) -> boo
     return index_name in {index["name"] for index in inspector.get_indexes(table_name)}
 
 
+def _column_exists(inspector: Inspector, table_name: str, column_name: str) -> bool:
+    if not inspector.has_table(table_name):
+        return False
+    return column_name in {column["name"] for column in inspector.get_columns(table_name)}
+
+
 REVISION_SENTINELS: Sequence[RevisionSentinel] = (
+    (
+        "20250320_0010",
+        lambda inspector: _column_exists(inspector, "service_plans", "service_type"),
+    ),
     ("20250304_0008", lambda inspector: _table_exists(inspector, "client_account_security_events")),
     ("20250221_0007", lambda inspector: _table_exists(inspector, "payment_reminder_logs")),
     ("20250220_0006", lambda inspector: _table_exists(inspector, "client_accounts")),

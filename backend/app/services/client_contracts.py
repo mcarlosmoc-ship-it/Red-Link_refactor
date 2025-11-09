@@ -69,7 +69,18 @@ class ClientContractService:
         return client
 
     @staticmethod
+    def _resolve_service_plan(db: Session, plan_id: int) -> models.ServicePlan:
+        plan = db.query(models.ServicePlan).filter(models.ServicePlan.id == plan_id).first()
+        if plan is None:
+            raise ValueError("Service plan not found")
+        if not plan.is_active:
+            raise ValueError("Service plan is inactive")
+        return plan
+
+    @classmethod
     def _normalize_payload(
+        cls,
+        db: Session,
         data: schemas.ClientServiceCreate | schemas.ClientServiceUpdate,
         *,
         client: Optional[models.Client] = None,
@@ -81,6 +92,16 @@ class ClientContractService:
             payload["currency"] = "MXN"
         if client and payload.get("base_id") is None:
             payload["base_id"] = client.base_id
+        plan_id = payload.get("service_plan_id")
+        if plan_id:
+            plan = cls._resolve_service_plan(db, int(plan_id))
+            payload["service_plan_id"] = plan.id
+            if not payload.get("service_type"):
+                payload["service_type"] = plan.service_type.value
+            if payload.get("price") is None:
+                payload["price"] = plan.default_monthly_fee
+            if not payload.get("display_name"):
+                payload["display_name"] = plan.name
         return payload
 
     @classmethod
@@ -88,7 +109,7 @@ class ClientContractService:
         cls, db: Session, data: schemas.ClientServiceCreate
     ) -> models.ClientService:
         client = cls._resolve_client(db, data.client_id)
-        payload = cls._normalize_payload(data, client=client)
+        payload = cls._normalize_payload(db, data, client=client)
         payload["client_id"] = client.id
 
         if payload.get("next_billing_date") is None and payload.get("billing_day"):
@@ -109,7 +130,7 @@ class ClientContractService:
     def update_service(
         cls, db: Session, service: models.ClientService, data: schemas.ClientServiceUpdate
     ) -> models.ClientService:
-        update_data = cls._normalize_payload(data, client=service.client)
+        update_data = cls._normalize_payload(db, data, client=service.client)
 
         if update_data.get("billing_day") and not update_data.get("next_billing_date"):
             update_data["next_billing_date"] = cls._compute_next_billing_date(

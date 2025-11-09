@@ -103,6 +103,12 @@ class ClientService(Base):
     service_metadata = Column(
         "metadata", JSON().with_variant(SQLiteJSON(), "sqlite"), nullable=True
     )
+    service_plan_id = Column(
+        Integer,
+        ForeignKey("service_plans.plan_id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(
         DateTime(timezone=True),
@@ -123,6 +129,10 @@ class ClientService(Base):
         "ClientAccount",
         back_populates="client_service",
         uselist=False,
+    )
+    service_plan = relationship(
+        "ServicePlan",
+        back_populates="client_services",
     )
     ip_reservations = relationship(
         "BaseIpReservation",
