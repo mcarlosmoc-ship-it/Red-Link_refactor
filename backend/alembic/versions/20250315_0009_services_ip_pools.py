@@ -63,6 +63,35 @@ def _column_exists(table_name: str, column_name: str) -> bool:
     return any(column["name"] == column_name for column in inspector.get_columns(table_name))
 
 
+def _drop_table_if_exists(table_name: str) -> None:
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    if inspector.has_table(table_name):
+        op.drop_table(table_name)
+
+
+def _drop_view(view_name: str) -> None:
+    op.execute(sa.text(f"DROP VIEW IF EXISTS {view_name}"))
+
+
+def _create_base_period_revenue_view(payments_table: str) -> None:
+    _drop_view("base_period_revenue")
+    op.execute(
+        sa.text(
+            """
+            CREATE VIEW base_period_revenue AS
+            SELECT
+                c.base_id,
+                p.period_key,
+                SUM(p.amount) AS total_payments
+            FROM {payments_table} p
+            JOIN clients c ON c.client_id = p.client_id
+            GROUP BY c.base_id, p.period_key;
+            """.format(payments_table=payments_table)
+        )
+    )
+
+
 def upgrade() -> None:
     uuid_type, uuid_default, json_type = _dialect_settings()
     bind = op.get_bind()
@@ -160,18 +189,49 @@ def upgrade() -> None:
         if _index_exists("service_payments", index_name):
             op.drop_index(index_name, table_name="service_payments")
 
+    client_service_fk = sa.ForeignKey(
+        "client_services.client_service_id",
+        name="fk_service_payments_client_service_id",
+        ondelete="CASCADE",
+    )
+    client_account_client_fk = sa.ForeignKey(
+        "clients.client_id",
+        name="fk_client_accounts_client_id",
+        ondelete="SET NULL",
+    )
+    client_account_service_fk = sa.ForeignKey(
+        "client_services.client_service_id",
+        name="fk_client_accounts_client_service_id",
+        ondelete="SET NULL",
+    )
+
     is_sqlite = bind.dialect.name == "sqlite" if bind else True
+    needs_client_service_column = not _column_exists("service_payments", "client_service_id")
+    needs_recorded_by_column = not _column_exists("service_payments", "recorded_by")
+    needs_client_account_client_column = not _column_exists("client_accounts", "client_id")
+    needs_client_account_service_column = not _column_exists(
+        "client_accounts", "client_service_id"
+    )
 
     if not is_sqlite:
         op.drop_constraint("ck_payments_months_paid_positive", "service_payments", type_="check")
 
+    _drop_view("base_period_revenue")
+
     if is_sqlite:
+        _drop_table_if_exists("_alembic_tmp_service_payments")
         with op.batch_alter_table("service_payments", recreate="always") as batch_op:
             batch_op.alter_column(
                 "months_paid",
                 existing_type=sa.Numeric(6, 2),
                 nullable=True,
             )
+            if needs_client_service_column:
+                batch_op.add_column(
+                    sa.Column("client_service_id", uuid_type, client_service_fk, nullable=True)
+                )
+            if needs_recorded_by_column:
+                batch_op.add_column(sa.Column("recorded_by", sa.String(120), nullable=True))
     else:
         op.alter_column("service_payments", "months_paid", existing_type=sa.Numeric(6, 2), nullable=True)
 
@@ -182,18 +242,13 @@ def upgrade() -> None:
             "months_paid IS NULL OR months_paid > 0",
         )
 
-    if not _column_exists("service_payments", "client_service_id"):
+    if not is_sqlite and needs_client_service_column:
         op.add_column(
             "service_payments",
-            sa.Column(
-                "client_service_id",
-                uuid_type,
-                sa.ForeignKey("client_services.client_service_id", ondelete="CASCADE"),
-                nullable=True,
-            ),
+            sa.Column("client_service_id", uuid_type, client_service_fk, nullable=True),
         )
 
-    if not _column_exists("service_payments", "recorded_by"):
+    if not is_sqlite and needs_recorded_by_column:
         op.add_column(
             "service_payments",
             sa.Column("recorded_by", sa.String(120), nullable=True),
@@ -211,34 +266,54 @@ def upgrade() -> None:
     if not _index_exists("service_payments", "service_payments_paid_on_idx"):
         op.create_index("service_payments_paid_on_idx", "service_payments", ["paid_on"])
 
+    _create_base_period_revenue_view("service_payments")
+
     if not _column_exists("principal_accounts", "max_slots"):
-        op.add_column(
-            "principal_accounts",
-            sa.Column("max_slots", sa.Integer(), nullable=False, server_default="5"),
-        )
-        op.alter_column("principal_accounts", "max_slots", server_default=None)
+        if is_sqlite:
+            with op.batch_alter_table("principal_accounts", recreate="always") as batch_op:
+                batch_op.add_column(sa.Column("max_slots", sa.Integer(), nullable=True))
+            op.execute(sa.text("UPDATE principal_accounts SET max_slots = 5 WHERE max_slots IS NULL"))
+            with op.batch_alter_table("principal_accounts", recreate="always") as batch_op:
+                batch_op.alter_column("max_slots", nullable=False)
+        else:
+            op.add_column(
+                "principal_accounts",
+                sa.Column("max_slots", sa.Integer(), nullable=False, server_default="5"),
+            )
+            op.alter_column("principal_accounts", "max_slots", server_default=None)
 
-    if not _column_exists("client_accounts", "client_id"):
-        op.add_column(
-            "client_accounts",
-            sa.Column(
-                "client_id",
-                uuid_type,
-                sa.ForeignKey("clients.client_id", ondelete="SET NULL"),
-                nullable=True,
-            ),
-        )
-
-    if not _column_exists("client_accounts", "client_service_id"):
-        op.add_column(
-            "client_accounts",
-            sa.Column(
-                "client_service_id",
-                uuid_type,
-                sa.ForeignKey("client_services.client_service_id", ondelete="SET NULL"),
-                nullable=True,
-            ),
-        )
+    if needs_client_account_client_column or needs_client_account_service_column:
+        if is_sqlite:
+            with op.batch_alter_table("client_accounts", recreate="always") as batch_op:
+                if needs_client_account_client_column:
+                    batch_op.add_column(
+                        sa.Column("client_id", uuid_type, client_account_client_fk, nullable=True)
+                    )
+                if needs_client_account_service_column:
+                    batch_op.add_column(
+                        sa.Column(
+                            "client_service_id",
+                            uuid_type,
+                            client_account_service_fk,
+                            nullable=True,
+                        )
+                    )
+        else:
+            if needs_client_account_client_column:
+                op.add_column(
+                    "client_accounts",
+                    sa.Column("client_id", uuid_type, client_account_client_fk, nullable=True),
+                )
+            if needs_client_account_service_column:
+                op.add_column(
+                    "client_accounts",
+                    sa.Column(
+                        "client_service_id",
+                        uuid_type,
+                        client_account_service_fk,
+                        nullable=True,
+                    ),
+                )
 
     if not _index_exists("client_accounts", "client_accounts_client_idx"):
         op.create_index("client_accounts_client_idx", "client_accounts", ["client_id"])
@@ -321,18 +396,21 @@ def upgrade() -> None:
     op.create_index("base_ip_reservations_service_idx", "base_ip_reservations", ["service_id"])
     op.create_index("base_ip_reservations_client_idx", "base_ip_reservations", ["client_id"])
 
-    op.drop_constraint("payment_audit_log_payment_id_fkey", "payment_audit_log", type_="foreignkey")
-    op.create_foreign_key(
-        "payment_audit_log_payment_id_fkey",
-        "payment_audit_log",
-        "service_payments",
-        ["payment_id"],
-        ["payment_id"],
-        ondelete="CASCADE",
-    )
+    if not is_sqlite:
+        op.drop_constraint(
+            "payment_audit_log_payment_id_fkey", "payment_audit_log", type_="foreignkey"
+        )
+        op.create_foreign_key(
+            "payment_audit_log_payment_id_fkey",
+            "payment_audit_log",
+            "service_payments",
+            ["payment_id"],
+            ["payment_id"],
+            ondelete="CASCADE",
+        )
 
-    metadata = sa.MetaData(bind=bind)
-    metadata.reflect(only=["clients", "client_services", "service_payments"])
+    metadata = sa.MetaData()
+    metadata.reflect(bind=bind, only=["clients", "client_services", "service_payments"])
 
     clients_table = metadata.tables["clients"]
     services_table = metadata.tables["client_services"]
@@ -378,22 +456,29 @@ def downgrade() -> None:
     uuid_type, _, _ = _dialect_settings()
     bind = op.get_bind()
 
-    metadata = sa.MetaData(bind=bind)
-    metadata.reflect(only=["service_payments"])
+    metadata = sa.MetaData()
+    metadata.reflect(bind=bind, only=["service_payments"])
     payments_table = metadata.tables["service_payments"]
     bind.execute(
         payments_table.update().values(client_service_id=None, recorded_by=None)
     )
 
-    op.drop_constraint("payment_audit_log_payment_id_fkey", "payment_audit_log", type_="foreignkey")
-    op.create_foreign_key(
-        "payment_audit_log_payment_id_fkey",
-        "payment_audit_log",
-        "service_payments",
-        ["payment_id"],
-        ["payment_id"],
-        ondelete="CASCADE",
-    )
+    _drop_view("base_period_revenue")
+
+    is_sqlite = bind.dialect.name == "sqlite" if bind else True
+
+    if not is_sqlite:
+        op.drop_constraint(
+            "payment_audit_log_payment_id_fkey", "payment_audit_log", type_="foreignkey"
+        )
+        op.create_foreign_key(
+            "payment_audit_log_payment_id_fkey",
+            "payment_audit_log",
+            "service_payments",
+            ["payment_id"],
+            ["payment_id"],
+            ondelete="CASCADE",
+        )
 
     op.drop_index("base_ip_reservations_client_idx", table_name="base_ip_reservations")
     op.drop_index("base_ip_reservations_service_idx", table_name="base_ip_reservations")
@@ -417,8 +502,6 @@ def downgrade() -> None:
     ):
         op.drop_index(index_name, table_name="service_payments")
 
-    is_sqlite = bind.dialect.name == "sqlite" if bind else True
-
     if not is_sqlite:
         op.drop_constraint("ck_service_payments_months_positive", "service_payments", type_="check")
 
@@ -434,6 +517,8 @@ def downgrade() -> None:
     op.drop_column("service_payments", "client_service_id")
 
     op.rename_table("service_payments", "legacy_payments")
+
+    _create_base_period_revenue_view("legacy_payments")
 
     op.drop_index("client_services_base_idx", table_name="client_services")
     op.drop_index("client_services_client_idx", table_name="client_services")
