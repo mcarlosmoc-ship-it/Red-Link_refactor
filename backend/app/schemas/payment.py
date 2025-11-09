@@ -1,13 +1,17 @@
+from __future__ import annotations
+
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..models.payment import PaymentMethod
-from .client import ClientRead
 from .common import PaginatedResponse
-from .service import ClientServiceRead
+
+if TYPE_CHECKING:  # pragma: no cover - only used for typing
+    from .client import ClientRead
+    from .service import ClientServiceRead
 
 
 class ServicePaymentBase(BaseModel):
@@ -56,8 +60,8 @@ class ServicePaymentRead(ServicePaymentBase):
     id: str
     client_id: str
     created_at: datetime
-    client: Optional[ClientRead] = None
-    service: Optional[ClientServiceRead] = None
+    client: Optional["ClientRead"] = None
+    service: Optional["ClientServiceRead"] = None
 
     model_config = ConfigDict(from_attributes=True)
 

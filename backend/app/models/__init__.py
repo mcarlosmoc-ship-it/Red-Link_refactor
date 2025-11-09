@@ -25,7 +25,7 @@ from .financial_snapshot import FinancialSnapshot
 from .inventory import InventoryItem, InventoryStatus
 from .ip_pool import BaseIpPool, BaseIpReservation, IpReservationStatus
 from .inventory_movement import InventoryMovement, InventoryMovementType
-from .payment import Payment, PaymentMethod
+from .payment import PaymentMethod
 from .payment_reminder import (
     PaymentReminderLog,
     ReminderDeliveryStatus,
@@ -63,7 +63,6 @@ __all__ = [
     "ClientChangeLog",
     "ClientAccountSecurityEvent",
     "ClientAccountSecurityAction",
-    "Payment",
     "PaymentAuditAction",
     "PaymentAuditLog",
     "PaymentMethod",
