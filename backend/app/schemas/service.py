@@ -2,7 +2,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from ..models.client_service import ClientServiceStatus, ClientServiceType
 from .common import PaginatedResponse
@@ -22,7 +22,7 @@ class ClientServiceBase(BaseModel):
     notes: Optional[str] = None
     service_metadata: Optional[dict[str, Any]] = Field(
         default=None,
-        alias="metadata",
+        validation_alias=AliasChoices("service_metadata", "metadata"),
         serialization_alias="metadata",
     )
 
@@ -33,6 +33,7 @@ class ClientServiceCreate(ClientServiceBase):
     """Payload required to create a new service for a client."""
 
     client_id: str
+    service_plan_id: Optional[int] = Field(default=None, ge=1)
 
 
 class ClientServiceUpdate(BaseModel):
@@ -46,9 +47,10 @@ class ClientServiceUpdate(BaseModel):
     next_billing_date: Optional[date] = None
     base_id: Optional[int] = Field(default=None, ge=1)
     notes: Optional[str] = None
+    service_plan_id: Optional[int] = Field(default=None, ge=1)
     service_metadata: Optional[dict[str, Any]] = Field(
         default=None,
-        alias="metadata",
+        validation_alias=AliasChoices("service_metadata", "metadata"),
         serialization_alias="metadata",
     )
 

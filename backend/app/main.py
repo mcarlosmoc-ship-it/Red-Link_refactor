@@ -21,6 +21,7 @@ from .routers import (
     payments_router,
     sales_router,
     resellers_router,
+    service_plans_router,
 )
 from .services.account_management import start_overdue_monitor, stop_overdue_monitor
 from .services.backups import start_backup_scheduler, stop_backup_scheduler
@@ -115,6 +116,7 @@ app.include_router(inventory_router, prefix="/inventory", tags=["inventory"])
 app.include_router(ip_pools_router, prefix="/ip-pools", tags=["ip-pools"])
 app.include_router(metrics_router, prefix="/metrics", tags=["metrics"])
 app.include_router(sales_router, prefix="/sales", tags=["sales"])
+app.include_router(service_plans_router, prefix="/service-plans", tags=["service-plans"])
 
 
 @app.on_event("startup")

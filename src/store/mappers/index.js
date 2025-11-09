@@ -26,8 +26,19 @@ export const mapClientService = (service) => ({
   baseId: service.base_id ?? null,
   notes: service.notes ?? '',
   metadata: service.metadata ?? {},
+  servicePlanId: service.service_plan_id ?? service.servicePlanId ?? null,
   createdAt: service.created_at ?? null,
   updatedAt: service.updated_at ?? null,
+})
+
+export const mapServicePlan = (plan) => ({
+  id: plan.id ?? plan.plan_id ?? null,
+  name: plan.name ?? '',
+  serviceType: plan.service_type ?? 'internet_private',
+  defaultMonthlyFee: normalizeDecimal(plan.default_monthly_fee),
+  description: plan.description ?? '',
+  isActive: plan.is_active ?? true,
+  createdAt: plan.created_at ?? null,
 })
 
 const mapRecentPayment = (payment) => ({
@@ -255,6 +266,10 @@ export const serializeClientServicePayload = (payload) => {
     currency: payload.currency ?? 'MXN',
   }
 
+  if (payload.servicePlanId) {
+    body.service_plan_id = payload.servicePlanId
+  }
+
   if (payload.billingDay) {
     body.billing_day = payload.billingDay
   }
@@ -273,6 +288,26 @@ export const serializeClientServicePayload = (payload) => {
 
   if (payload.metadata) {
     body.metadata = payload.metadata
+  }
+
+  return body
+}
+
+export const serializeServicePlanPayload = (payload) => {
+  const body = {
+    name: payload.name,
+    service_type: payload.serviceType,
+    default_monthly_fee: payload.defaultMonthlyFee ?? 0,
+    is_active: payload.isActive ?? true,
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'description')) {
+    if (payload.description === null) {
+      body.description = null
+    } else if (typeof payload.description === 'string') {
+      const trimmed = payload.description.trim()
+      body.description = trimmed ? trimmed : null
+    }
   }
 
   return body

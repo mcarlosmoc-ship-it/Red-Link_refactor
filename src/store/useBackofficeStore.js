@@ -18,9 +18,11 @@ import {
   mapReseller,
   mapPrincipalAccount,
   mapClientAccount,
+  mapServicePlan,
   serializeClientPayload,
   serializeClientServicePayload,
   serializeClientAccountPayload,
+  serializeServicePlanPayload,
   convertBaseCosts,
   VOUCHER_TYPE_IDS,
 } from './mappers/index.js'
@@ -47,6 +49,7 @@ const MUTABLE_SERVICE_STATUSES = new Set(['active', 'suspended'])
 const createInitialState = () => ({
   clients: [],
   clientServices: [],
+  servicePlans: [],
   principalAccounts: [],
   clientAccounts: [],
   payments: [],
@@ -179,6 +182,47 @@ export const useBackofficeStore = create((set, get) => ({
           force,
         })
         set({ clientServices: data })
+        return data
+      },
+    })
+  },
+  loadServicePlans: async ({ force = false, retries = 1 } = {}) => {
+    const queryKey = queryKeys.servicePlans()
+
+    if (force) {
+      invalidateQuery(queryKey)
+    } else {
+      const cached = getCachedQueryData(queryKey, { ttl: RESOURCE_TTL_MS })
+      if (cached) {
+        set({ servicePlans: cached })
+        return cached
+      }
+    }
+
+    return runWithStatus({
+      set,
+      get,
+      resource: 'servicePlans',
+      retries,
+      action: async () => {
+        const data = await queryClient.fetchQuery({
+          queryKey,
+          queryFn: async () => {
+            const response = await apiClient.get('/service-plans', {
+              query: { limit: 200, include_inactive: true },
+            })
+            const payload = response.data
+            const items = Array.isArray(payload?.items)
+              ? payload.items
+              : Array.isArray(payload)
+                ? payload
+                : []
+            return items.map(mapServicePlan)
+          },
+          staleTime: RESOURCE_TTL_MS,
+          force,
+        })
+        set({ servicePlans: data })
         return data
       },
     })
@@ -616,6 +660,66 @@ export const useBackofficeStore = create((set, get) => ({
     ])
 
     return createdService
+  },
+  createServicePlan: async (payload) => {
+    const createdPlan = await runMutation({
+      set,
+      resources: 'servicePlans',
+      action: async () => {
+        const response = await apiClient.post('/service-plans', serializeServicePlanPayload(payload))
+        return mapServicePlan(response.data)
+      },
+    })
+
+    invalidateQuery(queryKeys.servicePlans())
+
+    await get().loadServicePlans({ force: true, retries: 1 })
+
+    return createdPlan
+  },
+  updateServicePlan: async (planId, payload) => {
+    if (!planId) {
+      throw new Error('Selecciona un servicio mensual válido para actualizar')
+    }
+
+    const normalizedPlanId = Number(planId)
+
+    const updatedPlan = await runMutation({
+      set,
+      resources: 'servicePlans',
+      action: async () => {
+        const response = await apiClient.put(
+          `/service-plans/${normalizedPlanId}`,
+          serializeServicePlanPayload(payload),
+        )
+        return mapServicePlan(response.data)
+      },
+    })
+
+    invalidateQuery(queryKeys.servicePlans())
+
+    await get().loadServicePlans({ force: true, retries: 1 })
+
+    return updatedPlan
+  },
+  deleteServicePlan: async (planId) => {
+    if (!planId) {
+      throw new Error('Selecciona un servicio mensual válido para eliminar')
+    }
+
+    const normalizedPlanId = Number(planId)
+
+    await runMutation({
+      set,
+      resources: 'servicePlans',
+      action: async () => {
+        await apiClient.delete(`/service-plans/${normalizedPlanId}`)
+      },
+    })
+
+    invalidateQuery(queryKeys.servicePlans())
+
+    await get().loadServicePlans({ force: true, retries: 1 })
   },
   createClientAccount: async (payload) => {
     await runMutation({

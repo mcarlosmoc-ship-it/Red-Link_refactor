@@ -123,6 +123,26 @@ def seed_basic_data(db_session: Session) -> dict:
     )
     db_session.add(client)
 
+    plan = models.ServicePlan(
+        name="Internet mensual",
+        service_type=models.ClientServiceType.INTERNET_PRIVATE,
+        default_monthly_fee=Decimal("300"),
+        description="Plan base de internet residencial",
+    )
+    db_session.add(plan)
+    db_session.flush()
+
+    client_service = models.ClientService(
+        client=client,
+        service_plan=plan,
+        service_type=plan.service_type,
+        display_name=plan.name,
+        status=models.ClientServiceStatus.ACTIVE,
+        price=plan.default_monthly_fee,
+        currency="MXN",
+    )
+    db_session.add(client_service)
+
     reseller = models.Reseller(full_name="Revendedor Demo", base=base, location="Centro")
     db_session.add(reseller)
 
@@ -150,6 +170,8 @@ def seed_basic_data(db_session: Session) -> dict:
 
     return {
         "client": client,
+        "client_service": client_service,
+        "service_plan": plan,
         "period": period,
         "reseller": reseller,
     }

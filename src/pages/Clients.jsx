@@ -6,6 +6,7 @@ import ImportClientsModal from '../components/clients/ImportClientsModal.jsx'
 import { Card, CardContent } from '../components/ui/Card.jsx'
 import { CLIENT_PRICE, useBackofficeStore } from '../store/useBackofficeStore.js'
 import { useClients } from '../hooks/useClients.js'
+import { useServicePlans } from '../hooks/useServicePlans.js'
 import { useToast } from '../hooks/useToast.js'
 import { peso, formatDate, formatPeriodLabel, addMonthsToPeriod } from '../utils/formatters.js'
 import {
@@ -53,6 +54,14 @@ const formatServiceStatus = (status) => getServiceStatusLabel(status)
 
 const formatServiceType = (type) => getServiceTypeLabel(type)
 
+const formatServicePlanOptionLabel = (plan) => {
+  const fee = Number(plan?.defaultMonthlyFee)
+  if (Number.isFinite(fee) && fee > 0) {
+    return `${plan.name} · ${peso(fee)}`
+  }
+  return `${plan.name} · Monto variable`
+}
+
 const getPrimaryService = (client) => {
   const services = Array.isArray(client?.services) ? client.services : []
   if (services.length === 0) {
@@ -76,6 +85,7 @@ const createInitialServiceState = (baseId) => ({
   baseId: baseId ? String(baseId) : '',
   status: 'active',
   notes: '',
+  servicePlanId: '',
 })
 
 const defaultForm = {
@@ -113,6 +123,11 @@ export default function ClientsPage() {
     deleteClient,
     importClients,
   } = useClients()
+  const {
+    servicePlans,
+    status: servicePlansStatus,
+    isLoading: isLoadingServicePlans,
+  } = useServicePlans()
   const { showToast } = useToast()
   const location = useLocation()
   const [searchTerm, setSearchTerm] = useState('')
@@ -145,6 +160,21 @@ export default function ClientsPage() {
     notes: '',
   })
   const [serviceFormErrors, setServiceFormErrors] = useState({})
+  const activeServicePlans = useMemo(
+    () => servicePlans.filter((plan) => plan.isActive),
+    [servicePlans],
+  )
+  const servicePlanOptions = useMemo(
+    () =>
+      activeServicePlans
+        .map((plan) => ({
+          value: String(plan.id),
+          label: formatServicePlanOptionLabel(plan),
+          plan,
+        }))
+        .sort((a, b) => a.label.localeCompare(b.label, 'es', { sensitivity: 'base' })),
+    [activeServicePlans],
+  )
   const clientDetailsRef = useRef(null)
   const shouldOpenServiceFormRef = useRef(false)
   const isMutatingClients = Boolean(clientsStatus?.isMutating)
@@ -505,6 +535,47 @@ export default function ClientsPage() {
     })
   }, [])
 
+  useEffect(() => {
+    if (!servicePlans || servicePlans.length === 0) {
+      return
+    }
+
+    setInitialServiceState((prev) => {
+      if (prev.servicePlanId) {
+        return prev
+      }
+
+      const firstActivePlan = servicePlans.find((plan) => plan.isActive)
+      if (!firstActivePlan) {
+        return prev
+      }
+
+      const defaultName = getServiceTypeLabel(prev.serviceType)
+      const trimmedName = prev.displayName?.trim() ?? ''
+      const hasCustomName = trimmedName && trimmedName !== defaultName
+      const hasCustomPrice = prev.price !== '' && prev.price !== null && prev.price !== undefined
+
+      const nextState = {
+        ...prev,
+        servicePlanId: String(firstActivePlan.id),
+        serviceType: firstActivePlan.serviceType ?? prev.serviceType,
+      }
+
+      if (!hasCustomName) {
+        nextState.displayName = firstActivePlan.name ?? defaultName
+      }
+
+      if (!hasCustomPrice) {
+        nextState.price =
+          firstActivePlan.defaultMonthlyFee === null || firstActivePlan.defaultMonthlyFee === undefined
+            ? ''
+            : String(firstActivePlan.defaultMonthlyFee)
+      }
+
+      return nextState
+    })
+  }, [servicePlans])
+
   const selectedClient = useMemo(
     () => {
       if (!selectedClientId) {
@@ -736,6 +807,41 @@ export default function ClientsPage() {
     return Object.keys(errors).length === 0
   }, [serviceFormState])
 
+  const validateInitialService = useCallback(() => {
+    const errors = computeServiceFormErrors(initialServiceState, { requireClientId: false })
+    setInitialServiceErrors(errors)
+    return Object.keys(errors).length === 0
+  }, [initialServiceState])
+
+  const handleSelectInitialPlan = useCallback(
+    (planId) => {
+      if (!planId || planId === 'custom') {
+        setInitialServiceState((prev) => ({ ...prev, servicePlanId: '' }))
+        setInitialServiceErrors((prev) => ({ ...prev, servicePlanId: undefined }))
+        return
+      }
+
+      const selectedPlan = servicePlans.find((plan) => String(plan.id) === planId)
+      if (!selectedPlan) {
+        setInitialServiceState((prev) => ({ ...prev, servicePlanId: '' }))
+        return
+      }
+
+      setInitialServiceState((prev) => ({
+        ...prev,
+        servicePlanId: String(selectedPlan.id),
+        serviceType: selectedPlan.serviceType ?? prev.serviceType,
+        displayName: selectedPlan.name ?? prev.displayName,
+        price:
+          selectedPlan.defaultMonthlyFee === null || selectedPlan.defaultMonthlyFee === undefined
+            ? ''
+            : String(selectedPlan.defaultMonthlyFee),
+      }))
+      setInitialServiceErrors((prev) => ({ ...prev, servicePlanId: undefined }))
+    },
+    [servicePlans],
+  )
+
   const handleCancelNewService = useCallback(() => {
     setServiceFormState(buildDefaultServiceFormState())
     setServiceFormErrors({})
@@ -871,7 +977,75 @@ export default function ClientsPage() {
 
       const normalizedNewClientId = normalizeId(newClient?.id)
       if (normalizedNewClientId) {
-        shouldOpenServiceFormRef.current = true
+        let shouldOpenServiceForm = true
+        const trimmedServiceName = initialServiceSnapshot.displayName?.trim() ?? ''
+
+        if (trimmedServiceName) {
+          const normalizedPrice = (() => {
+            if (initialServiceSnapshot.price === '' || initialServiceSnapshot.price === null) {
+              return null
+            }
+            const parsed = Number(initialServiceSnapshot.price)
+            return Number.isFinite(parsed) ? parsed : null
+          })()
+
+          const normalizedBillingDay = (() => {
+            if (initialServiceSnapshot.billingDay === '' || initialServiceSnapshot.billingDay === null) {
+              return null
+            }
+            const parsed = Number(initialServiceSnapshot.billingDay)
+            return Number.isInteger(parsed) ? parsed : null
+          })()
+
+          const normalizedBaseId = (() => {
+            if (initialServiceSnapshot.baseId === '' || initialServiceSnapshot.baseId === null) {
+              return null
+            }
+            const parsed = Number(initialServiceSnapshot.baseId)
+            return Number.isInteger(parsed) ? parsed : null
+          })()
+
+          const servicePayload = {
+            clientId: normalizedNewClientId,
+            serviceType: initialServiceSnapshot.serviceType,
+            displayName: trimmedServiceName,
+            price: normalizedPrice,
+            billingDay: normalizedBillingDay,
+            baseId: normalizedBaseId,
+            status: initialServiceSnapshot.status,
+            notes:
+              initialServiceSnapshot.notes?.trim()
+                ? initialServiceSnapshot.notes.trim()
+                : null,
+          }
+
+          if (initialServiceSnapshot.servicePlanId) {
+            const parsedPlanId = Number(initialServiceSnapshot.servicePlanId)
+            if (Number.isFinite(parsedPlanId) && parsedPlanId > 0) {
+              servicePayload.servicePlanId = parsedPlanId
+            }
+          }
+
+          try {
+            await createClientService(servicePayload)
+            showToast({
+              type: 'success',
+              title: 'Servicio asignado',
+              description: `${trimmedServiceName} se registró para ${clientName}.`,
+            })
+            shouldOpenServiceForm = false
+          } catch (error) {
+            showToast({
+              type: 'warning',
+              title: 'Servicio no registrado',
+              description:
+                error?.message ??
+                'Agrega el servicio manualmente desde la ficha del cliente.',
+            })
+          }
+        }
+
+        shouldOpenServiceFormRef.current = shouldOpenServiceForm
         setSelectedClientId(normalizedNewClientId)
         setHighlightedClientId(normalizedNewClientId)
       }
@@ -1333,6 +1507,36 @@ export default function ClientsPage() {
               </p>
             </div>
             <div className="grid gap-4 md:grid-cols-3">
+              <label className="grid gap-1 text-xs font-semibold text-slate-700 md:col-span-3">
+                <span className="flex items-center gap-1">
+                  Servicio mensual disponible
+                  <InfoTooltip text="Selecciona uno de los servicios registrados para rellenar automáticamente los datos. Usa la opción manual para configurar un servicio único." />
+                </span>
+                <select
+                  value={initialServiceState.servicePlanId || ''}
+                  onChange={(event) => handleSelectInitialPlan(event.target.value)}
+                  className="rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200"
+                  disabled={isLoadingServicePlans && servicePlanOptions.length === 0}
+                >
+                  <option value="">
+                    {isLoadingServicePlans ? 'Cargando servicios…' : 'Selecciona un servicio mensual'}
+                  </option>
+                  {servicePlanOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                  <option value="custom">Configurar manualmente</option>
+                </select>
+                <span className="text-[11px] text-slate-500">
+                  Los campos se pueden personalizar después de seleccionar un servicio.
+                </span>
+                {servicePlansStatus?.error && (
+                  <span className="text-xs font-medium text-red-600">
+                    {servicePlansStatus.error}
+                  </span>
+                )}
+              </label>
               <label className="grid gap-1 text-xs font-semibold text-slate-700">
                 <span className="flex items-center gap-1">
                   Tipo de servicio
