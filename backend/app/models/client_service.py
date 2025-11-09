@@ -22,7 +22,7 @@ from sqlalchemy import (
     JSON,
 )
 from sqlalchemy.dialects.sqlite import JSON as SQLiteJSON
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import foreign, relationship
 
 from ..database import Base
 from ..db_types import GUID
@@ -171,6 +171,11 @@ class ServicePayment(Base):
 
     service = relationship("ClientService", back_populates="payments")
     client = relationship("Client", back_populates="payments")
+    billing_period = relationship(
+        "BillingPeriod",
+        back_populates="payments",
+        primaryjoin="BillingPeriod.period_key==foreign(ServicePayment.period_key)",
+    )
     audit_trail = relationship(
         "PaymentAuditLog",
         back_populates="payment",

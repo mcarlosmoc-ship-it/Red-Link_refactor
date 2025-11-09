@@ -21,6 +21,6 @@ class BillingPeriod(Base):
     starts_on = Column(Date, nullable=False)
     ends_on = Column(Date, nullable=False)
 
-    payments = relationship("Payment", back_populates="billing_period")
+    payments = relationship("ServicePayment", back_populates="billing_period")
     operating_costs = relationship("BaseOperatingCost", back_populates="billing_period")
     ledger_entries = relationship("ClientLedgerEntry", back_populates="billing_period")
