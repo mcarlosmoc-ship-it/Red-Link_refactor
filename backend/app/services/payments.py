@@ -166,8 +166,8 @@ class PaymentService:
         service: models.ClientService, client: models.Client, months_paid: Decimal
     ) -> None:
         if service.service_type not in {
-            models.ClientServiceType.INTERNET_PRIVATE,
-            models.ClientServiceType.INTERNET_TOKENS,
+            models.ClientServiceType.INTERNET,
+            models.ClientServiceType.HOTSPOT,
         }:
             return
 
@@ -188,8 +188,8 @@ class PaymentService:
         service: models.ClientService, client: models.Client, months_paid: Decimal
     ) -> None:
         if service.service_type not in {
-            models.ClientServiceType.INTERNET_PRIVATE,
-            models.ClientServiceType.INTERNET_TOKENS,
+            models.ClientServiceType.INTERNET,
+            models.ClientServiceType.HOTSPOT,
         }:
             return
 

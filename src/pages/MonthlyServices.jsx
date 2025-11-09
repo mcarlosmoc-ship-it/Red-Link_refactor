@@ -33,7 +33,7 @@ const STATUS_LABELS = {
 
 const createDefaultPlanForm = () => ({
   name: 'Internet mensual',
-  serviceType: 'internet_private',
+  serviceType: 'internet',
   defaultMonthlyFee: '300',
   description: '',
   status: 'active',
@@ -146,7 +146,7 @@ export default function MonthlyServicesPage({ variant = 'page' }) {
     setFormErrors({})
     setFormState({
       name: plan.name ?? '',
-      serviceType: plan.serviceType ?? 'internet_private',
+      serviceType: plan.serviceType ?? 'internet',
       defaultMonthlyFee:
         plan.defaultMonthlyFee === null || plan.defaultMonthlyFee === undefined
           ? ''
@@ -344,7 +344,7 @@ export default function MonthlyServicesPage({ variant = 'page' }) {
                         if (prev.serviceType === nextType) {
                           return prev
                         }
-                        const isInternet = nextType.startsWith('internet_')
+                        const isInternet = nextType === 'internet'
                         return {
                           ...prev,
                           serviceType: nextType,

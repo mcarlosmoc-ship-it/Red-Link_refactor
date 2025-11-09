@@ -15,13 +15,31 @@ from .. import models, schemas
 DEFAULT_SERVICE_PLANS = [
     {
         "name": "Internet mensual",
-        "service_type": models.ClientServiceType.INTERNET_PRIVATE,
+        "service_type": models.ClientServiceType.INTERNET,
         "description": "Plan base de internet residencial",
         "default_monthly_fee": Decimal("300"),
         "is_active": True,
         "requires_ip": True,
         "requires_base": True,
-    }
+    },
+    {
+        "name": "NETFLIX",
+        "service_type": models.ClientServiceType.STREAMING,
+        "description": "Servicio de streaming Netflix",
+        "default_monthly_fee": Decimal("120"),
+        "is_active": True,
+        "requires_ip": False,
+        "requires_base": False,
+    },
+    {
+        "name": "SPOTIFY",
+        "service_type": models.ClientServiceType.STREAMING,
+        "description": "Servicio de streaming Spotify",
+        "default_monthly_fee": Decimal("70"),
+        "is_active": True,
+        "requires_ip": False,
+        "requires_base": False,
+    },
 ]
 
 
@@ -34,13 +52,18 @@ class ServicePlanService:
 
     @staticmethod
     def ensure_defaults(db: Session) -> None:
-        if db.query(func.count(models.ServicePlan.id)).scalar() > 0:
-            return
-
+        existing_names = {
+            name for (name,) in db.query(models.ServicePlan.name).all()
+        }
+        created = False
         for plan in DEFAULT_SERVICE_PLANS:
+            if plan["name"] in existing_names:
+                continue
             record = models.ServicePlan(**plan)
             db.add(record)
-        db.commit()
+            created = True
+        if created:
+            db.commit()
 
     @staticmethod
     def list_plans(
@@ -83,6 +106,7 @@ class ServicePlanService:
     def create_plan(db: Session, data: schemas.ServicePlanCreate) -> models.ServicePlan:
         payload = data.model_dump()
         payload["name"] = payload["name"].strip()
+        ServicePlanService._apply_flag_defaults(payload)
         plan = models.ServicePlan(**payload)
         db.add(plan)
         try:
@@ -102,6 +126,8 @@ class ServicePlanService:
         update_data = data.model_dump(exclude_unset=True)
         if "name" in update_data and update_data["name"]:
             update_data["name"] = update_data["name"].strip()
+        if "service_type" in update_data:
+            ServicePlanService._apply_flag_defaults(update_data)
         for field, value in update_data.items():
             setattr(plan, field, value)
         try:
@@ -112,6 +138,16 @@ class ServicePlanService:
             raise ServicePlanError("Ya existe un servicio mensual con ese nombre.") from exc
         db.refresh(plan)
         return plan
+
+    @staticmethod
+    def _apply_flag_defaults(payload: dict) -> None:
+        service_type = payload.get("service_type")
+        if service_type == models.ClientServiceType.INTERNET:
+            payload["requires_ip"] = True
+            payload["requires_base"] = True
+        elif service_type == models.ClientServiceType.STREAMING:
+            payload["requires_ip"] = False
+            payload["requires_base"] = False
 
     @staticmethod
     def delete_plan(db: Session, plan: models.ServicePlan) -> None:

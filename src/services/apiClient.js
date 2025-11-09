@@ -448,7 +448,23 @@ const resolveHeaders = (body, customHeaders = {}, { auth = true } = {}) => {
 const extractResponseData = async (response) => {
   const contentType = response.headers.get('content-type') ?? ''
   if (contentType.includes('application/json')) {
-    return response.json()
+    const rawBody = await response.text()
+    if (!rawBody) {
+      return null
+    }
+    const trimmed = rawBody.trim()
+    if (!trimmed) {
+      return null
+    }
+    try {
+      return JSON.parse(trimmed)
+    } catch (error) {
+      throw new ApiError('La respuesta de la API no es un JSON válido.', {
+        status: response.status,
+        data: trimmed,
+        headers: response.headers,
+      })
+    }
   }
   if (contentType.includes('text/')) {
     return response.text()

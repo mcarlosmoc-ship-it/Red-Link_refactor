@@ -40,6 +40,8 @@ const FRACTION_EPSILON = 0.0001
 
 const LOCATIONS = ['Nuevo Amatenango', 'Zapotal', 'Naranjal', 'Belén', 'Lagunita']
 
+const LOCATION_FILTER_NONE = '__none__'
+
 const MAIN_TABS = [
   { id: 'clients', label: 'Clientes' },
   { id: 'services', label: 'Servicios mensuales' },
@@ -62,12 +64,15 @@ const formatServicePlanOptionLabel = (plan) => {
   return `${plan.name} · Monto variable`
 }
 
+const isInternetLikeService = (serviceType) =>
+  serviceType === 'internet' || serviceType === 'hotspot'
+
 const getPrimaryService = (client) => {
   const services = Array.isArray(client?.services) ? client.services : []
   if (services.length === 0) {
     return null
   }
-  return services.find((service) => service.type?.startsWith('internet_')) ?? services[0]
+  return services.find((service) => isInternetLikeService(service.type)) ?? services[0]
 }
 
 const normalizeId = (value) => {
@@ -78,8 +83,8 @@ const normalizeId = (value) => {
 }
 
 const createInitialServiceState = (baseId) => ({
-  displayName: getServiceTypeLabel('internet_private'),
-  serviceType: 'internet_private',
+  displayName: getServiceTypeLabel('internet'),
+  serviceType: 'internet',
   price: '',
   billingDay: '',
   baseId: baseId ? String(baseId) : '',
@@ -92,7 +97,7 @@ const createInitialServiceState = (baseId) => ({
 const defaultForm = {
   type: 'residential',
   name: '',
-  location: LOCATIONS[0],
+  location: '',
   base: 1,
   ip: '',
   antennaIp: '',
@@ -189,7 +194,9 @@ export default function ClientsPage() {
   const planRequiresIp = Boolean(selectedInitialPlan?.requiresIp)
   const planRequiresBase = Boolean(selectedInitialPlan?.requiresBase)
   const planRequiresBillingDay = Boolean(
-    planRequiresIp || planRequiresBase || selectedInitialPlan?.serviceType?.startsWith('internet_'),
+    planRequiresIp ||
+      planRequiresBase ||
+      (selectedInitialPlan && isInternetLikeService(selectedInitialPlan.serviceType)),
   )
   const clientDetailsRef = useRef(null)
   const shouldOpenServiceFormRef = useRef(false)
@@ -445,9 +452,18 @@ export default function ClientsPage() {
 
   const availableLocations = useMemo(() => {
     const unique = new Set(LOCATIONS)
-    clients.forEach((client) => unique.add(client.location))
+    clients.forEach((client) => {
+      if (client.location) {
+        unique.add(client.location)
+      }
+    })
     return Array.from(unique)
   }, [clients])
+
+  const hasLocationlessClients = useMemo(
+    () => clients.some((client) => !client.location),
+    [clients],
+  )
 
   const assignedIpsByRange = useMemo(() => createAssignedIpIndex(clients), [clients])
 
@@ -485,7 +501,13 @@ export default function ClientsPage() {
       ]
       if (!matchesTerm(searchValues)) return false
 
-      if (locationFilter !== 'all' && client.location !== locationFilter) return false
+      if (locationFilter === LOCATION_FILTER_NONE) {
+        const normalizedLocation =
+          typeof client.location === 'string' ? client.location.trim() : ''
+        if (normalizedLocation) return false
+      } else if (locationFilter !== 'all' && client.location !== locationFilter) {
+        return false
+      }
 
       if (statusFilter === 'debt') return client.debtMonths > 0
       if (statusFilter === 'ok') return client.debtMonths === 0
@@ -731,6 +753,18 @@ export default function ClientsPage() {
   const validateForm = () => {
     const errors = {}
     if (!formState.name.trim()) errors.name = 'El nombre es obligatorio.'
+    const requiresLocation = Boolean(
+      planRequiresBase ||
+        planRequiresIp ||
+        (selectedInitialPlan && isInternetLikeService(selectedInitialPlan.serviceType)),
+    )
+    if (requiresLocation) {
+      const locationValue =
+        typeof formState.location === 'string' ? formState.location.trim() : ''
+      if (!locationValue) {
+        errors.location = 'Selecciona la localidad del cliente.'
+      }
+    }
     const ipFields = planRequiresIp ? CLIENT_IP_FIELDS_BY_TYPE[formState.type] ?? [] : []
     ipFields.forEach(({ name, rangeKey, label }) => {
       const rawValue = formState[name]
@@ -886,6 +920,11 @@ export default function ClientsPage() {
           : String(foundPlan.defaultMonthlyFee)
 
       const clearedIpFields = new Set()
+      const planRequiresLocation = Boolean(
+        foundPlan.requiresIp ||
+          foundPlan.requiresBase ||
+          isInternetLikeService(foundPlan.serviceType),
+      )
 
       setInitialServiceState((prev) => ({
         ...prev,
@@ -912,13 +951,18 @@ export default function ClientsPage() {
             })()),
       }))
 
-      if (clearedIpFields.size > 0) {
+      const fieldsToClear = new Set(clearedIpFields)
+      if (!planRequiresLocation) {
+        fieldsToClear.add('location')
+      }
+
+      if (fieldsToClear.size > 0) {
         setFormErrors((prev) => {
           if (!prev || typeof prev !== 'object') {
             return prev
           }
           const next = { ...prev }
-          clearedIpFields.forEach((field) => {
+          fieldsToClear.forEach((field) => {
             delete next[field]
           })
           return next
@@ -1400,14 +1444,24 @@ export default function ClientsPage() {
               <select
                 value={formState.location}
                 onChange={(event) => setFormState((prev) => ({ ...prev, location: event.target.value }))}
-                className="rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200"
+                className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
+                  formErrors.location
+                    ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
+                    : 'border-slate-300'
+                }`}
               >
-                {availableLocations.map((location) => (
-                  <option key={location} value={location}>
-                    {location}
-                  </option>
-                ))}
+                <option value="">Selecciona una localidad</option>
+                {availableLocations
+                  .filter((location) => Boolean(location))
+                  .map((location) => (
+                    <option key={location} value={location}>
+                      {location}
+                    </option>
+                  ))}
               </select>
+              {formErrors.location && (
+                <span className="text-xs font-medium text-red-600">{formErrors.location}</span>
+              )}
             </label>
           </div>
 
@@ -1573,7 +1627,7 @@ export default function ClientsPage() {
                   </p>
                   <p>
                     <span className="font-semibold text-slate-700">Tipo de servicio:</span>{' '}
-                    {getServiceTypeLabel(selectedInitialPlan.serviceType ?? 'internet_private')}
+                    {getServiceTypeLabel(selectedInitialPlan.serviceType ?? 'internet')}
                   </p>
                   <p>
                     <span className="font-semibold text-slate-700">Tarifa mensual:</span>{' '}
@@ -1913,6 +1967,9 @@ export default function ClientsPage() {
                   className="rounded-md border border-slate-300 px-3 py-2 text-sm"
                 >
                   <option value="all">Todas</option>
+                  {hasLocationlessClients ? (
+                    <option value={LOCATION_FILTER_NONE}>Sin localidad</option>
+                  ) : null}
                   {availableLocations.map((location) => (
                     <option key={location} value={location}>
                       {location}
@@ -2093,7 +2150,7 @@ export default function ClientsPage() {
                               )}
                             </div>
                           </td>
-                          <td className="px-3 py-2 text-slate-600">{client.location}</td>
+                          <td className="px-3 py-2 text-slate-600">{client.location || '—'}</td>
                           <td className="px-3 py-2 text-slate-600">Base {client.base}</td>
                           <td className="px-3 py-2">
                             <span

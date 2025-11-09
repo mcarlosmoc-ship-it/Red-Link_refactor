@@ -30,14 +30,11 @@ from .payment import PAYMENT_METHOD_ENUM
 
 
 class ClientServiceType(str, enum.Enum):
-    """Supported service types that can be assigned to a client."""
+    """Supported service categories that can be assigned to a client."""
 
-    INTERNET_PRIVATE = "internet_private"
-    INTERNET_TOKENS = "internet_tokens"
-    STREAMING_SPOTIFY = "streaming_spotify"
-    STREAMING_NETFLIX = "streaming_netflix"
-    STREAMING_VIX = "streaming_vix"
-    PUBLIC_DESK = "public_desk"
+    INTERNET = "internet"
+    STREAMING = "streaming"
+    HOTSPOT = "hotspot"
     POINT_OF_SALE = "point_of_sale"
     OTHER = "other"
 

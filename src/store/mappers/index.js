@@ -13,6 +13,9 @@ export const voucherTypeKeyById = Object.fromEntries(
   Object.entries(VOUCHER_TYPE_IDS).map(([key, id]) => [String(id), key]),
 )
 
+const isInternetLikeService = (serviceType) =>
+  serviceType === 'internet' || serviceType === 'hotspot'
+
 export const mapClientService = (service) => ({
   id: service.id,
   clientId: service.client_id ?? service.clientId ?? null,
@@ -34,7 +37,7 @@ export const mapClientService = (service) => ({
 export const mapServicePlan = (plan) => ({
   id: plan.id ?? plan.plan_id ?? null,
   name: plan.name ?? '',
-  serviceType: plan.service_type ?? 'internet_private',
+  serviceType: plan.service_type ?? 'internet',
   defaultMonthlyFee: normalizeDecimal(plan.default_monthly_fee),
   description: plan.description ?? '',
   isActive: plan.is_active ?? true,
@@ -58,7 +61,7 @@ const mapRecentPayment = (payment) => ({
 
 export const mapClient = (client) => {
   const services = Array.isArray(client.services) ? client.services.map(mapClientService) : []
-  const internetService = services.find((service) => service.type?.startsWith('internet_'))
+  const internetService = services.find((service) => isInternetLikeService(service.type))
   const activeServices = services.filter((service) => service.status === 'active')
   const normalizedServiceStatus = (() => {
     const rawStatus = client.service_status
