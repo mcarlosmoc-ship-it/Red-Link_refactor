@@ -48,6 +48,7 @@ const toInputValue = (value, decimals = 2) => {
 const createEmptyPaymentForm = () => ({
   open: false,
   clientId: '',
+  serviceId: '',
   mode: 'months',
   months: '1',
   amount: '',
@@ -58,6 +59,22 @@ const createEmptyPaymentForm = () => ({
 const CLIENT_TYPE_LABELS = {
   residential: 'Cliente residencial',
   token: 'Punto con antena pública',
+}
+
+const SERVICE_STATUS_LABELS = {
+  active: 'Activo',
+  suspended: 'Suspendido',
+  cancelled: 'Baja',
+}
+
+const formatServiceStatus = (status) => SERVICE_STATUS_LABELS[status] ?? 'Desconocido'
+
+const getPrimaryService = (client) => {
+  const services = Array.isArray(client?.services) ? client.services : []
+  if (services.length === 0) {
+    return null
+  }
+  return services.find((service) => service.type?.startsWith('internet_')) ?? services[0]
 }
 
 const getOutstandingPeriodKeys = (anchorPeriod, debtMonths) => {
@@ -252,7 +269,11 @@ export default function DashboardPage() {
           return null
         }
 
-        const monthlyFee = client.monthlyFee ?? CLIENT_PRICE
+        const primaryService = getPrimaryService(client)
+        const servicePrice = Number(primaryService?.price)
+        const monthlyFee = Number.isFinite(servicePrice) && servicePrice > 0
+          ? servicePrice
+          : client.monthlyFee ?? CLIENT_PRICE
         const totalDue = debtMonths * monthlyFee
 
         return {
@@ -394,6 +415,10 @@ export default function DashboardPage() {
     () => clients.find((client) => client.id === paymentForm.clientId) ?? null,
     [clients, paymentForm.clientId],
   )
+  const activeClientPrimaryService = useMemo(
+    () => getPrimaryService(activeClient),
+    [activeClient],
+  )
 
   useEffect(() => {
     if (!expandedClientId) {
@@ -443,12 +468,17 @@ export default function DashboardPage() {
     if (!isCurrentPeriod) return
 
     const debtMonths = Number(client.debtMonths ?? 0)
-    const monthlyFee = client.monthlyFee ?? CLIENT_PRICE
+    const primaryService = getPrimaryService(client)
+    const servicePrice = Number(primaryService?.price)
+    const monthlyFee = Number.isFinite(servicePrice) && servicePrice > 0
+      ? servicePrice
+      : client.monthlyFee ?? CLIENT_PRICE
     const baseMonths = debtMonths > 0 ? debtMonths : 1
 
     setPaymentForm({
       open: true,
       clientId: client.id,
+      serviceId: primaryService?.id ?? '',
       mode: 'months',
       months: toInputValue(baseMonths, 4) || '1',
       amount: toInputValue(baseMonths * monthlyFee, 2),
@@ -458,7 +488,17 @@ export default function DashboardPage() {
     setPaymentErrors({})
   }
 
-  const activeMonthlyFee = activeClient?.monthlyFee ?? CLIENT_PRICE
+  const activeMonthlyFee = useMemo(() => {
+    const servicePrice = Number(activeClientPrimaryService?.price)
+    if (Number.isFinite(servicePrice) && servicePrice > 0) {
+      return servicePrice
+    }
+    const mappedFee = Number(activeClient?.monthlyFee)
+    if (Number.isFinite(mappedFee) && mappedFee > 0) {
+      return mappedFee
+    }
+    return CLIENT_PRICE
+  }, [activeClientPrimaryService?.price, activeClient?.monthlyFee])
   const outstandingAmount = (activeClient?.debtMonths ?? 0) * activeMonthlyFee
   const plannedAmount =
     paymentForm.mode === 'amount'
@@ -483,9 +523,12 @@ export default function DashboardPage() {
     if (!activeClient) {
       errors.client = 'No se encontró información del cliente seleccionado.'
     }
+    const serviceIdToUse = paymentForm.serviceId || activeClientPrimaryService?.id || null
+    if (!serviceIdToUse) {
+      errors.service = 'El cliente no tiene servicios configurados para registrar pagos.'
+    }
 
-    const monthlyFeeRaw = Number(activeClient?.monthlyFee)
-    const monthlyFee = Number.isFinite(monthlyFeeRaw) ? monthlyFeeRaw : CLIENT_PRICE
+    const monthlyFee = Number.isFinite(activeMonthlyFee) ? activeMonthlyFee : CLIENT_PRICE
     const hasPositiveMonthlyFee = monthlyFee > 0
 
     const monthsValue = Number(paymentForm.months)
@@ -524,6 +567,7 @@ export default function DashboardPage() {
     try {
       await recordPayment({
         clientId: paymentForm.clientId,
+        serviceId: serviceIdToUse,
         months: monthsToRegister,
         amount: amountToRegister,
         method: paymentForm.method,
@@ -556,6 +600,20 @@ export default function DashboardPage() {
       return null
     }
 
+    if (!activeClientPrimaryService) {
+      return (
+        <div
+          className={`w-full max-w-md space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-700 shadow-sm ${className}`}
+        >
+          <p className="font-semibold text-amber-800">Servicio no disponible</p>
+          <p>
+            {activeClient.name} no tiene servicios configurados actualmente. Agrega un servicio desde el
+            perfil del cliente para registrar pagos aquí.
+          </p>
+        </div>
+      )
+    }
+
     return (
       <form
         ref={refCallback}
@@ -567,6 +625,10 @@ export default function DashboardPage() {
           <p className="text-xs text-slate-500">
             {activeClient.name} adeuda {formatPeriods(activeClient.debtMonths)} periodo(s). Pago mensual:{' '}
             {peso(activeMonthlyFee)}. Adeudo total: {peso(outstandingAmount)}.
+          </p>
+          <p className="text-[11px] uppercase tracking-wide text-slate-400">
+            Servicio: {activeClientPrimaryService.name} ·{' '}
+            {formatServiceStatus(activeClientPrimaryService.status)}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3 text-xs font-medium text-slate-600">
@@ -1028,6 +1090,15 @@ export default function DashboardPage() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filteredClients.map((client) => {
+                  const primaryService = getPrimaryService(client)
+                  const statusLabel = primaryService
+                    ? formatServiceStatus(primaryService.status)
+                    : client.service
+                  const isPrimaryActive = primaryService?.status === 'active'
+                  const primaryServicePrice = Number(primaryService?.price)
+                  const displayMonthlyFee = Number.isFinite(primaryServicePrice) && primaryServicePrice > 0
+                    ? primaryServicePrice
+                    : client.monthlyFee ?? CLIENT_PRICE
                   const isExpanded = expandedClientId === client.id
                   const isPaymentActive =
                     paymentForm.open && paymentForm.clientId === client.id && Boolean(activeClient)
@@ -1057,12 +1128,12 @@ export default function DashboardPage() {
                             {client.location || 'Sin localidad'}
                           </button>
                         </td>
-                        <td className="px-3 py-2 text-slate-600">{peso(client.monthlyFee ?? CLIENT_PRICE)}</td>
+                        <td className="px-3 py-2 text-slate-600">{peso(displayMonthlyFee)}</td>
                         <td className="px-3 py-2">
                           {(() => {
                             const debtMonths = Number(client.debtMonths ?? 0)
                             const hasDebt = debtMonths > 0.0001
-                            const monthlyFee = client.monthlyFee ?? CLIENT_PRICE
+                            const monthlyFee = displayMonthlyFee
                             const totalDue = debtMonths * monthlyFee
 
                             return (
@@ -1115,7 +1186,7 @@ export default function DashboardPage() {
                           <td colSpan={5} className="bg-slate-50 px-3 py-3">
                             {(() => {
                               const debtMonths = Number(client.debtMonths ?? 0)
-                              const monthlyFee = client.monthlyFee ?? CLIENT_PRICE
+                              const monthlyFee = displayMonthlyFee
                               const totalDue = debtMonths * monthlyFee
                               const outstandingPeriodKeys = getOutstandingPeriodKeys(
                                 detailAnchorPeriod,
@@ -1182,12 +1253,12 @@ export default function DashboardPage() {
                                       <div className="flex flex-wrap items-center gap-2">
                                         <span
                                           className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${
-                                            client.service === 'Activo'
+                                            isPrimaryActive
                                               ? 'bg-emerald-50 text-emerald-700'
-                                              : 'bg-red-50 text-red-700'
+                                              : 'bg-amber-50 text-amber-700'
                                           }`}
                                         >
-                                          Estado: {client.service}
+                                          Estado: {statusLabel}
                                         </span>
                                         <span className="inline-flex items-center rounded-full bg-slate-200/70 px-2.5 py-1 text-xs font-semibold text-slate-700">
                                           Tipo: {clientTypeLabel}

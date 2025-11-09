@@ -33,6 +33,22 @@ const statusOrder = {
 
 const formatBaseLabel = (baseKey, range) => range?.label ?? `Base ${baseKey}`
 
+const SERVICE_STATUS_LABELS = {
+  active: 'Activo',
+  suspended: 'Suspendido',
+  cancelled: 'Baja',
+}
+
+const formatServiceStatus = (status) => SERVICE_STATUS_LABELS[status] ?? 'Desconocido'
+
+const getPrimaryService = (client) => {
+  const services = Array.isArray(client?.services) ? client.services : []
+  if (services.length === 0) {
+    return null
+  }
+  return services.find((service) => service.type?.startsWith('internet_')) ?? services[0]
+}
+
 const defaultEquipmentForm = {
   brand: '',
   model: '',
@@ -370,13 +386,29 @@ export default function InventoryPage() {
     }
   }
 
-  const handleToggleService = async (client) => {
+  const handleToggleService = async (client, service) => {
+    if (!service) {
+      showToast({
+        type: 'error',
+        title: 'Servicio no disponible',
+        description: 'No se encontró un servicio asociado al cliente.',
+      })
+      return
+    }
+
     try {
-      const nextStatus = await toggleClientService(client.id)
+      const nextStatus = await toggleClientService(client.id, service.id)
+      const nextStatusLabel = formatServiceStatus(nextStatus)
+      const isActive = nextStatus === 'active'
+      const toastTitle = isActive
+        ? 'Servicio activado'
+        : nextStatus === 'suspended'
+          ? 'Servicio suspendido'
+          : 'Servicio actualizado'
       showToast({
         type: 'success',
-        title: nextStatus === 'Activo' ? 'Servicio activado' : 'Servicio suspendido',
-        description: `${client.name} ahora está ${nextStatus.toLowerCase()}.`,
+        title: toastTitle,
+        description: `${service.name} para ${client.name} ahora está ${nextStatusLabel.toLowerCase()}.`,
       })
     } catch (error) {
       showToast({
@@ -1015,55 +1047,61 @@ export default function InventoryPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredTokenClients.map((client) => (
-                <tr key={client.id}>
-                  <td className="px-3 py-2 font-medium text-slate-900">
-                    <div className="flex flex-col">
-                      <span>{client.name}</span>
-                      {client.antennaIp && (
-                        <span className="text-xs text-slate-500">IP antena: {client.antennaIp}</span>
-                      )}
-                      {client.modemIp && (
-                        <span className="text-xs text-slate-500">IP módem: {client.modemIp}</span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-3 py-2 text-slate-600">{client.location}</td>
-                  <td className="px-3 py-2 text-slate-600">Base {client.base}</td>
-                  <td className="px-3 py-2 text-slate-600">
-                    <div className="flex flex-col text-xs text-slate-500">
-                      <span>Modelo: {client.antennaModel || 'Sin dato'}</span>
-                    </div>
-                  </td>
-                  <td className="px-3 py-2 text-slate-600">
-                    <div className="flex flex-col text-xs text-slate-500">
-                      <span>Modelo: {client.modemModel || 'Sin dato'}</span>
-                    </div>
-                  </td>
-                  <td className="px-3 py-2">
-                    <span
-                      className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
-                        client.service === 'Activo'
-                          ? 'bg-emerald-50 text-emerald-700'
-                          : 'bg-red-50 text-red-700'
-                      }`}
-                    >
-                      {client.service}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="border border-slate-200 bg-white text-slate-700 hover:border-blue-200 disabled:cursor-not-allowed disabled:opacity-50"
-                      onClick={() => handleToggleService(client)}
-                      disabled={isMutatingClients}
-                    >
-                      {client.service === 'Activo' ? 'Suspender' : 'Activar'}
-                    </Button>
-                  </td>
-                </tr>
-              ))}
+              {filteredTokenClients.map((client) => {
+                const primaryService = getPrimaryService(client)
+                const isActive = primaryService?.status === 'active'
+                const statusLabel = primaryService
+                  ? formatServiceStatus(primaryService.status)
+                  : client.service
+
+                return (
+                  <tr key={client.id}>
+                    <td className="px-3 py-2 font-medium text-slate-900">
+                      <div className="flex flex-col">
+                        <span>{client.name}</span>
+                        {client.antennaIp && (
+                          <span className="text-xs text-slate-500">IP antena: {client.antennaIp}</span>
+                        )}
+                        {client.modemIp && (
+                          <span className="text-xs text-slate-500">IP módem: {client.modemIp}</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-3 py-2 text-slate-600">{client.location}</td>
+                    <td className="px-3 py-2 text-slate-600">Base {client.base}</td>
+                    <td className="px-3 py-2 text-slate-600">
+                      <div className="flex flex-col text-xs text-slate-500">
+                        <span>Modelo: {client.antennaModel || 'Sin dato'}</span>
+                      </div>
+                    </td>
+                    <td className="px-3 py-2 text-slate-600">
+                      <div className="flex flex-col text-xs text-slate-500">
+                        <span>Modelo: {client.modemModel || 'Sin dato'}</span>
+                      </div>
+                    </td>
+                    <td className="px-3 py-2">
+                      <span
+                        className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
+                          isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+                        }`}
+                      >
+                        {statusLabel}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="border border-slate-200 bg-white text-slate-700 hover:border-blue-200 disabled:cursor-not-allowed disabled:opacity-50"
+                        onClick={() => handleToggleService(client, primaryService)}
+                        disabled={isMutatingClients || !primaryService}
+                      >
+                        {isActive ? 'Suspender' : 'Activar'}
+                      </Button>
+                    </td>
+                  </tr>
+                )
+              })}
               {filteredTokenClients.length === 0 && (
                 <tr>
                   <td colSpan={7} className="px-3 py-6 text-center text-sm text-slate-500">

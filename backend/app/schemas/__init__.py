@@ -32,6 +32,18 @@ from .inventory import (
     InventoryRead,
     InventoryUpdate,
 )
+from .ip_pool import (
+    BaseIpPoolBase,
+    BaseIpPoolCreate,
+    BaseIpPoolListResponse,
+    BaseIpPoolRead,
+    BaseIpPoolUpdate,
+    BaseIpReservationBase,
+    BaseIpReservationCreate,
+    BaseIpReservationListResponse,
+    BaseIpReservationRead,
+    BaseIpReservationUpdate,
+)
 from .metrics import (
     BaseCostUpdateRequest,
     BaseCostUpdateResponse,
@@ -43,7 +55,13 @@ from .metrics import (
     MetricsResponse,
     StatusFilter,
 )
-from .payment import PaymentBase, PaymentCreate, PaymentListResponse, PaymentRead
+from .payment import (
+    ServicePaymentBase,
+    ServicePaymentCreate,
+    ServicePaymentListResponse,
+    ServicePaymentRead,
+    ServicePaymentUpdate,
+)
 from .pos import (
     PosProductCreate,
     PosProductListResponse,
@@ -85,11 +103,17 @@ __all__ = [
     "ClientImportError",
     "ClientImportRequest",
     "ClientImportSummary",
+    "ClientServiceBase",
+    "ClientServiceCreate",
+    "ClientServiceRead",
+    "ClientServiceUpdate",
+    "ClientServiceListResponse",
     "PaginatedResponse",
-    "PaymentBase",
-    "PaymentCreate",
-    "PaymentRead",
-    "PaymentListResponse",
+    "ServicePaymentBase",
+    "ServicePaymentCreate",
+    "ServicePaymentRead",
+    "ServicePaymentListResponse",
+    "ServicePaymentUpdate",
     "PosProductCreate",
     "PosProductRead",
     "PosProductUpdate",
@@ -106,6 +130,16 @@ __all__ = [
     "InventoryRead",
     "InventoryUpdate",
     "InventoryListResponse",
+    "BaseIpPoolBase",
+    "BaseIpPoolCreate",
+    "BaseIpPoolRead",
+    "BaseIpPoolUpdate",
+    "BaseIpPoolListResponse",
+    "BaseIpReservationBase",
+    "BaseIpReservationCreate",
+    "BaseIpReservationRead",
+    "BaseIpReservationUpdate",
+    "BaseIpReservationListResponse",
     "ResellerBase",
     "ResellerCreate",
     "ResellerDeliveryCreate",
@@ -126,3 +160,10 @@ __all__ = [
     "AdminLoginRequest",
     "TokenResponse",
 ]
+from .service import (
+    ClientServiceBase,
+    ClientServiceCreate,
+    ClientServiceListResponse,
+    ClientServiceRead,
+    ClientServiceUpdate,
+)

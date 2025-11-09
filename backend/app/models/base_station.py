@@ -24,6 +24,16 @@ class BaseStation(Base):
     expenses = relationship("Expense", back_populates="base")
     inventory_items = relationship("InventoryItem", back_populates="base")
     operating_costs = relationship("BaseOperatingCost", back_populates="base")
+    ip_pools = relationship(
+        "BaseIpPool",
+        back_populates="base",
+        cascade="all, delete-orphan",
+    )
+    ip_reservations = relationship(
+        "BaseIpReservation",
+        back_populates="base",
+        cascade="all, delete-orphan",
+    )
     support_tickets = relationship("SupportTicket", back_populates="base")
     inventory_movements_from = relationship(
         "InventoryMovement",

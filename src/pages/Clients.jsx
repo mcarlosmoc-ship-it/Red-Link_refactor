@@ -17,8 +17,6 @@ import {
 } from '../utils/clientIpConfig.js'
 import { useBackofficeRefresh } from '../contexts/BackofficeRefreshContext.jsx'
 import ClientsSkeleton from './ClientsSkeleton.jsx'
-import { apiClient } from '../services/apiClient.js'
-import { mapPayment } from '../store/mappers/index.js'
 
 const periodsFormatter = new Intl.NumberFormat('es-MX', { maximumFractionDigits: 2 })
 
@@ -36,6 +34,24 @@ const LOCATIONS = ['Nuevo Amatenango', 'Zapotal', 'Naranjal', 'Belén', 'Lagunit
 const CLIENT_TYPE_LABELS = {
   residential: 'Cliente residencial',
   token: 'Punto con antena pública',
+}
+
+const SERVICE_STATUS_LABELS = {
+  active: 'Activo',
+  suspended: 'Suspendido',
+  cancelled: 'Baja',
+}
+
+const formatServiceStatus = (status) => SERVICE_STATUS_LABELS[status] ?? 'Desconocido'
+
+const formatServiceType = (type) => (type ? type.replace(/_/g, ' ') : 'Servicio')
+
+const getPrimaryService = (client) => {
+  const services = Array.isArray(client?.services) ? client.services : []
+  if (services.length === 0) {
+    return null
+  }
+  return services.find((service) => service.type?.startsWith('internet_')) ?? services[0]
 }
 
 const normalizeId = (value) => {
@@ -91,7 +107,6 @@ export default function ClientsPage() {
   const [sortField, setSortField] = useState('name')
   const [sortDirection, setSortDirection] = useState('asc')
   const [selectedClientId, setSelectedClientId] = useState(null)
-  const [clientPaymentsState, setClientPaymentsState] = useState({})
   const clientDetailsRef = useRef(null)
   const isMutatingClients = Boolean(clientsStatus?.isMutating)
   const isSyncingClients = Boolean(clientsStatus?.isLoading)
@@ -376,69 +391,6 @@ export default function ClientsPage() {
     })
   }, [])
 
-  const fetchClientPayments = useCallback(
-    async (clientId) => {
-      if (!clientId) {
-        return
-      }
-
-      setClientPaymentsState((prev) => ({
-        ...prev,
-        [clientId]: {
-          ...(prev[clientId] ?? {}),
-          isLoading: true,
-          error: null,
-        },
-      }))
-
-      try {
-        const response = await apiClient.get('/payments', {
-          query: { client_id: clientId, limit: 20 },
-        })
-        const payload = response.data
-        const items = Array.isArray(payload?.items)
-          ? payload.items
-          : Array.isArray(payload)
-            ? payload
-            : []
-        const payments = items.map(mapPayment)
-
-        setClientPaymentsState((prev) => ({
-          ...prev,
-          [clientId]: {
-            payments,
-            isLoading: false,
-            error: null,
-          },
-        }))
-      } catch (error) {
-        setClientPaymentsState((prev) => ({
-          ...prev,
-          [clientId]: {
-            ...(prev[clientId] ?? {}),
-            payments: prev[clientId]?.payments ?? [],
-            isLoading: false,
-            error: error?.message ?? 'No se pudieron cargar los pagos.',
-          },
-        }))
-      }
-    },
-    [],
-  )
-
-  useEffect(() => {
-    if (!selectedClientId) {
-      return
-    }
-
-    const state = clientPaymentsState[selectedClientId]
-    if (state?.payments?.length || state?.isLoading) {
-      return
-    }
-
-    fetchClientPayments(selectedClientId)
-  }, [selectedClientId, clientPaymentsState, fetchClientPayments])
-
   useEffect(() => {
     if (!selectedClientId) {
       return
@@ -459,6 +411,15 @@ export default function ClientsPage() {
     },
     [clients, selectedClientId],
   )
+  const selectedClientServices = useMemo(
+    () => (selectedClient?.services ? [...selectedClient.services] : []),
+    [selectedClient],
+  )
+  const selectedClientRecentPayments = useMemo(
+    () => (selectedClient?.recentPayments ? [...selectedClient.recentPayments] : []),
+    [selectedClient],
+  )
+  const primaryService = useMemo(() => getPrimaryService(selectedClient), [selectedClient])
   const detailAnchorPeriod = selectedPeriod ?? currentPeriod ?? null
   const selectedClientPaymentStatus = useMemo(() => {
     if (!selectedClient || !detailAnchorPeriod) {
@@ -502,12 +463,22 @@ export default function ClientsPage() {
       aheadFraction: aheadHasFraction ? aheadFraction : 0,
     }
   }, [selectedClient, detailAnchorPeriod])
-
-  const selectedClientKey = useMemo(() => normalizeId(selectedClient?.id), [selectedClient])
-  const selectedClientPayments = useMemo(
-    () => (selectedClientKey ? clientPaymentsState[selectedClientKey] : undefined),
-    [clientPaymentsState, selectedClientKey],
-  )
+  const primaryServiceStatusLabel = useMemo(() => {
+    if (primaryService) {
+      return formatServiceStatus(primaryService.status)
+    }
+    return selectedClient?.service ?? 'Sin servicio'
+  }, [primaryService, selectedClient?.service])
+  const primaryServicePrice = useMemo(() => {
+    if (primaryService?.price) {
+      const parsed = Number(primaryService.price)
+      if (Number.isFinite(parsed) && parsed > 0) {
+        return parsed
+      }
+    }
+    const parsedClientFee = Number(selectedClient?.monthlyFee)
+    return Number.isFinite(parsedClientFee) ? parsedClientFee : CLIENT_PRICE
+  }, [primaryService?.price, selectedClient?.monthlyFee])
 
   useEffect(() => {
     if (!selectedClientId || !selectedClient) {
@@ -649,13 +620,29 @@ export default function ClientsPage() {
     }
   }
 
-  const handleToggleService = async (client) => {
+  const handleToggleService = async (client, service) => {
+    if (!service) {
+      showToast({
+        type: 'error',
+        title: 'Servicio no disponible',
+        description: 'El cliente no tiene servicios configurados para actualizar.',
+      })
+      return
+    }
+
     try {
-      const nextStatus = await toggleClientService(client.id)
+      const nextStatus = await toggleClientService(client.id, service.id)
+      const nextStatusLabel = formatServiceStatus(nextStatus)
+      const isActive = nextStatus === 'active'
+      const toastTitle = isActive
+        ? 'Servicio activado'
+        : nextStatus === 'suspended'
+          ? 'Servicio suspendido'
+          : 'Servicio actualizado'
       showToast({
         type: 'success',
-        title: nextStatus === 'Activo' ? 'Servicio activado' : 'Servicio suspendido',
-        description: `${client.name} ahora está ${nextStatus.toLowerCase()}.`,
+        title: toastTitle,
+        description: `${service.name} para ${client.name} ahora está ${nextStatusLabel.toLowerCase()}.`,
       })
     } catch (error) {
       showToast({
@@ -1221,6 +1208,19 @@ export default function ClientsPage() {
                           (highlightedClientId === clientRowId || selectedClientId === clientRowId)
                         const rowKey = clientRowId ?? `client-${index}`
                         const rowElementId = `client-${clientRowId ?? client.id ?? index}`
+                        const primaryServiceForRow = getPrimaryService(client)
+                        const primaryStatusForRow = primaryServiceForRow
+                          ? formatServiceStatus(primaryServiceForRow.status)
+                          : client.service
+                        const isPrimaryActive = primaryServiceForRow?.status === 'active'
+                        const primaryMonthlyFee = (() => {
+                          const parsed = Number(primaryServiceForRow?.price)
+                          if (Number.isFinite(parsed) && parsed > 0) {
+                            return parsed
+                          }
+                          const mappedFee = Number(client.monthlyFee)
+                          return Number.isFinite(mappedFee) ? mappedFee : CLIENT_PRICE
+                        })()
 
                         return (
                           <tr
@@ -1241,16 +1241,16 @@ export default function ClientsPage() {
                           <td className="px-3 py-2">
                             <span
                               className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
-                                client.service === 'Activo'
+                                isPrimaryActive
                                   ? 'bg-emerald-50 text-emerald-700'
-                                  : 'bg-red-50 text-red-700'
+                                  : 'bg-amber-50 text-amber-700'
                               }`}
                             >
-                              {client.service}
+                              {primaryStatusForRow}
                             </span>
                           </td>
                           <td className="px-3 py-2 text-slate-600">
-                            {peso(client.monthlyFee ?? CLIENT_PRICE)}
+                            {peso(primaryMonthlyFee)}
                           </td>
                           <td className="px-3 py-2 text-slate-600">
                             {client.debtMonths > 0 ? (
@@ -1260,7 +1260,7 @@ export default function ClientsPage() {
                                   {client.debtMonths === 1 ? 'periodo' : 'periodos'}
                                 </span>
                                 <span className="text-xs text-slate-500">
-                                  {peso(client.debtMonths * (client.monthlyFee ?? CLIENT_PRICE))}
+                                  {peso(client.debtMonths * primaryMonthlyFee)}
                                 </span>
                               </div>
                             ) : (
@@ -1288,10 +1288,10 @@ export default function ClientsPage() {
                                 size="sm"
                                 variant="ghost"
                                 className="border border-slate-200 bg-white text-slate-700 hover:border-blue-200 disabled:cursor-not-allowed disabled:opacity-50"
-                                onClick={() => handleToggleService(client)}
-                                disabled={isMutatingClients}
+                                onClick={() => handleToggleService(client, primaryServiceForRow)}
+                                disabled={isMutatingClients || !primaryServiceForRow}
                               >
-                                {client.service === 'Activo' ? 'Suspender' : 'Activar'}
+                                {isPrimaryActive ? 'Suspender' : 'Activar'}
                               </Button>
                             </div>
                           </td>
@@ -1335,7 +1335,16 @@ export default function ClientsPage() {
               <div className="grid gap-4 md:grid-cols-3">
                 <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
                   <p className="text-xs font-medium text-slate-500">Estado del servicio</p>
-                  <p className="text-base font-semibold text-slate-900">{selectedClient.service}</p>
+                  <p className="text-base font-semibold text-slate-900">
+                    {primaryServiceStatusLabel}
+                  </p>
+                  {primaryService ? (
+                    <p className="text-xs text-slate-500">
+                      Servicio principal: {primaryService.name} · {formatServiceType(primaryService.type)}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-slate-500">Sin servicios registrados.</p>
+                  )}
                   {selectedClientPaymentStatus && (
                     <div className="mt-2 space-y-1 text-xs">
                       <p
@@ -1379,16 +1388,14 @@ export default function ClientsPage() {
                 </div>
                 <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
                   <p className="text-xs font-medium text-slate-500">Tarifa mensual</p>
-                  <p className="text-base font-semibold text-slate-900">
-                    {peso(selectedClient.monthlyFee ?? CLIENT_PRICE)}
-                  </p>
+                  <p className="text-base font-semibold text-slate-900">{peso(primaryServicePrice)}</p>
                   <p className="text-xs text-slate-500">Adelantado: {formatPeriods(selectedClient.paidMonthsAhead)} periodo(s)</p>
                 </div>
                 <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
                   <p className="text-xs font-medium text-slate-500">Deuda acumulada</p>
                   <p className="text-base font-semibold text-slate-900">
                     {selectedClient.debtMonths > 0
-                      ? peso(selectedClient.debtMonths * (selectedClient.monthlyFee ?? CLIENT_PRICE))
+                      ? peso(selectedClient.debtMonths * primaryServicePrice)
                       : 'Sin deuda'}
                   </p>
                   {selectedClient.debtMonths > 0 && (
@@ -1401,64 +1408,131 @@ export default function ClientsPage() {
               </div>
 
               <div className="space-y-3">
-                <h3 className="text-base font-semibold text-slate-900">Pagos recientes</h3>
-                {selectedClientPayments?.error && (
-                  <p className="text-sm text-red-600">{selectedClientPayments.error}</p>
-                )}
-                {selectedClientPayments?.isLoading ? (
-                  <p className="text-sm text-slate-500">Cargando pagos…</p>
+                <h3 className="text-base font-semibold text-slate-900">Servicios contratados</h3>
+                {selectedClientServices.length === 0 ? (
+                  <p className="text-sm text-slate-500">Este cliente aún no tiene servicios configurados.</p>
                 ) : (
-                  <div className="space-y-2">
-                    {selectedClientPayments?.payments?.length ? (
-                      <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
-                          <thead className="bg-slate-50 text-slate-600">
-                            <tr>
-                              <th scope="col" className="px-3 py-2 font-medium">
-                                Fecha
-                              </th>
-                              <th scope="col" className="px-3 py-2 font-medium">
-                                Meses
-                              </th>
-                              <th scope="col" className="px-3 py-2 font-medium">
-                                Monto
-                              </th>
-                              <th scope="col" className="px-3 py-2 font-medium">
-                                Método
-                              </th>
-                              <th scope="col" className="px-3 py-2 font-medium">
-                                Nota
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100">
-                            {selectedClientPayments?.payments?.map((payment) => (
-                              <tr key={payment.id}>
-                                <td className="px-3 py-2 text-slate-700">{formatDate(payment.date)}</td>
-                                <td className="px-3 py-2 text-slate-700">
-                                  {formatPeriods(payment.months)}{' '}
-                                  {isApproximatelyOne(payment.months) ? 'periodo' : 'periodos'}
-                                </td>
-                                <td className="px-3 py-2 text-slate-700">{peso(payment.amount)}</td>
-                                <td className="px-3 py-2 text-slate-700">{payment.method}</td>
-                                <td className="px-3 py-2 text-slate-500">{payment.note || '—'}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    ) : (
-                      <p className="text-sm text-slate-500">
-                        No se han registrado pagos recientes para este cliente.
-                      </p>
-                    )}
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {selectedClientServices.map((service) => {
+                      const statusLabel = formatServiceStatus(service.status)
+                      const isActive = service.status === 'active'
+                      const isCancelled = service.status === 'cancelled'
+                      const servicePrice = Number(service.price)
+                      const hasPrice = Number.isFinite(servicePrice) && servicePrice > 0
+
+                      return (
+                        <div
+                          key={service.id}
+                          className="flex h-full flex-col justify-between rounded-md border border-slate-200 bg-white p-4"
+                        >
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <div>
+                                <p className="text-sm font-semibold text-slate-900">{service.name}</p>
+                                <p className="text-xs uppercase text-slate-500">
+                                  {formatServiceType(service.type)}
+                                </p>
+                              </div>
+                              <span
+                                className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
+                                  isActive
+                                    ? 'bg-emerald-50 text-emerald-700'
+                                    : isCancelled
+                                      ? 'bg-slate-100 text-slate-500'
+                                      : 'bg-amber-50 text-amber-700'
+                                }`}
+                              >
+                                {statusLabel}
+                              </span>
+                            </div>
+                            <div className="space-y-1 text-xs text-slate-600">
+                              {hasPrice ? (
+                                <p>Tarifa mensual: {peso(servicePrice)}</p>
+                              ) : (
+                                <p>Tarifa mensual: monto variable</p>
+                              )}
+                              {service.nextBillingDate ? (
+                                <p>Próximo cobro: {formatDate(service.nextBillingDate)}</p>
+                              ) : service.billingDay ? (
+                                <p>Cobro recurrente día {service.billingDay}</p>
+                              ) : (
+                                <p>Fecha de cobro pendiente de configurar</p>
+                              )}
+                              {service.notes && <p>Notas: {service.notes}</p>}
+                            </div>
+                          </div>
+                          <div className="mt-3 flex justify-end">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="border border-slate-200 bg-white text-slate-700 hover:border-blue-200 disabled:cursor-not-allowed disabled:opacity-50"
+                              onClick={() => handleToggleService(selectedClient, service)}
+                              disabled={isMutatingClients || isCancelled}
+                            >
+                              {isActive ? 'Suspender' : 'Activar'}
+                            </Button>
+                          </div>
+                        </div>
+                      )
+                    })}
                   </div>
                 )}
+              </div>
 
-                {selectedClientPayments?.payments?.[0] && (
+              <div className="space-y-3">
+                <h3 className="text-base font-semibold text-slate-900">Pagos recientes</h3>
+                {selectedClientRecentPayments.length ? (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
+                      <thead className="bg-slate-50 text-slate-600">
+                        <tr>
+                          <th scope="col" className="px-3 py-2 font-medium">
+                            Fecha
+                          </th>
+                          <th scope="col" className="px-3 py-2 font-medium">
+                            Servicio
+                          </th>
+                          <th scope="col" className="px-3 py-2 font-medium">
+                            Meses
+                          </th>
+                          <th scope="col" className="px-3 py-2 font-medium">
+                            Monto
+                          </th>
+                          <th scope="col" className="px-3 py-2 font-medium">
+                            Método
+                          </th>
+                          <th scope="col" className="px-3 py-2 font-medium">
+                            Nota
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {selectedClientRecentPayments.map((payment) => (
+                          <tr key={payment.id}>
+                            <td className="px-3 py-2 text-slate-700">{formatDate(payment.date)}</td>
+                            <td className="px-3 py-2 text-slate-700">{payment.serviceName}</td>
+                            <td className="px-3 py-2 text-slate-700">
+                              {formatPeriods(payment.months)}{' '}
+                              {isApproximatelyOne(payment.months) ? 'periodo' : 'periodos'}
+                            </td>
+                            <td className="px-3 py-2 text-slate-700">{peso(payment.amount)}</td>
+                            <td className="px-3 py-2 text-slate-700">{payment.method}</td>
+                            <td className="px-3 py-2 text-slate-500">{payment.note || '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-500">
+                    No se han registrado pagos recientes para este cliente.
+                  </p>
+                )}
+
+                {selectedClientRecentPayments[0] && (
                   <p className="text-xs text-slate-500">
-                    Último pago registrado el {formatDate(selectedClientPayments.payments[0].date)} por{' '}
-                    {peso(selectedClientPayments.payments[0].amount)}.
+                    Último pago registrado el {formatDate(selectedClientRecentPayments[0].date)} por{' '}
+                    {peso(selectedClientRecentPayments[0].amount)} para {selectedClientRecentPayments[0].serviceName}.
                   </p>
                 )}
               </div>

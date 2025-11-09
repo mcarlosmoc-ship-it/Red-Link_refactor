@@ -15,6 +15,7 @@ from sqlalchemy import (
     String,
     Text,
     func,
+    Integer,
 )
 from sqlalchemy.orm import relationship, synonym
 
@@ -32,6 +33,7 @@ class PrincipalAccount(Base):
     email_principal = Column(String(255), nullable=False, unique=True)
     nota = Column(Text, nullable=True)
     fecha_alta = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    max_slots = Column(Integer, nullable=False, default=5)
 
     client_accounts = relationship(
         "ClientAccount",
@@ -50,6 +52,18 @@ class ClientAccount(Base):
         GUID(),
         ForeignKey("principal_accounts.id", ondelete="CASCADE"),
         nullable=False,
+    )
+    client_id = Column(
+        GUID(),
+        ForeignKey("clients.client_id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    client_service_id = Column(
+        GUID(),
+        ForeignKey("client_services.client_service_id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
     correo_cliente = Column(String(255), nullable=False, unique=True)
     contrasena_cliente_encrypted = Column("contrasena_cliente", String(255), nullable=False)
@@ -74,6 +88,8 @@ class ClientAccount(Base):
         back_populates="client_account",
         cascade="all, delete-orphan",
     )
+    client_service = relationship("ClientService", back_populates="streaming_account")
+    client = relationship("Client")
 
 
 Index("client_accounts_fecha_proximo_pago_idx", ClientAccount.fecha_proximo_pago)

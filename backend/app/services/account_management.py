@@ -6,6 +6,7 @@ import logging
 import threading
 from calendar import monthrange
 from datetime import date, datetime, time, timedelta, timezone
+from decimal import Decimal
 from typing import Any, Iterable, Optional, Tuple
 from uuid import UUID
 
@@ -14,6 +15,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
+from ..models.client_service import ClientServiceType
+from .client_contracts import ClientContractError, ClientContractService
 from ..models.audit import ClientAccountSecurityAction
 from ..database import session_scope
 from ..security import AdminIdentity
@@ -46,6 +49,11 @@ class AccountService:
     """Operations for managing principal and client accounts."""
 
     CLIENT_LIMIT_PER_PRINCIPAL = 5
+    STREAMING_SERVICE_TYPES = {
+        ClientServiceType.STREAMING_NETFLIX,
+        ClientServiceType.STREAMING_SPOTIFY,
+        ClientServiceType.STREAMING_VIX,
+    }
 
     @staticmethod
     def list_principal_accounts(
@@ -153,6 +161,14 @@ class AccountService:
         return account
 
     @staticmethod
+    CLIENT_LIMIT_PER_PRINCIPAL = 5
+    STREAMING_SERVICE_TYPES = {
+        ClientServiceType.STREAMING_NETFLIX,
+        ClientServiceType.STREAMING_SPOTIFY,
+        ClientServiceType.STREAMING_VIX,
+    }
+
+    @staticmethod
     def _resolve_principal_or_raise(
         db: Session, principal_id: UUID
     ) -> models.PrincipalAccount:
@@ -162,15 +178,44 @@ class AccountService:
         return principal
 
     @staticmethod
-    def _enforce_client_limit(db: Session, principal_id: UUID) -> None:
+    def _ensure_streaming_service(service: models.ClientService) -> None:
+        if service.service_type not in AccountService.STREAMING_SERVICE_TYPES:
+            raise AccountServiceError("El servicio seleccionado no es de streaming.")
+
+    @staticmethod
+    def _create_streaming_service(
+        db: Session,
+        *,
+        principal: models.PrincipalAccount,
+        client_id: str,
+        display_name: str,
+        service_type: ClientServiceType,
+        next_billing_date: Optional[date],
+    ) -> models.ClientService:
+        metadata = {"principal_account_id": str(principal.id)}
+        service_payload = schemas.ClientServiceCreate(
+            client_id=client_id,
+            service_type=service_type,
+            display_name=display_name,
+            next_billing_date=next_billing_date,
+            metadata=metadata,
+        )
+        try:
+            return ClientContractService.create_service(db, service_payload)
+        except ClientContractError as exc:
+            raise AccountServiceError(str(exc)) from exc
+
+    @staticmethod
+    def _enforce_client_limit(db: Session, principal: models.PrincipalAccount) -> None:
+        max_slots = principal.max_slots or AccountService.CLIENT_LIMIT_PER_PRINCIPAL
         count = (
             db.query(func.count(models.ClientAccount.id))
-            .filter(models.ClientAccount.principal_account_id == principal_id)
+            .filter(models.ClientAccount.principal_account_id == principal.id)
             .scalar()
         )
-        if count >= AccountService.CLIENT_LIMIT_PER_PRINCIPAL:
+        if count >= max_slots:
             raise ClientAccountLimitReached(
-                "La cuenta principal ya tiene el máximo de cinco clientes registrados."
+                f"La cuenta principal ya tiene el máximo de {max_slots} clientes registrados."
             )
 
     @staticmethod
@@ -180,9 +225,11 @@ class AccountService:
         principal = AccountService._resolve_principal_or_raise(
             db, data.principal_account_id
         )
-        AccountService._enforce_client_limit(db, principal.id)
+        AccountService._enforce_client_limit(db, principal)
 
         payload = data.model_dump()
+        service_id = payload.pop("client_service_id", None)
+        requested_service_type = payload.pop("service_type", None)
         fecha_registro: Optional[datetime] = payload.get("fecha_registro")
         if fecha_registro is None:
             fecha_registro = datetime.now(timezone.utc)
@@ -192,6 +239,33 @@ class AccountService:
         payload["principal_account_id"] = principal.id
 
         payload["fecha_proximo_pago"] = _add_one_month(fecha_registro.date())
+
+        streaming_service: Optional[models.ClientService] = None
+        client_id_for_service = payload.get("client_id")
+        if service_id:
+            streaming_service = ClientContractService.get_service(db, service_id)
+            if streaming_service is None:
+                raise AccountServiceError("El servicio seleccionado no existe.")
+            AccountService._ensure_streaming_service(streaming_service)
+        elif client_id_for_service:
+            service_type = requested_service_type or ClientServiceType.STREAMING_NETFLIX
+            display_name = payload.get("nombre_cliente") or payload.get("correo_cliente")
+            display_name = display_name.strip() if display_name else "Streaming"
+            streaming_service = AccountService._create_streaming_service(
+                db,
+                principal=principal,
+                client_id=client_id_for_service,
+                display_name=display_name,
+                service_type=service_type,
+                next_billing_date=payload.get("fecha_proximo_pago"),
+            )
+
+        if streaming_service is not None:
+            payload["client_service_id"] = streaming_service.id
+            payload["client_id"] = streaming_service.client_id
+            if payload.get("fecha_proximo_pago"):
+                streaming_service.next_billing_date = payload["fecha_proximo_pago"]
+                db.add(streaming_service)
 
         account = models.ClientAccount(**payload)
         security_event = models.ClientAccountSecurityEvent(
@@ -220,11 +294,52 @@ class AccountService:
     ) -> models.ClientAccount:
         update_data = data.model_dump(exclude_unset=True)
         principal_id = update_data.get("principal_account_id")
+        principal_for_service: models.PrincipalAccount
         if principal_id is not None:
-            AccountService._resolve_principal_or_raise(db, principal_id)
+            new_principal = AccountService._resolve_principal_or_raise(db, principal_id)
             if principal_id != account.principal_account_id:
-                AccountService._enforce_client_limit(db, principal_id)
+                AccountService._enforce_client_limit(db, new_principal)
             update_data["principal_account_id"] = principal_id
+            principal_for_service = new_principal
+        else:
+            principal_for_service = AccountService._resolve_principal_or_raise(
+                db, account.principal_account_id
+            )
+
+        requested_service_type = update_data.pop("service_type", None)
+        if "client_service_id" in update_data:
+            new_service_id = update_data.get("client_service_id")
+            client_id_for_service = update_data.get("client_id", account.client_id)
+            if new_service_id:
+                streaming_service = ClientContractService.get_service(db, new_service_id)
+                if streaming_service is None:
+                    raise AccountServiceError("El servicio seleccionado no existe.")
+                AccountService._ensure_streaming_service(streaming_service)
+                update_data["client_id"] = streaming_service.client_id
+                next_payment = update_data.get("fecha_proximo_pago")
+                if next_payment:
+                    streaming_service.next_billing_date = next_payment
+                    db.add(streaming_service)
+            elif client_id_for_service:
+                display_name = (
+                    update_data.get("nombre_cliente")
+                    or account.nombre_cliente
+                    or account.correo_cliente
+                    or "Streaming"
+                )
+                service_type = requested_service_type or ClientServiceType.STREAMING_NETFLIX
+                streaming_service = AccountService._create_streaming_service(
+                    db,
+                    principal=principal_for_service,
+                    client_id=client_id_for_service,
+                    display_name=display_name,
+                    service_type=service_type,
+                    next_billing_date=update_data.get("fecha_proximo_pago"),
+                )
+                update_data["client_service_id"] = streaming_service.id
+                update_data["client_id"] = streaming_service.client_id
+            else:
+                update_data["client_service_id"] = None
 
         fecha_registro = update_data.get("fecha_registro")
         if isinstance(fecha_registro, datetime) and fecha_registro.tzinfo is None:

@@ -58,7 +58,7 @@ class PaymentAuditLog(Base):
     id = Column(GUID(), primary_key=True, default=uuid.uuid4)
     payment_id = Column(
         GUID(),
-        ForeignKey("legacy_payments.payment_id", ondelete="CASCADE"),
+        ForeignKey("service_payments.payment_id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -68,7 +68,7 @@ class PaymentAuditLog(Base):
     notes = Column(Text, nullable=True)
     snapshot = Column(JSON, nullable=True)
 
-    payment = relationship("Payment", back_populates="audit_trail")
+    payment = relationship("ServicePayment", back_populates="audit_trail")
 
 
 class ClientAccountSecurityAction(str, enum.Enum):
