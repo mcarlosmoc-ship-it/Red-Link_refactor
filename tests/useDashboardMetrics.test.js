@@ -107,6 +107,7 @@ it('allows overriding the status filter when invoking the hook', () => {
 it('returns default metrics and empty projected clients when metrics are unavailable', () => {
   mockState.metrics = null
   mockState.dashboardClients = []
+  mockState.baseCosts = { base1: '100', base2: 50, baseExtra: '25' }
 
   const result = renderHook()
 
@@ -120,7 +121,7 @@ it('returns default metrics and empty projected clients when metrics are unavail
     totalExpenses: 0,
     netEarnings: 0,
   })
-  expect(result.metrics.internetCosts).toBe(150)
+  expect(result.metrics.internetCosts).toBe(175)
   expect(result.projectedClients).toHaveLength(0)
 })
 })
