@@ -11,6 +11,7 @@ import {
 } from './constants.js'
 import {
   mapClient,
+  mapClientService,
   mapPayment,
   mapExpense,
   mapInventoryItem,

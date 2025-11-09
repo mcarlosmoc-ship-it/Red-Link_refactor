@@ -46,6 +46,17 @@ const formatServiceStatus = (status) => SERVICE_STATUS_LABELS[status] ?? 'Descon
 
 const formatServiceType = (type) => (type ? type.replace(/_/g, ' ') : 'Servicio')
 
+const SERVICE_TYPE_OPTIONS = [
+  { value: 'internet_private', label: 'Internet residencial' },
+  { value: 'internet_tokens', label: 'Internet con fichas' },
+  { value: 'streaming_spotify', label: 'Streaming · Spotify' },
+  { value: 'streaming_netflix', label: 'Streaming · Netflix' },
+  { value: 'streaming_vix', label: 'Streaming · ViX' },
+  { value: 'public_desk', label: 'Ciber o escritorio público' },
+  { value: 'point_of_sale', label: 'Punto de venta' },
+  { value: 'other', label: 'Otro servicio mensual' },
+]
+
 const getPrimaryService = (client) => {
   const services = Array.isArray(client?.services) ? client.services : []
   if (services.length === 0) {
@@ -111,6 +122,16 @@ export default function ClientsPage() {
   const [sortField, setSortField] = useState('name')
   const [sortDirection, setSortDirection] = useState('asc')
   const [selectedClientId, setSelectedClientId] = useState(null)
+  const [isAddingService, setIsAddingService] = useState(false)
+  const [serviceFormState, setServiceFormState] = useState({
+    displayName: '',
+    serviceType: 'other',
+    price: '',
+    billingDay: '',
+    baseId: '',
+    notes: '',
+  })
+  const [serviceFormErrors, setServiceFormErrors] = useState({})
   const clientDetailsRef = useRef(null)
   const isMutatingClients = Boolean(clientsStatus?.isMutating)
   const isSyncingClients = Boolean(clientsStatus?.isLoading)
@@ -415,6 +436,22 @@ export default function ClientsPage() {
     },
     [clients, selectedClientId],
   )
+  const buildDefaultServiceFormState = useCallback(
+    () => ({
+      displayName: '',
+      serviceType: 'other',
+      price: '',
+      billingDay: '',
+      baseId: selectedClient?.base ? String(selectedClient.base) : '',
+      notes: '',
+    }),
+    [selectedClient?.base],
+  )
+  useEffect(() => {
+    setServiceFormState(buildDefaultServiceFormState())
+    setServiceFormErrors({})
+    setIsAddingService(false)
+  }, [buildDefaultServiceFormState, selectedClientId])
   const selectedClientServices = useMemo(
     () => (selectedClient?.services ? [...selectedClient.services] : []),
     [selectedClient],
@@ -1540,7 +1577,213 @@ export default function ClientsPage() {
               </div>
 
               <div className="space-y-3">
-                <h3 className="text-base font-semibold text-slate-900">Servicios contratados</h3>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <h3 className="text-base font-semibold text-slate-900">Servicios contratados</h3>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className={ACTION_BUTTON_CLASSES}
+                    onClick={() => {
+                      if (isAddingService) {
+                        handleCancelNewService()
+                      } else {
+                        setServiceFormErrors({})
+                        setServiceFormState(buildDefaultServiceFormState())
+                        setIsAddingService(true)
+                      }
+                    }}
+                    disabled={isMutatingClients}
+                  >
+                    {isAddingService ? 'Cerrar formulario' : 'Agregar servicio'}
+                  </Button>
+                </div>
+
+                {isAddingService && (
+                  <form
+                    onSubmit={handleSubmitNewService}
+                    className="space-y-4 rounded-md border border-dashed border-slate-300 bg-slate-50/80 p-4"
+                  >
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <label className="grid gap-1 text-xs font-semibold text-slate-700">
+                        <span>Nombre del servicio</span>
+                        <input
+                          value={serviceFormState.displayName}
+                          onChange={(event) =>
+                            setServiceFormState((prev) => ({
+                              ...prev,
+                              displayName: event.target.value,
+                            }))
+                          }
+                          className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
+                            serviceFormErrors.displayName
+                              ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
+                              : 'border-slate-300'
+                          }`}
+                          placeholder="Nombre del nuevo servicio"
+                          autoComplete="off"
+                        />
+                        {serviceFormErrors.displayName && (
+                          <span className="text-xs font-medium text-red-600">
+                            {serviceFormErrors.displayName}
+                          </span>
+                        )}
+                      </label>
+
+                      <label className="grid gap-1 text-xs font-semibold text-slate-700">
+                        <span>Tipo de servicio</span>
+                        <select
+                          value={serviceFormState.serviceType}
+                          onChange={(event) =>
+                            setServiceFormState((prev) => ({
+                              ...prev,
+                              serviceType: event.target.value,
+                            }))
+                          }
+                          className={`rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
+                            serviceFormErrors.serviceType
+                              ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
+                              : 'border-slate-300'
+                          }`}
+                        >
+                          {SERVICE_TYPE_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                        {serviceFormErrors.serviceType && (
+                          <span className="text-xs font-medium text-red-600">
+                            {serviceFormErrors.serviceType}
+                          </span>
+                        )}
+                      </label>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-3">
+                      <label className="grid gap-1 text-xs font-semibold text-slate-700">
+                        <span>Tarifa mensual (MXN)</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={serviceFormState.price}
+                          onChange={(event) =>
+                            setServiceFormState((prev) => ({
+                              ...prev,
+                              price: event.target.value,
+                            }))
+                          }
+                          className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
+                            serviceFormErrors.price
+                              ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
+                              : 'border-slate-300'
+                          }`}
+                          placeholder="0.00"
+                        />
+                        <span className="text-[11px] text-slate-500">
+                          Puedes dejarlo en 0 si el monto cambia cada mes.
+                        </span>
+                        {serviceFormErrors.price && (
+                          <span className="text-xs font-medium text-red-600">
+                            {serviceFormErrors.price}
+                          </span>
+                        )}
+                      </label>
+
+                      <label className="grid gap-1 text-xs font-semibold text-slate-700">
+                        <span>Día de cobro (1-31)</span>
+                        <input
+                          type="number"
+                          min="1"
+                          max="31"
+                          value={serviceFormState.billingDay}
+                          onChange={(event) =>
+                            setServiceFormState((prev) => ({
+                              ...prev,
+                              billingDay: event.target.value,
+                            }))
+                          }
+                          className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
+                            serviceFormErrors.billingDay
+                              ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
+                              : 'border-slate-300'
+                          }`}
+                          placeholder="Opcional"
+                        />
+                        <span className="text-[11px] text-slate-500">
+                          Déjalo vacío si la fecha cambia según la contratación.
+                        </span>
+                        {serviceFormErrors.billingDay && (
+                          <span className="text-xs font-medium text-red-600">
+                            {serviceFormErrors.billingDay}
+                          </span>
+                        )}
+                      </label>
+
+                      <label className="grid gap-1 text-xs font-semibold text-slate-700">
+                        <span>Base (opcional)</span>
+                        <select
+                          value={serviceFormState.baseId}
+                          onChange={(event) =>
+                            setServiceFormState((prev) => ({
+                              ...prev,
+                              baseId: event.target.value,
+                            }))
+                          }
+                          className={`rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
+                            serviceFormErrors.baseId
+                              ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
+                              : 'border-slate-300'
+                          }`}
+                        >
+                          <option value="">
+                            Usar base del cliente {selectedClient?.base ? `(Base ${selectedClient.base})` : ''}
+                          </option>
+                          <option value="1">Base 1</option>
+                          <option value="2">Base 2</option>
+                        </select>
+                        {serviceFormErrors.baseId && (
+                          <span className="text-xs font-medium text-red-600">
+                            {serviceFormErrors.baseId}
+                          </span>
+                        )}
+                      </label>
+                    </div>
+
+                    <label className="grid gap-1 text-xs font-semibold text-slate-700">
+                      <span>Notas (opcional)</span>
+                      <textarea
+                        value={serviceFormState.notes}
+                        onChange={(event) =>
+                          setServiceFormState((prev) => ({
+                            ...prev,
+                            notes: event.target.value,
+                          }))
+                        }
+                        rows={3}
+                        className="rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200"
+                        placeholder="Detalles adicionales para este servicio"
+                      />
+                    </label>
+
+                    <div className="flex flex-wrap justify-end gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className={ACTION_BUTTON_CLASSES}
+                        onClick={handleCancelNewService}
+                        disabled={isMutatingClients}
+                      >
+                        Cancelar
+                      </Button>
+                      <Button type="submit" size="sm" disabled={isMutatingClients}>
+                        Guardar servicio
+                      </Button>
+                    </div>
+                  </form>
+                )}
+
                 {selectedClientServices.length === 0 ? (
                   <p className="text-sm text-slate-500">Este cliente aún no tiene servicios configurados.</p>
                 ) : (
