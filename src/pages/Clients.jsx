@@ -102,7 +102,6 @@ export default function ClientsPage() {
     status: clientsStatus,
     reload: reloadClients,
     createClient,
-    createClientService,
     updateClientServiceStatus,
     deleteClient,
     importClients,
@@ -756,107 +755,6 @@ export default function ClientsPage() {
       showToast({
         type: 'error',
         title: 'No se pudo eliminar el cliente',
-        description: error?.message ?? 'Intenta nuevamente.',
-      })
-    }
-  }
-
-  const handleCancelNewService = useCallback(() => {
-    setServiceFormErrors({})
-    setServiceFormState(buildDefaultServiceFormState())
-    setIsAddingService(false)
-  }, [buildDefaultServiceFormState])
-
-  const handleSubmitNewService = async (event) => {
-    event.preventDefault()
-
-    if (!selectedClient) {
-      showToast({
-        type: 'error',
-        title: 'Selecciona un cliente',
-        description: 'Elige un cliente para poder agregar un servicio.',
-      })
-      return
-    }
-
-    const trimmedName = serviceFormState.displayName.trim()
-    const errors = {}
-    setServiceFormErrors({})
-
-    if (!trimmedName) {
-      errors.displayName = 'Ingresa el nombre del servicio.'
-    }
-
-    if (!SERVICE_TYPE_OPTIONS.some((option) => option.value === serviceFormState.serviceType)) {
-      errors.serviceType = 'Selecciona un tipo de servicio válido.'
-    }
-
-    let normalizedPrice = 0
-    if (serviceFormState.price !== '' && serviceFormState.price !== null && serviceFormState.price !== undefined) {
-      const numericPrice = Number(serviceFormState.price)
-      if (!Number.isFinite(numericPrice) || numericPrice < 0) {
-        errors.price = 'Ingresa un monto válido (0 o mayor).'
-      } else {
-        normalizedPrice = numericPrice
-      }
-    }
-
-    let normalizedBillingDay = null
-    if (
-      serviceFormState.billingDay !== '' &&
-      serviceFormState.billingDay !== null &&
-      serviceFormState.billingDay !== undefined
-    ) {
-      const numericBillingDay = Number(serviceFormState.billingDay)
-      if (!Number.isInteger(numericBillingDay) || numericBillingDay < 1 || numericBillingDay > 31) {
-        errors.billingDay = 'Selecciona un día entre 1 y 31.'
-      } else {
-        normalizedBillingDay = numericBillingDay
-      }
-    }
-
-    let normalizedBaseId = null
-    if (serviceFormState.baseId) {
-      const numericBase = Number(serviceFormState.baseId)
-      if (!Number.isFinite(numericBase) || numericBase <= 0) {
-        errors.baseId = 'Selecciona una base válida.'
-      } else {
-        normalizedBaseId = numericBase
-      }
-    } else if (selectedClient.base) {
-      normalizedBaseId = Number(selectedClient.base)
-    }
-
-    if (Object.keys(errors).length > 0) {
-      setServiceFormErrors(errors)
-      return
-    }
-
-    const payload = {
-      clientId: selectedClient.id,
-      displayName: trimmedName,
-      serviceType: serviceFormState.serviceType,
-      price: normalizedPrice,
-      billingDay: normalizedBillingDay,
-      baseId: normalizedBaseId,
-      notes: serviceFormState.notes,
-      currency: 'MXN',
-    }
-
-    try {
-      await createClientService(payload)
-      showToast({
-        type: 'success',
-        title: 'Servicio agregado',
-        description: `${trimmedName} se agregó a ${selectedClient.name}.`,
-      })
-      setServiceFormErrors({})
-      setServiceFormState(buildDefaultServiceFormState())
-      setIsAddingService(false)
-    } catch (error) {
-      showToast({
-        type: 'error',
-        title: 'No se pudo agregar el servicio',
         description: error?.message ?? 'Intenta nuevamente.',
       })
     }
