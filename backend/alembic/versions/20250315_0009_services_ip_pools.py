@@ -41,6 +41,28 @@ def _dialect_settings():
     return uuid_type, uuid_default, json_type
 
 
+def _table_exists(table_name: str) -> bool:
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    return inspector.has_table(table_name)
+
+
+def _index_exists(table_name: str, index_name: str) -> bool:
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    if not inspector.has_table(table_name):
+        return False
+    return any(index["name"] == index_name for index in inspector.get_indexes(table_name))
+
+
+def _column_exists(table_name: str, column_name: str) -> bool:
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    if not inspector.has_table(table_name):
+        return False
+    return any(column["name"] == column_name for column in inspector.get_columns(table_name))
+
+
 def upgrade() -> None:
     uuid_type, uuid_default, json_type = _dialect_settings()
     bind = op.get_bind()
@@ -75,52 +97,58 @@ def upgrade() -> None:
     client_service_status_enum.create(bind, checkfirst=True)
     ip_reservation_status_enum.create(bind, checkfirst=True)
 
-    op.create_table(
-        "client_services",
-        sa.Column("client_service_id", uuid_type, primary_key=True, server_default=uuid_default),
-        sa.Column(
-            "client_id",
-            uuid_type,
-            sa.ForeignKey("clients.client_id", ondelete="CASCADE"),
-            nullable=False,
-        ),
-        sa.Column("service_type", client_service_type_enum, nullable=False),
-        sa.Column("display_name", sa.String(200), nullable=False),
-        sa.Column("status", client_service_status_enum, nullable=False, server_default="active"),
-        sa.Column("billing_day", sa.Integer(), nullable=True),
-        sa.Column("next_billing_date", sa.Date(), nullable=True),
-        sa.Column("price", sa.Numeric(12, 2), nullable=False, server_default="0"),
-        sa.Column("currency", sa.String(3), nullable=False, server_default="MXN"),
-        sa.Column(
-            "base_id",
-            sa.Integer(),
-            sa.ForeignKey("base_stations.base_id", ondelete="SET NULL"),
-            nullable=True,
-        ),
-        sa.Column("notes", sa.Text(), nullable=True),
-        sa.Column("metadata", json_type, nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column(
-            "updated_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.func.now(),
-            onupdate=sa.func.now(),
-            nullable=False,
-        ),
-        sa.Column("cancelled_at", sa.DateTime(timezone=True), nullable=True),
-        sa.UniqueConstraint(
-            "client_id", "service_type", "display_name", name="uq_client_services_client_type_name"
-        ),
-        sa.CheckConstraint(
-            "billing_day IS NULL OR (billing_day >= 1 AND billing_day <= 31)",
-            name="ck_client_services_billing_day_range",
-        ),
-        sa.CheckConstraint("price >= 0", name="ck_client_services_price_non_negative"),
-    )
-    op.create_index("client_services_client_idx", "client_services", ["client_id"])
-    op.create_index("client_services_base_idx", "client_services", ["base_id"])
+    if not _table_exists("client_services"):
+        op.create_table(
+            "client_services",
+            sa.Column("client_service_id", uuid_type, primary_key=True, server_default=uuid_default),
+            sa.Column(
+                "client_id",
+                uuid_type,
+                sa.ForeignKey("clients.client_id", ondelete="CASCADE"),
+                nullable=False,
+            ),
+            sa.Column("service_type", client_service_type_enum, nullable=False),
+            sa.Column("display_name", sa.String(200), nullable=False),
+            sa.Column("status", client_service_status_enum, nullable=False, server_default="active"),
+            sa.Column("billing_day", sa.Integer(), nullable=True),
+            sa.Column("next_billing_date", sa.Date(), nullable=True),
+            sa.Column("price", sa.Numeric(12, 2), nullable=False, server_default="0"),
+            sa.Column("currency", sa.String(3), nullable=False, server_default="MXN"),
+            sa.Column(
+                "base_id",
+                sa.Integer(),
+                sa.ForeignKey("base_stations.base_id", ondelete="SET NULL"),
+                nullable=True,
+            ),
+            sa.Column("notes", sa.Text(), nullable=True),
+            sa.Column("metadata", json_type, nullable=True),
+            sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+            sa.Column(
+                "updated_at",
+                sa.DateTime(timezone=True),
+                server_default=sa.func.now(),
+                onupdate=sa.func.now(),
+                nullable=False,
+            ),
+            sa.Column("cancelled_at", sa.DateTime(timezone=True), nullable=True),
+            sa.UniqueConstraint(
+                "client_id", "service_type", "display_name", name="uq_client_services_client_type_name"
+            ),
+            sa.CheckConstraint(
+                "billing_day IS NULL OR (billing_day >= 1 AND billing_day <= 31)",
+                name="ck_client_services_billing_day_range",
+            ),
+            sa.CheckConstraint("price >= 0", name="ck_client_services_price_non_negative"),
+        )
 
-    op.rename_table("legacy_payments", "service_payments")
+    if not _index_exists("client_services", "client_services_client_idx"):
+        op.create_index("client_services_client_idx", "client_services", ["client_id"])
+
+    if not _index_exists("client_services", "client_services_base_idx"):
+        op.create_index("client_services_base_idx", "client_services", ["base_id"])
+
+    if _table_exists("legacy_payments") and not _table_exists("service_payments"):
+        op.rename_table("legacy_payments", "service_payments")
 
     for index_name in (
         "legacy_payments_client_idx",
@@ -129,14 +157,23 @@ def upgrade() -> None:
         "legacy_payments_client_paid_on_idx",
         "legacy_payments_period_paid_on_idx",
     ):
-        op.drop_index(index_name, table_name="service_payments")
+        if _index_exists("service_payments", index_name):
+            op.drop_index(index_name, table_name="service_payments")
 
     is_sqlite = bind.dialect.name == "sqlite" if bind else True
 
     if not is_sqlite:
         op.drop_constraint("ck_payments_months_paid_positive", "service_payments", type_="check")
 
-    op.alter_column("service_payments", "months_paid", existing_type=sa.Numeric(6, 2), nullable=True)
+    if is_sqlite:
+        with op.batch_alter_table("service_payments", recreate="always") as batch_op:
+            batch_op.alter_column(
+                "months_paid",
+                existing_type=sa.Numeric(6, 2),
+                nullable=True,
+            )
+    else:
+        op.alter_column("service_payments", "months_paid", existing_type=sa.Numeric(6, 2), nullable=True)
 
     if not is_sqlite:
         op.create_check_constraint(
@@ -145,70 +182,97 @@ def upgrade() -> None:
             "months_paid IS NULL OR months_paid > 0",
         )
 
-    op.add_column(
-        "service_payments",
-        sa.Column(
-            "client_service_id",
-            uuid_type,
-            sa.ForeignKey("client_services.client_service_id", ondelete="CASCADE"),
-            nullable=True,
-        ),
-    )
-    op.add_column(
-        "service_payments",
-        sa.Column("recorded_by", sa.String(120), nullable=True),
-    )
+    if not _column_exists("service_payments", "client_service_id"):
+        op.add_column(
+            "service_payments",
+            sa.Column(
+                "client_service_id",
+                uuid_type,
+                sa.ForeignKey("client_services.client_service_id", ondelete="CASCADE"),
+                nullable=True,
+            ),
+        )
 
-    op.create_index("service_payments_client_idx", "service_payments", ["client_id"])
-    op.create_index("service_payments_service_idx", "service_payments", ["client_service_id"])
-    op.create_index("service_payments_period_idx", "service_payments", ["period_key"])
-    op.create_index("service_payments_paid_on_idx", "service_payments", ["paid_on"])
+    if not _column_exists("service_payments", "recorded_by"):
+        op.add_column(
+            "service_payments",
+            sa.Column("recorded_by", sa.String(120), nullable=True),
+        )
 
-    op.add_column(
-        "principal_accounts",
-        sa.Column("max_slots", sa.Integer(), nullable=False, server_default="5"),
-    )
-    op.alter_column("principal_accounts", "max_slots", server_default=None)
-    op.add_column(
-        "client_accounts",
-        sa.Column("client_id", uuid_type, sa.ForeignKey("clients.client_id", ondelete="SET NULL"), nullable=True),
-    )
-    op.add_column(
-        "client_accounts",
-        sa.Column(
-            "client_service_id",
-            uuid_type,
-            sa.ForeignKey("client_services.client_service_id", ondelete="SET NULL"),
-            nullable=True,
-        ),
-    )
-    op.create_index("client_accounts_client_idx", "client_accounts", ["client_id"])
-    op.create_index("client_accounts_client_service_idx", "client_accounts", ["client_service_id"])
+    if not _index_exists("service_payments", "service_payments_client_idx"):
+        op.create_index("service_payments_client_idx", "service_payments", ["client_id"])
 
-    op.create_table(
-        "base_ip_pools",
-        sa.Column("pool_id", sa.Integer(), primary_key=True, autoincrement=True),
-        sa.Column(
-            "base_id",
-            sa.Integer(),
-            sa.ForeignKey("base_stations.base_id", ondelete="CASCADE"),
-            nullable=False,
-        ),
-        sa.Column("label", sa.String(120), nullable=False),
-        sa.Column("cidr", sa.String(64), nullable=False),
-        sa.Column("vlan", sa.String(32), nullable=True),
-        sa.Column("notes", sa.Text(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column(
-            "updated_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.func.now(),
-            onupdate=sa.func.now(),
-            nullable=False,
-        ),
-        sa.UniqueConstraint("base_id", "cidr", name="uq_base_ip_pools_base_cidr"),
-    )
-    op.create_index("base_ip_pools_base_idx", "base_ip_pools", ["base_id"])
+    if not _index_exists("service_payments", "service_payments_service_idx"):
+        op.create_index("service_payments_service_idx", "service_payments", ["client_service_id"])
+
+    if not _index_exists("service_payments", "service_payments_period_idx"):
+        op.create_index("service_payments_period_idx", "service_payments", ["period_key"])
+
+    if not _index_exists("service_payments", "service_payments_paid_on_idx"):
+        op.create_index("service_payments_paid_on_idx", "service_payments", ["paid_on"])
+
+    if not _column_exists("principal_accounts", "max_slots"):
+        op.add_column(
+            "principal_accounts",
+            sa.Column("max_slots", sa.Integer(), nullable=False, server_default="5"),
+        )
+        op.alter_column("principal_accounts", "max_slots", server_default=None)
+
+    if not _column_exists("client_accounts", "client_id"):
+        op.add_column(
+            "client_accounts",
+            sa.Column(
+                "client_id",
+                uuid_type,
+                sa.ForeignKey("clients.client_id", ondelete="SET NULL"),
+                nullable=True,
+            ),
+        )
+
+    if not _column_exists("client_accounts", "client_service_id"):
+        op.add_column(
+            "client_accounts",
+            sa.Column(
+                "client_service_id",
+                uuid_type,
+                sa.ForeignKey("client_services.client_service_id", ondelete="SET NULL"),
+                nullable=True,
+            ),
+        )
+
+    if not _index_exists("client_accounts", "client_accounts_client_idx"):
+        op.create_index("client_accounts_client_idx", "client_accounts", ["client_id"])
+
+    if not _index_exists("client_accounts", "client_accounts_client_service_idx"):
+        op.create_index("client_accounts_client_service_idx", "client_accounts", ["client_service_id"])
+
+    if not _table_exists("base_ip_pools"):
+        op.create_table(
+            "base_ip_pools",
+            sa.Column("pool_id", sa.Integer(), primary_key=True, autoincrement=True),
+            sa.Column(
+                "base_id",
+                sa.Integer(),
+                sa.ForeignKey("base_stations.base_id", ondelete="CASCADE"),
+                nullable=False,
+            ),
+            sa.Column("label", sa.String(120), nullable=False),
+            sa.Column("cidr", sa.String(64), nullable=False),
+            sa.Column("vlan", sa.String(32), nullable=True),
+            sa.Column("notes", sa.Text(), nullable=True),
+            sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+            sa.Column(
+                "updated_at",
+                sa.DateTime(timezone=True),
+                server_default=sa.func.now(),
+                onupdate=sa.func.now(),
+                nullable=False,
+            ),
+            sa.UniqueConstraint("base_id", "cidr", name="uq_base_ip_pools_base_cidr"),
+        )
+
+    if not _index_exists("base_ip_pools", "base_ip_pools_base_idx"):
+        op.create_index("base_ip_pools_base_idx", "base_ip_pools", ["base_id"])
 
     op.create_table(
         "base_ip_reservations",
