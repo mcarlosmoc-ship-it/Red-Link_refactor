@@ -19,6 +19,11 @@ export const useDashboardMetrics = ({ statusFilter: overrideStatusFilter } = {})
 
   const metrics = useMemo(() => {
     if (!metricsSummary) {
+      const fallbackInternetCosts = Object.values(baseCosts ?? {}).reduce(
+        (total, cost) => total + normalizeMetricValue(cost, 0),
+        0,
+      )
+
       return {
         totalClients: 0,
         paidClients: 0,
@@ -27,7 +32,7 @@ export const useDashboardMetrics = ({ statusFilter: overrideStatusFilter } = {})
         totalDebtAmount: 0,
         resellerIncome: 0,
         totalExpenses: 0,
-        internetCosts: (baseCosts?.base1 ?? 0) + (baseCosts?.base2 ?? 0),
+        internetCosts: fallbackInternetCosts,
         netEarnings: 0,
         paymentsForPeriod: 0,
         paymentsToday: 0,
