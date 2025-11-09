@@ -45,6 +45,8 @@ class ServicePlan(Base):
     download_speed_mbps = Column(Numeric(8, 2), nullable=True)
     upload_speed_mbps = Column(Numeric(8, 2), nullable=True)
     default_monthly_fee = Column(Numeric(10, 2), nullable=False)
+    requires_ip = Column(Boolean, nullable=False, default=False, server_default="0")
+    requires_base = Column(Boolean, nullable=False, default=False, server_default="0")
     is_token_plan = Column(Boolean, nullable=False, default=False, server_default="0")
     is_active = Column(Boolean, nullable=False, default=True, server_default="1")
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
