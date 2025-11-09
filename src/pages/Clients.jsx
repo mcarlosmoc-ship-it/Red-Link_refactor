@@ -9,6 +9,13 @@ import { useClients } from '../hooks/useClients.js'
 import { useToast } from '../hooks/useToast.js'
 import { peso, formatDate, formatPeriodLabel, addMonthsToPeriod } from '../utils/formatters.js'
 import {
+  SERVICE_TYPE_OPTIONS,
+  SERVICE_STATUS_OPTIONS,
+  getServiceTypeLabel,
+  getServiceStatusLabel,
+} from '../constants/serviceTypes.js'
+import { computeServiceFormErrors } from '../utils/serviceFormValidation.js'
+import {
   CLIENT_ANTENNA_MODELS,
   CLIENT_IP_FIELDS_BY_TYPE,
   CLIENT_IP_RANGES,
@@ -17,6 +24,7 @@ import {
 } from '../utils/clientIpConfig.js'
 import { useBackofficeRefresh } from '../contexts/BackofficeRefreshContext.jsx'
 import ClientsSkeleton from './ClientsSkeleton.jsx'
+import MonthlyServicesPage from './MonthlyServices.jsx'
 
 const periodsFormatter = new Intl.NumberFormat('es-MX', { maximumFractionDigits: 2 })
 
@@ -31,31 +39,19 @@ const FRACTION_EPSILON = 0.0001
 
 const LOCATIONS = ['Nuevo Amatenango', 'Zapotal', 'Naranjal', 'Belén', 'Lagunita']
 
+const MAIN_TABS = [
+  { id: 'clients', label: 'Clientes' },
+  { id: 'services', label: 'Servicios mensuales' },
+]
+
 const CLIENT_TYPE_LABELS = {
   residential: 'Cliente residencial',
   token: 'Punto con antena pública',
 }
 
-const SERVICE_STATUS_LABELS = {
-  active: 'Activo',
-  suspended: 'Suspendido',
-  cancelled: 'Baja',
-}
+const formatServiceStatus = (status) => getServiceStatusLabel(status)
 
-const formatServiceStatus = (status) => SERVICE_STATUS_LABELS[status] ?? 'Desconocido'
-
-const formatServiceType = (type) => (type ? type.replace(/_/g, ' ') : 'Servicio')
-
-const SERVICE_TYPE_OPTIONS = [
-  { value: 'internet_private', label: 'Internet residencial' },
-  { value: 'internet_tokens', label: 'Internet con fichas' },
-  { value: 'streaming_spotify', label: 'Streaming · Spotify' },
-  { value: 'streaming_netflix', label: 'Streaming · Netflix' },
-  { value: 'streaming_vix', label: 'Streaming · ViX' },
-  { value: 'public_desk', label: 'Ciber o escritorio público' },
-  { value: 'point_of_sale', label: 'Punto de venta' },
-  { value: 'other', label: 'Otro servicio mensual' },
-]
+const formatServiceType = (type) => getServiceTypeLabel(type)
 
 const getPrimaryService = (client) => {
   const services = Array.isArray(client?.services) ? client.services : []
@@ -71,6 +67,16 @@ const normalizeId = (value) => {
   }
   return String(value)
 }
+
+const createInitialServiceState = (baseId) => ({
+  displayName: getServiceTypeLabel('internet_private'),
+  serviceType: 'internet_private',
+  price: '',
+  billingDay: '',
+  baseId: baseId ? String(baseId) : '',
+  status: 'active',
+  notes: '',
+})
 
 const defaultForm = {
   type: 'residential',
@@ -112,6 +118,8 @@ export default function ClientsPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [locationFilter, setLocationFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [activeMainTab, setActiveMainTab] = useState('clients')
+  const [isClientFormOpen, setIsClientFormOpen] = useState(false)
   const [formState, setFormState] = useState({ ...defaultForm })
   const [formErrors, setFormErrors] = useState({})
   const [isRetrying, setIsRetrying] = useState(false)
@@ -124,6 +132,10 @@ export default function ClientsPage() {
   const [sortDirection, setSortDirection] = useState('asc')
   const [selectedClientId, setSelectedClientId] = useState(null)
   const [isAddingService, setIsAddingService] = useState(false)
+  const [initialServiceState, setInitialServiceState] = useState(() =>
+    createInitialServiceState(defaultForm.base),
+  )
+  const [initialServiceErrors, setInitialServiceErrors] = useState({})
   const [serviceFormState, setServiceFormState] = useState({
     displayName: '',
     serviceType: 'other',
@@ -177,6 +189,26 @@ export default function ClientsPage() {
     }
   }, [location?.hash, clients])
 
+  useEffect(() => {
+    if (location.hash?.startsWith('#client-')) {
+      setActiveMainTab('clients')
+      return
+    }
+
+    const params = new window.URLSearchParams(location.search ?? '')
+    const tabParam = params.get('tab')
+    const normalizedHash = location.hash ? location.hash.replace('#', '') : ''
+
+    if (tabParam === 'services' || normalizedHash === 'servicios' || normalizedHash === 'services') {
+      setActiveMainTab('services')
+      return
+    }
+
+    if (tabParam === 'clients' || normalizedHash === 'clientes') {
+      setActiveMainTab('clients')
+    }
+  }, [location.hash, location.search])
+
   const handleRetryLoad = async () => {
     setIsRetrying(true)
     try {
@@ -196,6 +228,28 @@ export default function ClientsPage() {
       setIsRetrying(false)
     }
   }
+
+  const handleSelectMainTab = useCallback((tabId) => {
+    setActiveMainTab(tabId)
+    if (tabId !== 'clients') {
+      setIsClientFormOpen(false)
+    }
+  }, [])
+
+  const handleToggleClientForm = useCallback(() => {
+    setIsClientFormOpen((previous) => {
+      if (previous) {
+        setFormState({ ...defaultForm })
+        setFormErrors({})
+        setInitialServiceState(createInitialServiceState(defaultForm.base))
+        setInitialServiceErrors({})
+      } else {
+        setFormErrors({})
+        setInitialServiceErrors({})
+      }
+      return !previous
+    })
+  }, [])
 
   const handleOpenImport = () => {
     setImportSummary(null)
@@ -428,6 +482,28 @@ export default function ClientsPage() {
       setSelectedClientId(null)
     }
   }, [clients, selectedClientId])
+
+  useEffect(() => {
+    const baseValue = Number(formState.base)
+    const nextBaseId = Number.isFinite(baseValue) ? String(baseValue) : ''
+    setInitialServiceState((prev) => {
+      if (prev.baseId === nextBaseId) {
+        return prev
+      }
+      return { ...prev, baseId: nextBaseId }
+    })
+  }, [formState.base])
+
+  useEffect(() => {
+    setInitialServiceErrors({})
+    setInitialServiceState((prev) => {
+      const currentName = prev.displayName?.trim() ?? ''
+      if (currentName) {
+        return prev
+      }
+      return { ...prev, displayName: getServiceTypeLabel(prev.serviceType) }
+    })
+  }, [])
 
   const selectedClient = useMemo(
     () => {
@@ -748,6 +824,7 @@ export default function ClientsPage() {
   const handleSubmit = async (event) => {
     event.preventDefault()
     if (!validateForm()) return
+    if (!validateInitialService()) return
 
     const payload = {
       type: formState.type,
@@ -779,12 +856,15 @@ export default function ClientsPage() {
       payload.modemModel = formState.modemModel.trim()
     }
 
+    const clientName = formState.name.trim()
+    const initialServiceSnapshot = { ...initialServiceState }
+
     try {
       const newClient = await createClient(payload)
       showToast({
         type: 'success',
         title: 'Cliente agregado',
-        description: `Se agregó a ${formState.name.trim()} correctamente.`,
+        description: `Se agregó a ${clientName} correctamente.`,
       })
       setFormState({ ...defaultForm })
       setFormErrors({})
@@ -896,14 +976,45 @@ export default function ClientsPage() {
     }
   }
 
+  const isClientsTabActive = activeMainTab === 'clients'
+
   return (
     <div className="space-y-8">
-      <section aria-labelledby="nuevo" className="space-y-4">
-        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-          <div>
-            <h2 id="nuevo" className="text-lg font-semibold text-slate-900">
-              Agregar nuevo cliente
-            </h2>
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-semibold text-slate-900">Panel operativo de clientes</h1>
+          <p className="text-sm text-slate-600">
+            Gestiona tus clientes, consulta su estado y administra los servicios mensuales disponibles.
+          </p>
+        </div>
+        <div className="inline-flex w-full flex-wrap items-center gap-2 rounded-full border border-slate-200 bg-slate-100 p-1 md:w-auto">
+          {MAIN_TABS.map((tab) => {
+            const isActive = activeMainTab === tab.id
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => handleSelectMainTab(tab.id)}
+                className={`rounded-full px-3.5 py-1.5 text-sm font-semibold transition ${
+                  isActive ? 'bg-white text-slate-900 shadow' : 'text-slate-600 hover:text-slate-900'
+                }`}
+                aria-pressed={isActive}
+              >
+                {tab.label}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {isClientsTabActive ? (
+        <>
+          <section aria-labelledby="nuevo" className="space-y-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h2 id="nuevo" className="text-lg font-semibold text-slate-900">
+                Agregar nuevo cliente
+              </h2>
             <p className="text-sm text-slate-500">
               Completa los campos requeridos. Los datos se guardan automáticamente en tu dispositivo.
             </p>
@@ -924,10 +1035,18 @@ export default function ClientsPage() {
             >
               Exportar clientes
             </Button>
+            <Button
+              type="button"
+              className="w-full md:w-auto md:self-center"
+              onClick={handleToggleClientForm}
+            >
+              {isClientFormOpen ? 'Cerrar formulario' : 'Agregar cliente'}
+            </Button>
           </div>
         </div>
 
-        <form className="grid gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm" onSubmit={handleSubmit}>
+        {isClientFormOpen ? (
+          <form className="grid gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm" onSubmit={handleSubmit}>
           <div className="grid gap-4 md:grid-cols-2">
             <label className="grid gap-1 text-xs font-semibold text-slate-700">
               <span className="flex items-center gap-1">
@@ -1206,6 +1325,209 @@ export default function ClientsPage() {
             </div>
           )}
 
+          <div className="space-y-4 rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+            <div className="space-y-1">
+              <h3 className="text-sm font-semibold text-slate-900">Servicio mensual inicial</h3>
+              <p className="text-xs text-slate-600">
+                Selecciona el servicio que tendrá el cliente desde su registro. Puedes ajustar los datos más adelante.
+              </p>
+            </div>
+            <div className="grid gap-4 md:grid-cols-3">
+              <label className="grid gap-1 text-xs font-semibold text-slate-700">
+                <span className="flex items-center gap-1">
+                  Tipo de servicio
+                  <InfoTooltip text="Define qué servicio mensual contrata el cliente. Puedes actualizarlo en cualquier momento." />
+                </span>
+                <select
+                  value={initialServiceState.serviceType}
+                  onChange={(event) => {
+                    const nextType = event.target.value
+                    setInitialServiceState((prev) => {
+                      const currentName = prev.displayName?.trim() ?? ''
+                      const previousDefault = getServiceTypeLabel(prev.serviceType)
+                      const nextDefault = getServiceTypeLabel(nextType)
+                      const hasCustomName = currentName && currentName !== previousDefault
+                      return {
+                        ...prev,
+                        serviceType: nextType,
+                        displayName: hasCustomName ? prev.displayName : nextDefault,
+                      }
+                    })
+                  }}
+                  className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
+                    initialServiceErrors.serviceType
+                      ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
+                      : 'border-slate-300'
+                  }`}
+                >
+                  {SERVICE_TYPE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                {initialServiceErrors.serviceType && (
+                  <span className="text-xs font-medium text-red-600">
+                    {initialServiceErrors.serviceType}
+                  </span>
+                )}
+              </label>
+              <label className="grid gap-1 text-xs font-semibold text-slate-700">
+                <span className="flex items-center gap-1">
+                  Nombre del servicio
+                  <InfoTooltip text="Este nombre aparecerá en los listados de clientes y pagos." />
+                </span>
+                <input
+                  value={initialServiceState.displayName}
+                  onChange={(event) =>
+                    setInitialServiceState((prev) => ({ ...prev, displayName: event.target.value }))
+                  }
+                  className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
+                    initialServiceErrors.displayName
+                      ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
+                      : 'border-slate-300'
+                  }`}
+                  placeholder="Servicio mensual"
+                />
+                {initialServiceErrors.displayName && (
+                  <span className="text-xs font-medium text-red-600">
+                    {initialServiceErrors.displayName}
+                  </span>
+                )}
+              </label>
+              <label className="grid gap-1 text-xs font-semibold text-slate-700">
+                <span className="flex items-center gap-1">
+                  Tarifa mensual (MXN)
+                  <InfoTooltip text="Ingresa el monto mensual acordado. Déjalo en blanco si aún no está definido." />
+                </span>
+                <input
+                  value={initialServiceState.price}
+                  onChange={(event) =>
+                    setInitialServiceState((prev) => ({ ...prev, price: event.target.value }))
+                  }
+                  type="number"
+                  inputMode="decimal"
+                  step="0.01"
+                  min="0"
+                  className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
+                    initialServiceErrors.price
+                      ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
+                      : 'border-slate-300'
+                  }`}
+                />
+                {initialServiceErrors.price && (
+                  <span className="text-xs font-medium text-red-600">{initialServiceErrors.price}</span>
+                )}
+              </label>
+              <label className="grid gap-1 text-xs font-semibold text-slate-700">
+                <span className="flex items-center gap-1">
+                  Día de cobro
+                  <InfoTooltip text="Define el día del mes en el que se espera el pago de este servicio." />
+                </span>
+                <input
+                  value={initialServiceState.billingDay}
+                  onChange={(event) =>
+                    setInitialServiceState((prev) => ({ ...prev, billingDay: event.target.value }))
+                  }
+                  type="number"
+                  inputMode="numeric"
+                  min="1"
+                  max="31"
+                  className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
+                    initialServiceErrors.billingDay
+                      ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
+                      : 'border-slate-300'
+                  }`}
+                  placeholder="Ej. 5"
+                />
+                {initialServiceErrors.billingDay && (
+                  <span className="text-xs font-medium text-red-600">
+                    {initialServiceErrors.billingDay}
+                  </span>
+                )}
+              </label>
+              <label className="grid gap-1 text-xs font-semibold text-slate-700">
+                <span className="flex items-center gap-1">
+                  Base del servicio
+                  <InfoTooltip text="Puedes asociar el servicio a una base específica o usar la base del cliente." />
+                </span>
+                <select
+                  value={initialServiceState.baseId}
+                  onChange={(event) =>
+                    setInitialServiceState((prev) => ({ ...prev, baseId: event.target.value }))
+                  }
+                  className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
+                    initialServiceErrors.baseId
+                      ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
+                      : 'border-slate-300'
+                  }`}
+                >
+                  <option value="">Usar base del cliente</option>
+                  <option value="1">Base 1</option>
+                  <option value="2">Base 2</option>
+                </select>
+                {initialServiceErrors.baseId && (
+                  <span className="text-xs font-medium text-red-600">
+                    {initialServiceErrors.baseId}
+                  </span>
+                )}
+              </label>
+              <label className="grid gap-1 text-xs font-semibold text-slate-700">
+                <span className="flex items-center gap-1">
+                  Estado
+                  <InfoTooltip text="Controla si el servicio inicia activo o suspendido." />
+                </span>
+                <select
+                  value={initialServiceState.status}
+                  onChange={(event) =>
+                    setInitialServiceState((prev) => ({ ...prev, status: event.target.value }))
+                  }
+                  className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
+                    initialServiceErrors.status
+                      ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
+                      : 'border-slate-300'
+                  }`}
+                >
+                  {SERVICE_STATUS_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                {initialServiceErrors.status && (
+                  <span className="text-xs font-medium text-red-600">
+                    {initialServiceErrors.status}
+                  </span>
+                )}
+              </label>
+              <label className="md:col-span-3">
+                <span className="flex items-center gap-1 text-xs font-semibold text-slate-700">
+                  Notas del servicio
+                  <InfoTooltip text="Agrega detalles relevantes como velocidad, equipo instalado o particularidades de cobro." />
+                </span>
+                <textarea
+                  value={initialServiceState.notes}
+                  onChange={(event) =>
+                    setInitialServiceState((prev) => ({ ...prev, notes: event.target.value }))
+                  }
+                  rows={2}
+                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200"
+                  placeholder="Ej. Plan de 20 Mbps con renta de router incluida"
+                />
+              </label>
+            </div>
+            <p className="text-[11px] text-slate-500">
+              ¿Necesitas crear o modificar servicios mensuales?{' '}
+              <button
+                type="button"
+                onClick={() => handleSelectMainTab('services')}
+                className="font-semibold text-blue-600 hover:underline"
+              >
+                Abre la pestaña de servicios mensuales
+              </button>
+              .
+            </p>
+          </div>
           <div className="flex flex-wrap items-center justify-end gap-3">
             <Button
               type="button"
@@ -1214,6 +1536,8 @@ export default function ClientsPage() {
               onClick={() => {
                 setFormState({ ...defaultForm })
                 setFormErrors({})
+                setInitialServiceState(createInitialServiceState(defaultForm.base))
+                setInitialServiceErrors({})
               }}
             >
               Limpiar
@@ -1226,19 +1550,24 @@ export default function ClientsPage() {
               Guardar cliente
             </Button>
           </div>
-        </form>
-      </section>
-      <ImportClientsModal
-        isOpen={isImportModalOpen}
-        onClose={handleCloseImport}
-        onSubmit={handleImportClients}
-        isProcessing={isImportingClients}
-        summary={importSummary}
-        requiresConfirmation={requiresImportConfirmation}
-        onConfirmSummary={handleConfirmImportSummary}
-      />
+          </form>
+          ) : (
+            <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50/80 p-4 text-sm text-slate-600">
+              Presiona "Agregar cliente" cuando necesites registrar un nuevo cliente sin saturar la vista.
+            </div>
+          )}
+        </section>
+        <ImportClientsModal
+          isOpen={isImportModalOpen}
+          onClose={handleCloseImport}
+          onSubmit={handleImportClients}
+          isProcessing={isImportingClients}
+          summary={importSummary}
+          requiresConfirmation={requiresImportConfirmation}
+          onConfirmSummary={handleConfirmImportSummary}
+        />
 
-      <section aria-labelledby="listado" className="space-y-4">
+        <section aria-labelledby="listado" className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <h2 id="listado" className="text-lg font-semibold text-slate-900">
@@ -2067,6 +2396,10 @@ export default function ClientsPage() {
         </section>
       )}
 
+        </>
+      ) : (
+        <MonthlyServicesPage variant="embedded" />
+      )}
     </div>
   )
 }
