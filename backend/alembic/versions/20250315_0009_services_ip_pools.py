@@ -131,13 +131,19 @@ def upgrade() -> None:
     ):
         op.drop_index(index_name, table_name="service_payments")
 
-    op.drop_constraint("ck_payments_months_paid_positive", "service_payments", type_="check")
+    is_sqlite = bind.dialect.name == "sqlite" if bind else True
+
+    if not is_sqlite:
+        op.drop_constraint("ck_payments_months_paid_positive", "service_payments", type_="check")
+
     op.alter_column("service_payments", "months_paid", existing_type=sa.Numeric(6, 2), nullable=True)
-    op.create_check_constraint(
-        "ck_service_payments_months_positive",
-        "service_payments",
-        "months_paid IS NULL OR months_paid > 0",
-    )
+
+    if not is_sqlite:
+        op.create_check_constraint(
+            "ck_service_payments_months_positive",
+            "service_payments",
+            "months_paid IS NULL OR months_paid > 0",
+        )
 
     op.add_column(
         "service_payments",
@@ -347,13 +353,19 @@ def downgrade() -> None:
     ):
         op.drop_index(index_name, table_name="service_payments")
 
-    op.drop_constraint("ck_service_payments_months_positive", "service_payments", type_="check")
+    is_sqlite = bind.dialect.name == "sqlite" if bind else True
+
+    if not is_sqlite:
+        op.drop_constraint("ck_service_payments_months_positive", "service_payments", type_="check")
+
     op.alter_column("service_payments", "months_paid", existing_type=sa.Numeric(6, 2), nullable=False)
-    op.create_check_constraint(
-        "ck_payments_months_paid_positive",
-        "service_payments",
-        "months_paid > 0",
-    )
+
+    if not is_sqlite:
+        op.create_check_constraint(
+            "ck_payments_months_paid_positive",
+            "service_payments",
+            "months_paid > 0",
+        )
     op.drop_column("service_payments", "recorded_by")
     op.drop_column("service_payments", "client_service_id")
 
