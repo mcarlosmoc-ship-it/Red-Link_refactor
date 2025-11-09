@@ -15,6 +15,7 @@ export const voucherTypeKeyById = Object.fromEntries(
 
 export const mapClientService = (service) => ({
   id: service.id,
+  clientId: service.client_id ?? service.clientId ?? null,
   type: service.service_type,
   name: service.display_name,
   status: service.status,
@@ -25,6 +26,8 @@ export const mapClientService = (service) => ({
   baseId: service.base_id ?? null,
   notes: service.notes ?? '',
   metadata: service.metadata ?? {},
+  createdAt: service.created_at ?? null,
+  updatedAt: service.updated_at ?? null,
 })
 
 const mapRecentPayment = (payment) => ({
@@ -242,6 +245,84 @@ export const serializeClientPayload = (payload) => ({
   debt_months: payload.debtMonths ?? 0,
   service_status: payload.service ?? 'Activo',
 })
+
+export const serializeClientServicePayload = (payload) => {
+  const body = {
+    client_id: payload.clientId,
+    service_type: payload.serviceType,
+    display_name: payload.displayName,
+    price: payload.price ?? 0,
+    currency: payload.currency ?? 'MXN',
+  }
+
+  if (payload.billingDay) {
+    body.billing_day = payload.billingDay
+  }
+
+  if (payload.nextBillingDate) {
+    body.next_billing_date = payload.nextBillingDate
+  }
+
+  if (payload.baseId) {
+    body.base_id = payload.baseId
+  }
+
+  if (payload.notes) {
+    body.notes = payload.notes
+  }
+
+  if (payload.metadata) {
+    body.metadata = payload.metadata
+  }
+
+  if (payload.status) {
+    body.status = payload.status
+  }
+
+  return body
+}
+
+export const serializeClientServiceUpdatePayload = (payload) => {
+  const body = {}
+
+  if (payload.displayName !== undefined) {
+    body.display_name = payload.displayName
+  }
+
+  if (payload.status !== undefined) {
+    body.status = payload.status
+  }
+
+  if (payload.price !== undefined) {
+    body.price = payload.price
+  }
+
+  if (payload.currency !== undefined) {
+    body.currency = payload.currency
+  }
+
+  if (payload.billingDay !== undefined) {
+    body.billing_day = payload.billingDay
+  }
+
+  if (payload.nextBillingDate !== undefined) {
+    body.next_billing_date = payload.nextBillingDate
+  }
+
+  if (payload.baseId !== undefined) {
+    body.base_id = payload.baseId
+  }
+
+  if (payload.notes !== undefined) {
+    body.notes = payload.notes
+  }
+
+  if (payload.metadata !== undefined) {
+    body.metadata = payload.metadata
+  }
+
+  return body
+}
 
 export const serializeClientAccountPayload = (payload) => {
   const body = {

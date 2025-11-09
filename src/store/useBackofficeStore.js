@@ -19,6 +19,8 @@ import {
   mapPrincipalAccount,
   mapClientAccount,
   serializeClientPayload,
+  serializeClientServicePayload,
+  serializeClientServiceUpdatePayload,
   serializeClientAccountPayload,
   convertBaseCosts,
   VOUCHER_TYPE_IDS,
@@ -45,6 +47,7 @@ const MUTABLE_SERVICE_STATUSES = new Set(['active', 'suspended'])
 
 const createInitialState = () => ({
   clients: [],
+  clientServices: [],
   principalAccounts: [],
   clientAccounts: [],
   payments: [],
@@ -136,6 +139,47 @@ export const useBackofficeStore = create((set, get) => ({
           force,
         })
         set({ clients: data })
+        return data
+      },
+    })
+  },
+  loadClientServices: async ({ force = false, retries = 1 } = {}) => {
+    const queryKey = queryKeys.clientServices()
+
+    if (force) {
+      invalidateQuery(queryKey)
+    } else {
+      const cached = getCachedQueryData(queryKey, { ttl: RESOURCE_TTL_MS })
+      if (cached) {
+        set({ clientServices: cached })
+        return cached
+      }
+    }
+
+    return runWithStatus({
+      set,
+      get,
+      resource: 'clientServices',
+      retries,
+      action: async () => {
+        const data = await queryClient.fetchQuery({
+          queryKey,
+          queryFn: async () => {
+            const response = await apiClient.get('/client-services', {
+              query: { limit: 200 },
+            })
+            const payload = response.data
+            const items = Array.isArray(payload?.items)
+              ? payload.items
+              : Array.isArray(payload)
+                ? payload
+                : []
+            return items.map(mapClientService)
+          },
+          staleTime: RESOURCE_TTL_MS,
+          force,
+        })
+        set({ clientServices: data })
         return data
       },
     })
@@ -452,6 +496,7 @@ export const useBackofficeStore = create((set, get) => ({
       action: async () => {
         await Promise.all([
           get().loadClients({ force, retries: 1 }),
+          get().loadClientServices({ force, retries: 1 }),
           get().loadPayments({ force, retries: 1 }),
           get().loadResellers({ force, retries: 1 }),
           get().loadExpenses({ force, retries: 1 }),
@@ -470,11 +515,12 @@ export const useBackofficeStore = create((set, get) => ({
     }
   },
   createClient: async (payload) => {
-    await runMutation({
+    const createdClient = await runMutation({
       set,
       resources: 'clients',
       action: async () => {
-        await apiClient.post('/clients', serializeClientPayload(payload))
+        const response = await apiClient.post('/clients', serializeClientPayload(payload))
+        return mapClient(response.data)
       },
     })
 
@@ -482,6 +528,90 @@ export const useBackofficeStore = create((set, get) => ({
     invalidateQuery(['metrics'])
 
     await Promise.all([
+      get().loadClients({ force: true, retries: 1 }),
+      get().loadMetrics({ force: true, retries: 1 }),
+    ])
+
+    return createdClient
+  },
+  createClientService: async (payload) => {
+    const createdService = await runMutation({
+      set,
+      resources: ['clients', 'clientServices'],
+      action: async () => {
+        const response = await apiClient.post(
+          '/client-services',
+          serializeClientServicePayload(payload),
+        )
+        return mapClientService(response.data)
+      },
+    })
+
+    invalidateQuery(queryKeys.clients())
+    invalidateQuery(queryKeys.clientServices())
+    invalidateQuery(['metrics'])
+
+    await Promise.all([
+      get().loadClients({ force: true, retries: 1 }),
+      get().loadClientServices({ force: true, retries: 1 }),
+      get().loadMetrics({ force: true, retries: 1 }),
+    ])
+
+    return createdService
+  },
+  updateClientService: async (serviceId, payload) => {
+    if (!serviceId) {
+      throw new Error('Selecciona un servicio válido para actualizar')
+    }
+
+    const normalizedServiceId = String(serviceId)
+    const updatePayload = serializeClientServiceUpdatePayload(payload)
+
+    const updatedService = await runMutation({
+      set,
+      resources: ['clients', 'clientServices'],
+      action: async () => {
+        const response = await apiClient.put(
+          `/client-services/${normalizedServiceId}`,
+          updatePayload,
+        )
+        return mapClientService(response.data)
+      },
+    })
+
+    invalidateQuery(queryKeys.clientServices())
+    invalidateQuery(queryKeys.clients())
+    invalidateQuery(['metrics'])
+
+    await Promise.all([
+      get().loadClientServices({ force: true, retries: 1 }),
+      get().loadClients({ force: true, retries: 1 }),
+      get().loadMetrics({ force: true, retries: 1 }),
+    ])
+
+    return updatedService
+  },
+  deleteClientService: async (serviceId) => {
+    if (!serviceId) {
+      throw new Error('Selecciona un servicio válido para eliminar')
+    }
+
+    const normalizedServiceId = String(serviceId)
+
+    await runMutation({
+      set,
+      resources: ['clients', 'clientServices'],
+      action: async () => {
+        await apiClient.delete(`/client-services/${normalizedServiceId}`)
+      },
+    })
+
+    invalidateQuery(queryKeys.clientServices())
+    invalidateQuery(queryKeys.clients())
+    invalidateQuery(['metrics'])
+
+    await Promise.all([
+      get().loadClientServices({ force: true, retries: 1 }),
       get().loadClients({ force: true, retries: 1 }),
       get().loadMetrics({ force: true, retries: 1 }),
     ])
@@ -613,6 +743,7 @@ export const useBackofficeStore = create((set, get) => ({
 
     await Promise.all([
       get().loadClients({ force: true, retries: 1 }),
+      get().loadClientServices({ force: true, retries: 1 }),
       get().loadMetrics({ force: true, retries: 1 }),
     ])
   },
@@ -651,7 +782,7 @@ export const useBackofficeStore = create((set, get) => ({
 
     await runMutation({
       set,
-      resources: 'clients',
+      resources: ['clients', 'clientServices'],
       action: async () => {
         await apiClient.put(`/client-services/${targetService.id}`, {
           status: normalizedStatus,
@@ -660,10 +791,12 @@ export const useBackofficeStore = create((set, get) => ({
     })
 
     invalidateQuery(queryKeys.clients())
+    invalidateQuery(queryKeys.clientServices())
     invalidateQuery(['metrics'])
 
     await Promise.all([
       get().loadClients({ force: true, retries: 1 }),
+      get().loadClientServices({ force: true, retries: 1 }),
       get().loadMetrics({ force: true, retries: 1 }),
     ])
 
