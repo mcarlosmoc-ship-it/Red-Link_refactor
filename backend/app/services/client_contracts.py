@@ -74,7 +74,7 @@ class ClientContractService:
         *,
         client: Optional[models.Client] = None,
     ) -> dict:
-        payload = data.model_dump(exclude_unset=True)
+        payload = data.model_dump(exclude_unset=True, by_alias=True)
         if "display_name" in payload and payload["display_name"]:
             payload["display_name"] = payload["display_name"].strip()
         if not payload.get("currency"):
