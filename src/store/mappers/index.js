@@ -15,6 +15,7 @@ export const voucherTypeKeyById = Object.fromEntries(
 
 export const mapClientService = (service) => ({
   id: service.id,
+  clientId: service.client_id ?? service.clientId ?? null,
   type: service.service_type,
   name: service.display_name,
   status: service.status,
@@ -25,6 +26,8 @@ export const mapClientService = (service) => ({
   baseId: service.base_id ?? null,
   notes: service.notes ?? '',
   metadata: service.metadata ?? {},
+  createdAt: service.created_at ?? null,
+  updatedAt: service.updated_at ?? null,
 })
 
 const mapRecentPayment = (payment) => ({
