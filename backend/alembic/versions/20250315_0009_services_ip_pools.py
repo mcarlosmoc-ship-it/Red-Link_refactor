@@ -136,7 +136,15 @@ def upgrade() -> None:
     if not is_sqlite:
         op.drop_constraint("ck_payments_months_paid_positive", "service_payments", type_="check")
 
-    op.alter_column("service_payments", "months_paid", existing_type=sa.Numeric(6, 2), nullable=True)
+    if is_sqlite:
+        with op.batch_alter_table("service_payments", recreate="always") as batch_op:
+            batch_op.alter_column(
+                "months_paid",
+                existing_type=sa.Numeric(6, 2),
+                nullable=True,
+            )
+    else:
+        op.alter_column("service_payments", "months_paid", existing_type=sa.Numeric(6, 2), nullable=True)
 
     if not is_sqlite:
         op.create_check_constraint(
