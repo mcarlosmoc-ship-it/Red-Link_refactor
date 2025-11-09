@@ -40,7 +40,7 @@ class ServicePlan(Base):
             values_callable=lambda enum_cls: [member.value for member in enum_cls],
         ),
         nullable=False,
-        default=ClientServiceType.INTERNET_PRIVATE,
+        default=ClientServiceType.INTERNET,
     )
     download_speed_mbps = Column(Numeric(8, 2), nullable=True)
     upload_speed_mbps = Column(Numeric(8, 2), nullable=True)
@@ -53,6 +53,11 @@ class ServicePlan(Base):
 
     client_plans = relationship("ClientPlan", back_populates="service_plan")
     client_services = relationship("ClientService", back_populates="service_plan")
+    streaming_accounts = relationship(
+        "StreamingAccount",
+        back_populates="service_plan",
+        cascade="all, delete-orphan",
+    )
 
 
 class ClientPlan(Base):

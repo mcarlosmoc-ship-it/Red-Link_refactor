@@ -7,8 +7,6 @@ from decimal import Decimal
 import sqlalchemy as sa
 from alembic import op
 
-from app.models.client_service import ClientServiceType
-
 revision = "20250320_0010"
 down_revision = "20250315_0009"
 branch_labels = None
@@ -16,7 +14,14 @@ depends_on = None
 
 
 SERVICE_PLAN_TYPE_ENUM = sa.Enum(
-    *(member.value for member in ClientServiceType),
+    "internet_private",
+    "internet_tokens",
+    "streaming_spotify",
+    "streaming_netflix",
+    "streaming_vix",
+    "public_desk",
+    "point_of_sale",
+    "other",
     name="service_plan_type_enum",
 )
 
@@ -34,13 +39,13 @@ def upgrade() -> None:
                     "service_type",
                     SERVICE_PLAN_TYPE_ENUM,
                     nullable=False,
-                    server_default=ClientServiceType.INTERNET_PRIVATE.value,
+                    server_default="internet_private",
                 ),
             )
             op.execute(
                 sa.text(
                     "UPDATE service_plans SET service_type = :default_type WHERE service_type IS NULL"
-                ).bindparams(default_type=ClientServiceType.INTERNET_PRIVATE.value)
+                ).bindparams(default_type="internet_private")
             )
             if dialect_name != "sqlite":
                 op.alter_column(
@@ -113,7 +118,7 @@ def upgrade() -> None:
         bind.execute(
             sa.insert(service_plans_table).values(
                 name="Internet mensual",
-                service_type=ClientServiceType.INTERNET_PRIVATE.value,
+                service_type="internet_private",
                 description="Plan base de internet residencial",
                 default_monthly_fee=Decimal("300"),
                 is_token_plan=False,

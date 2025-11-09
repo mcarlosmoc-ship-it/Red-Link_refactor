@@ -41,12 +41,15 @@ const SERVICE_STATUS_LABELS = {
 
 const formatServiceStatus = (status) => SERVICE_STATUS_LABELS[status] ?? 'Desconocido'
 
+const isInternetLikeService = (serviceType) =>
+  serviceType === 'internet' || serviceType === 'hotspot'
+
 const getPrimaryService = (client) => {
   const services = Array.isArray(client?.services) ? client.services : []
   if (services.length === 0) {
     return null
   }
-  return services.find((service) => service.type?.startsWith('internet_')) ?? services[0]
+  return services.find((service) => isInternetLikeService(service.type)) ?? services[0]
 }
 
 const defaultEquipmentForm = {

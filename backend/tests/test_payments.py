@@ -3,15 +3,18 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
+from datetime import date
+from decimal import Decimal
+
 from fastapi.testclient import TestClient
-from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import create_engine
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import sessionmaker
 
 from backend.app import models
 from backend.app.database import Base, get_db
-from backend.app.models import BillingPeriod
 from backend.app.main import app
+from backend.app.models import BillingPeriod
 from backend.app.security import generate_totp_code
 
 
@@ -270,7 +273,7 @@ def test_payment_reuses_period_with_mismatched_key(client, db_session):
 
     plan = models.ServicePlan(
         name="Internet mensual legado",
-        service_type=models.ClientServiceType.INTERNET_PRIVATE,
+        service_type=models.ClientServiceType.INTERNET,
         default_monthly_fee=Decimal("300"),
     )
     db_session.add(plan)
@@ -366,7 +369,7 @@ def test_preloaded_sqlite_database_allows_creating_payments(tmp_path, monkeypatc
 
         plan = models.ServicePlan(
             name="Internet mensual",
-            service_type=models.ClientServiceType.INTERNET_PRIVATE,
+            service_type=models.ClientServiceType.INTERNET,
             default_monthly_fee=Decimal("300"),
         )
         session.add(plan)

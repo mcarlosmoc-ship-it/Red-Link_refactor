@@ -125,7 +125,7 @@ def seed_basic_data(db_session: Session) -> dict:
 
     plan = models.ServicePlan(
         name="Internet mensual",
-        service_type=models.ClientServiceType.INTERNET_PRIVATE,
+        service_type=models.ClientServiceType.INTERNET,
         default_monthly_fee=Decimal("300"),
         description="Plan base de internet residencial",
     )

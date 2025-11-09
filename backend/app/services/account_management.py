@@ -49,11 +49,7 @@ class AccountService:
     """Operations for managing principal and client accounts."""
 
     CLIENT_LIMIT_PER_PRINCIPAL = 5
-    STREAMING_SERVICE_TYPES = {
-        ClientServiceType.STREAMING_NETFLIX,
-        ClientServiceType.STREAMING_SPOTIFY,
-        ClientServiceType.STREAMING_VIX,
-    }
+    STREAMING_SERVICE_TYPES = {ClientServiceType.STREAMING}
 
     @staticmethod
     def list_principal_accounts(
@@ -240,7 +236,7 @@ class AccountService:
                 raise AccountServiceError("El servicio seleccionado no existe.")
             AccountService._ensure_streaming_service(streaming_service)
         elif client_id_for_service:
-            service_type = requested_service_type or ClientServiceType.STREAMING_NETFLIX
+            service_type = requested_service_type or ClientServiceType.STREAMING
             display_name = payload.get("nombre_cliente") or payload.get("correo_cliente")
             display_name = display_name.strip() if display_name else "Streaming"
             streaming_service = AccountService._create_streaming_service(
@@ -319,7 +315,7 @@ class AccountService:
                     or account.correo_cliente
                     or "Streaming"
                 )
-                service_type = requested_service_type or ClientServiceType.STREAMING_NETFLIX
+                service_type = requested_service_type or ClientServiceType.STREAMING
                 streaming_service = AccountService._create_streaming_service(
                     db,
                     principal=principal_for_service,
