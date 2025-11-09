@@ -63,14 +63,6 @@ def _column_exists(table_name: str, column_name: str) -> bool:
     return any(column["name"] == column_name for column in inspector.get_columns(table_name))
 
 
-def _fk_exists(table_name: str, constraint_name: str) -> bool:
-    bind = op.get_bind()
-    inspector = sa.inspect(bind)
-    if not inspector.has_table(table_name):
-        return False
-    return any(fk["name"] == constraint_name for fk in inspector.get_foreign_keys(table_name))
-
-
 def upgrade() -> None:
     uuid_type, uuid_default, json_type = _dialect_settings()
     bind = op.get_bind()
@@ -209,6 +201,125 @@ def upgrade() -> None:
 
     if not _index_exists("service_payments", "service_payments_client_idx"):
         op.create_index("service_payments_client_idx", "service_payments", ["client_id"])
+
+    if not _index_exists("service_payments", "service_payments_service_idx"):
+        op.create_index("service_payments_service_idx", "service_payments", ["client_service_id"])
+
+    if not _index_exists("service_payments", "service_payments_period_idx"):
+        op.create_index("service_payments_period_idx", "service_payments", ["period_key"])
+
+    if not _index_exists("service_payments", "service_payments_paid_on_idx"):
+        op.create_index("service_payments_paid_on_idx", "service_payments", ["paid_on"])
+
+    if not _column_exists("principal_accounts", "max_slots"):
+        op.add_column(
+            "principal_accounts",
+            sa.Column("max_slots", sa.Integer(), nullable=False, server_default="5"),
+        )
+        op.alter_column("principal_accounts", "max_slots", server_default=None)
+
+    if not _column_exists("client_accounts", "client_id"):
+        op.add_column(
+            "client_accounts",
+            sa.Column(
+                "client_id",
+                uuid_type,
+                sa.ForeignKey("clients.client_id", ondelete="SET NULL"),
+                nullable=True,
+            ),
+        )
+
+    if not _column_exists("client_accounts", "client_service_id"):
+        op.add_column(
+            "client_accounts",
+            sa.Column(
+                "client_service_id",
+                uuid_type,
+                sa.ForeignKey("client_services.client_service_id", ondelete="SET NULL"),
+                nullable=True,
+            ),
+        )
+
+    if not _index_exists("client_accounts", "client_accounts_client_idx"):
+        op.create_index("client_accounts_client_idx", "client_accounts", ["client_id"])
+
+    if not _index_exists("client_accounts", "client_accounts_client_service_idx"):
+        op.create_index("client_accounts_client_service_idx", "client_accounts", ["client_service_id"])
+
+    if not _table_exists("base_ip_pools"):
+        op.create_table(
+            "base_ip_pools",
+            sa.Column("pool_id", sa.Integer(), primary_key=True, autoincrement=True),
+            sa.Column(
+                "base_id",
+                sa.Integer(),
+                sa.ForeignKey("base_stations.base_id", ondelete="CASCADE"),
+                nullable=False,
+            ),
+            sa.Column("label", sa.String(120), nullable=False),
+            sa.Column("cidr", sa.String(64), nullable=False),
+            sa.Column("vlan", sa.String(32), nullable=True),
+            sa.Column("notes", sa.Text(), nullable=True),
+            sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+            sa.Column(
+                "updated_at",
+                sa.DateTime(timezone=True),
+                server_default=sa.func.now(),
+                onupdate=sa.func.now(),
+                nullable=False,
+            ),
+            sa.UniqueConstraint("base_id", "cidr", name="uq_base_ip_pools_base_cidr"),
+        )
+
+    if not _index_exists("base_ip_pools", "base_ip_pools_base_idx"):
+        op.create_index("base_ip_pools_base_idx", "base_ip_pools", ["base_id"])
+
+    op.create_table(
+        "base_ip_reservations",
+        sa.Column("reservation_id", uuid_type, primary_key=True, server_default=uuid_default),
+        sa.Column(
+            "base_id",
+            sa.Integer(),
+            sa.ForeignKey("base_stations.base_id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column(
+            "pool_id",
+            sa.Integer(),
+            sa.ForeignKey("base_ip_pools.pool_id", ondelete="SET NULL"),
+            nullable=True,
+        ),
+        sa.Column("ip_address", sa.String(45), nullable=False),
+        sa.Column("status", ip_reservation_status_enum, nullable=False, server_default="available"),
+        sa.Column(
+            "service_id",
+            uuid_type,
+            sa.ForeignKey("client_services.client_service_id", ondelete="SET NULL"),
+            nullable=True,
+        ),
+        sa.Column(
+            "client_id",
+            uuid_type,
+            sa.ForeignKey("clients.client_id", ondelete="SET NULL"),
+            nullable=True,
+        ),
+        sa.Column("notes", sa.Text(), nullable=True),
+        sa.Column("assigned_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("released_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            onupdate=sa.func.now(),
+            nullable=False,
+        ),
+        sa.UniqueConstraint("base_id", "ip_address", name="uq_base_ip_reservations_unique_ip"),
+    )
+    op.create_index("base_ip_reservations_status_idx", "base_ip_reservations", ["status"])
+    op.create_index("base_ip_reservations_pool_idx", "base_ip_reservations", ["pool_id"])
+    op.create_index("base_ip_reservations_service_idx", "base_ip_reservations", ["service_id"])
+    op.create_index("base_ip_reservations_client_idx", "base_ip_reservations", ["client_id"])
 
     if not _index_exists("service_payments", "service_payments_service_idx"):
         op.create_index("service_payments_service_idx", "service_payments", ["client_service_id"])
