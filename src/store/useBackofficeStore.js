@@ -641,13 +641,7 @@ export const useBackofficeStore = create((set, get) => ({
       (item) => String(item.id) === String(normalizedServiceId),
     )
 
-    if (!service) {
-      if (availableServices.length === 0) {
-        throw new Error(
-          'El cliente no tiene servicios configurados. Asigna uno para registrar pagos.',
-        )
-      }
-
+    if (availableServices.length > 0 && !service) {
       throw new Error('Selecciona un servicio válido para registrar el pago')
     }
 
@@ -670,7 +664,6 @@ export const useBackofficeStore = create((set, get) => ({
     })()
 
     const payload = {
-      client_service_id: service.id,
       client_id: client.id,
       period_key: periodKey ?? state.periods?.selected ?? state.periods?.current,
       paid_on: paidOn ?? today(),
@@ -678,6 +671,10 @@ export const useBackofficeStore = create((set, get) => ({
       months_paid: computedMonths > 0 ? computedMonths : null,
       method: method ?? 'Efectivo',
       note: note ?? '',
+    }
+
+    if (service?.id) {
+      payload.client_service_id = service.id
     }
 
     await runMutation({
