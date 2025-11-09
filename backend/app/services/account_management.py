@@ -161,14 +161,6 @@ class AccountService:
         return account
 
     @staticmethod
-    CLIENT_LIMIT_PER_PRINCIPAL = 5
-    STREAMING_SERVICE_TYPES = {
-        ClientServiceType.STREAMING_NETFLIX,
-        ClientServiceType.STREAMING_SPOTIFY,
-        ClientServiceType.STREAMING_VIX,
-    }
-
-    @staticmethod
     def _resolve_principal_or_raise(
         db: Session, principal_id: UUID
     ) -> models.PrincipalAccount:
