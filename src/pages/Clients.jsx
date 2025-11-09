@@ -76,6 +76,9 @@ const defaultForm = {
   monthlyFee: CLIENT_PRICE,
 }
 
+const ACTION_BUTTON_CLASSES =
+  'border border-slate-200 bg-white text-slate-700 hover:border-blue-200 disabled:cursor-not-allowed disabled:opacity-50'
+
 export default function ClientsPage() {
   const { initializeStatus, selectedPeriod, currentPeriod } = useBackofficeStore((state) => ({
     initializeStatus: state.status.initialize,
@@ -88,7 +91,8 @@ export default function ClientsPage() {
     status: clientsStatus,
     reload: reloadClients,
     createClient,
-    toggleClientService,
+    updateClientServiceStatus,
+    deleteClient,
     importClients,
   } = useClients()
   const { showToast } = useToast()
@@ -420,6 +424,13 @@ export default function ClientsPage() {
     [selectedClient],
   )
   const primaryService = useMemo(() => getPrimaryService(selectedClient), [selectedClient])
+  const primaryServiceStatusValue = primaryService?.status ?? null
+  const canActivateSelectedPrimaryService =
+    Boolean(primaryService) &&
+    primaryServiceStatusValue !== 'active' &&
+    primaryServiceStatusValue !== 'cancelled'
+  const canSuspendSelectedPrimaryService =
+    Boolean(primaryService) && primaryServiceStatusValue === 'active'
   const detailAnchorPeriod = selectedPeriod ?? currentPeriod ?? null
   const selectedClientPaymentStatus = useMemo(() => {
     if (!selectedClient || !detailAnchorPeriod) {
@@ -620,25 +631,41 @@ export default function ClientsPage() {
     }
   }
 
-  const handleToggleService = async (client, service) => {
-    if (!service) {
+  const handleUpdateServiceStatus = async (client, service, nextStatus) => {
+    if (!client || !service) {
       showToast({
         type: 'error',
         title: 'Servicio no disponible',
-        description: 'El cliente no tiene servicios configurados para actualizar.',
+        description: 'Selecciona un cliente y servicio válidos para actualizar.',
+      })
+      return
+    }
+
+    const normalizedStatus = typeof nextStatus === 'string' ? nextStatus.trim().toLowerCase() : ''
+
+    if (normalizedStatus !== 'active' && normalizedStatus !== 'suspended') {
+      showToast({
+        type: 'error',
+        title: 'Estado no soportado',
+        description: 'Solo se puede activar o suspender el servicio desde esta vista.',
+      })
+      return
+    }
+
+    if (service.status === normalizedStatus) {
+      const currentStatusLabel = formatServiceStatus(service.status)
+      showToast({
+        type: 'info',
+        title: 'Sin cambios',
+        description: `${service.name} ya está ${currentStatusLabel.toLowerCase()}.`,
       })
       return
     }
 
     try {
-      const nextStatus = await toggleClientService(client.id, service.id)
-      const nextStatusLabel = formatServiceStatus(nextStatus)
-      const isActive = nextStatus === 'active'
-      const toastTitle = isActive
-        ? 'Servicio activado'
-        : nextStatus === 'suspended'
-          ? 'Servicio suspendido'
-          : 'Servicio actualizado'
+      await updateClientServiceStatus(client.id, service.id, normalizedStatus)
+      const nextStatusLabel = formatServiceStatus(normalizedStatus)
+      const toastTitle = normalizedStatus === 'active' ? 'Servicio activado' : 'Servicio suspendido'
       showToast({
         type: 'success',
         title: toastTitle,
@@ -648,6 +675,49 @@ export default function ClientsPage() {
       showToast({
         type: 'error',
         title: 'No se pudo actualizar el servicio',
+        description: error?.message ?? 'Intenta nuevamente.',
+      })
+    }
+  }
+
+  const handleDeleteClient = async (client) => {
+    if (!client || !client.id) {
+      showToast({
+        type: 'error',
+        title: 'Cliente no disponible',
+        description: 'Selecciona un cliente válido para eliminar.',
+      })
+      return
+    }
+
+    const confirmationMessage = `¿Eliminar a ${client.name}? Esta acción no se puede deshacer.`
+    const isConfirmed = window.confirm(confirmationMessage)
+
+    if (!isConfirmed) {
+      return
+    }
+
+    const normalizedClientId = normalizeId(client.id)
+
+    try {
+      await deleteClient(client.id)
+      showToast({
+        type: 'success',
+        title: 'Cliente eliminado',
+        description: `${client.name} se eliminó correctamente.`,
+      })
+
+      if (normalizedClientId && selectedClientId === normalizedClientId) {
+        setSelectedClientId(null)
+      }
+
+      if (normalizedClientId && highlightedClientId === normalizedClientId) {
+        setHighlightedClientId(null)
+      }
+    } catch (error) {
+      showToast({
+        type: 'error',
+        title: 'No se pudo eliminar el cliente',
         description: error?.message ?? 'Intenta nuevamente.',
       })
     }
@@ -1212,7 +1282,14 @@ export default function ClientsPage() {
                         const primaryStatusForRow = primaryServiceForRow
                           ? formatServiceStatus(primaryServiceForRow.status)
                           : client.service
-                        const isPrimaryActive = primaryServiceForRow?.status === 'active'
+                        const primaryServiceStatus = primaryServiceForRow?.status ?? null
+                        const isPrimaryActive = primaryServiceStatus === 'active'
+                        const canActivatePrimaryService =
+                          Boolean(primaryServiceForRow) &&
+                          primaryServiceStatus !== 'active' &&
+                          primaryServiceStatus !== 'cancelled'
+                        const canSuspendPrimaryService =
+                          Boolean(primaryServiceForRow) && primaryServiceStatus === 'active'
                         const primaryMonthlyFee = (() => {
                           const parsed = Number(primaryServiceForRow?.price)
                           if (Number.isFinite(parsed) && parsed > 0) {
@@ -1268,11 +1345,11 @@ export default function ClientsPage() {
                             )}
                           </td>
                           <td className="px-3 py-2 text-right">
-                            <div className="flex justify-end gap-2">
+                            <div className="flex flex-wrap justify-end gap-2">
                               <Button
                                 size="sm"
                                 variant="ghost"
-                                className="border border-slate-200 bg-white text-slate-700 hover:border-blue-200"
+                                className={ACTION_BUTTON_CLASSES}
                                 onClick={() =>
                                   setSelectedClientId((prev) => {
                                     if (!clientRowId) {
@@ -1287,11 +1364,32 @@ export default function ClientsPage() {
                               <Button
                                 size="sm"
                                 variant="ghost"
-                                className="border border-slate-200 bg-white text-slate-700 hover:border-blue-200 disabled:cursor-not-allowed disabled:opacity-50"
-                                onClick={() => handleToggleService(client, primaryServiceForRow)}
-                                disabled={isMutatingClients || !primaryServiceForRow}
+                                className={ACTION_BUTTON_CLASSES}
+                                onClick={() =>
+                                  handleUpdateServiceStatus(client, primaryServiceForRow, 'active')
+                                }
+                                disabled={isMutatingClients || !canActivatePrimaryService}
                               >
-                                {isPrimaryActive ? 'Suspender' : 'Activar'}
+                                Activar
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className={ACTION_BUTTON_CLASSES}
+                                onClick={() =>
+                                  handleUpdateServiceStatus(client, primaryServiceForRow, 'suspended')
+                                }
+                                disabled={isMutatingClients || !canSuspendPrimaryService}
+                              >
+                                Suspender
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="danger"
+                                onClick={() => handleDeleteClient(client)}
+                                disabled={isMutatingClients}
+                              >
+                                Eliminar
                               </Button>
                             </div>
                           </td>
@@ -1323,13 +1421,47 @@ export default function ClientsPage() {
         >
           <Card>
             <CardContent className="space-y-6">
-              <div className="flex flex-col gap-1">
-                <h2 id="detalles-cliente" className="text-lg font-semibold text-slate-900">
-                  Detalles de {selectedClient.name}
-                </h2>
-                <p className="text-sm text-slate-500">
-                  Base {selectedClient.base} · {selectedClient.location}
-                </p>
+              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                <div className="flex flex-col gap-1">
+                  <h2 id="detalles-cliente" className="text-lg font-semibold text-slate-900">
+                    Detalles de {selectedClient.name}
+                  </h2>
+                  <p className="text-sm text-slate-500">
+                    Base {selectedClient.base} · {selectedClient.location}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className={ACTION_BUTTON_CLASSES}
+                    onClick={() =>
+                      handleUpdateServiceStatus(selectedClient, primaryService, 'active')
+                    }
+                    disabled={isMutatingClients || !canActivateSelectedPrimaryService}
+                  >
+                    Activar servicio
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className={ACTION_BUTTON_CLASSES}
+                    onClick={() =>
+                      handleUpdateServiceStatus(selectedClient, primaryService, 'suspended')
+                    }
+                    disabled={isMutatingClients || !canSuspendSelectedPrimaryService}
+                  >
+                    Suspender servicio
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    onClick={() => handleDeleteClient(selectedClient)}
+                    disabled={isMutatingClients}
+                  >
+                    Eliminar cliente
+                  </Button>
+                </div>
               </div>
 
               <div className="grid gap-4 md:grid-cols-3">
@@ -1419,6 +1551,8 @@ export default function ClientsPage() {
                       const isCancelled = service.status === 'cancelled'
                       const servicePrice = Number(service.price)
                       const hasPrice = Number.isFinite(servicePrice) && servicePrice > 0
+                      const canActivateService = !isCancelled && service.status !== 'active'
+                      const canSuspendService = !isCancelled && service.status === 'active'
 
                       return (
                         <div
@@ -1461,15 +1595,28 @@ export default function ClientsPage() {
                               {service.notes && <p>Notas: {service.notes}</p>}
                             </div>
                           </div>
-                          <div className="mt-3 flex justify-end">
+                          <div className="mt-3 flex flex-wrap justify-end gap-2">
                             <Button
                               size="sm"
                               variant="ghost"
-                              className="border border-slate-200 bg-white text-slate-700 hover:border-blue-200 disabled:cursor-not-allowed disabled:opacity-50"
-                              onClick={() => handleToggleService(selectedClient, service)}
-                              disabled={isMutatingClients || isCancelled}
+                              className={ACTION_BUTTON_CLASSES}
+                              onClick={() =>
+                                handleUpdateServiceStatus(selectedClient, service, 'active')
+                              }
+                              disabled={isMutatingClients || !canActivateService}
                             >
-                              {isActive ? 'Suspender' : 'Activar'}
+                              Activar
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className={ACTION_BUTTON_CLASSES}
+                              onClick={() =>
+                                handleUpdateServiceStatus(selectedClient, service, 'suspended')
+                              }
+                              disabled={isMutatingClients || !canSuspendService}
+                            >
+                              Suspender
                             </Button>
                           </div>
                         </div>
