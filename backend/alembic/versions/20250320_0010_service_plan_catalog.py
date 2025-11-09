@@ -7,7 +7,7 @@ from decimal import Decimal
 import sqlalchemy as sa
 from alembic import op
 
-from backend.app.models.client_service import ClientServiceType
+from app.models.client_service import ClientServiceType
 
 revision = "20250320_0010"
 down_revision = "20250315_0009"
