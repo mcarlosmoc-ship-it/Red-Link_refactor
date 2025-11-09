@@ -1,8 +1,14 @@
-import React, { useMemo, useState } from 'react'
-import { peso, formatPeriodLabel, getPeriodFromDateString, today } from '../utils/formatters.js'
+import React, { useEffect, useMemo, useState } from 'react'
+import {
+  peso,
+  formatDate,
+  formatPeriodLabel,
+  getPeriodFromDateString,
+  today,
+} from '../utils/formatters.js'
 import Button from '../components/ui/Button.jsx'
 import { Card, CardContent } from '../components/ui/Card.jsx'
-import { CLIENT_PRICE, useBackofficeStore } from '../store/useBackofficeStore.js'
+import { useBackofficeStore } from '../store/useBackofficeStore.js'
 import { usePayments } from '../hooks/usePayments.js'
 import { useToast } from '../hooks/useToast.js'
 import { useClients } from '../hooks/useClients.js'
@@ -27,6 +33,7 @@ export default function PaymentsPage() {
   const [isRetrying, setIsRetrying] = useState(false)
   const [paymentForm, setPaymentForm] = useState({
     clientId: '',
+    serviceId: '',
     months: '',
     amount: '',
     method: METHOD_OPTIONS[0] ?? 'Efectivo',
@@ -57,6 +64,76 @@ export default function PaymentsPage() {
     [clients],
   )
 
+  const selectedClient = useMemo(
+    () => clients.find((client) => String(client.id) === String(paymentForm.clientId)) ?? null,
+    [clients, paymentForm.clientId],
+  )
+
+  const serviceOptions = useMemo(() => {
+    if (!selectedClient) {
+      return []
+    }
+    return (selectedClient.services ?? []).map((service) => ({
+      value: String(service.id),
+      label: `${service.name} · ${(service.type || 'servicio').replace(/_/g, ' ')}`,
+    }))
+  }, [selectedClient])
+
+  useEffect(() => {
+    if (!selectedClient?.services?.length) {
+      setPaymentForm((prev) => (prev.serviceId === '' ? prev : { ...prev, serviceId: '' }))
+      return
+    }
+
+    const hasCurrentService = selectedClient.services.some(
+      (service) => String(service.id) === String(paymentForm.serviceId),
+    )
+
+    if (hasCurrentService) {
+      return
+    }
+
+    const defaultServiceId = String(selectedClient.services[0].id)
+    setPaymentForm((prev) => ({ ...prev, serviceId: defaultServiceId }))
+  }, [selectedClient, paymentForm.serviceId])
+
+  const selectedService = useMemo(() => {
+    if (!selectedClient?.services?.length) {
+      return null
+    }
+
+    return (
+      selectedClient.services.find(
+        (service) => String(service.id) === String(paymentForm.serviceId),
+      ) ?? selectedClient.services[0] ?? null
+    )
+  }, [selectedClient, paymentForm.serviceId])
+
+  const selectedServiceStatusLabel = useMemo(() => {
+    if (!selectedService) {
+      return null
+    }
+
+    switch (selectedService.status) {
+      case 'active':
+        return 'Activo'
+      case 'suspended':
+        return 'Suspendido'
+      case 'cancelled':
+        return 'Baja'
+      default:
+        return 'Desconocido'
+    }
+  }, [selectedService])
+
+  const selectedServicePrice = useMemo(() => {
+    if (!selectedService) {
+      return 0
+    }
+    const parsed = Number(selectedService.price)
+    return Number.isFinite(parsed) ? parsed : 0
+  }, [selectedService])
+
   const handlePaymentSubmit = async (event) => {
     event.preventDefault()
     if (!paymentForm.clientId) {
@@ -64,18 +141,16 @@ export default function PaymentsPage() {
       return
     }
 
+    if (!selectedService) {
+      setPaymentError('El cliente no tiene servicios disponibles para cobrar.')
+      return
+    }
+
     const monthsValue = Number(paymentForm.months)
     const amountValue = Number(paymentForm.amount)
     const normalizedMonths = Number.isFinite(monthsValue) && monthsValue > 0 ? monthsValue : 0
     const normalizedAmount = Number.isFinite(amountValue) && amountValue > 0 ? amountValue : 0
-    const selectedClient = clients.find(
-      (client) => String(client.id) === String(paymentForm.clientId),
-    )
-    const parsedMonthlyFee = Number(selectedClient?.monthlyFee)
-    const clientMonthlyFee = Number.isFinite(parsedMonthlyFee)
-      ? parsedMonthlyFee
-      : CLIENT_PRICE
-    const requiresExplicitMonths = clientMonthlyFee <= 0
+    const requiresExplicitMonths = selectedServicePrice <= 0 && normalizedAmount <= 0
 
     if (normalizedMonths <= 0 && normalizedAmount <= 0) {
       setPaymentError('Ingresa meses pagados o un monto a registrar.')
@@ -95,6 +170,7 @@ export default function PaymentsPage() {
     try {
       await recordPayment({
         clientId: paymentForm.clientId,
+        serviceId: selectedService.id,
         months: normalizedMonths,
         amount: normalizedAmount,
         method: paymentForm.method,
@@ -161,10 +237,11 @@ export default function PaymentsPage() {
       .filter((payment) => isInSelectedPeriod(payment.date))
       .filter((payment) => {
         const matchesMethod = methodFilter === 'Todos' || payment.method === methodFilter
+        const clientName = payment.clientName?.toLowerCase?.() ?? ''
+        const note = payment.note?.toLowerCase?.() ?? ''
+        const serviceName = payment.serviceName?.toLowerCase?.() ?? ''
         const matchesTerm =
-          term.length === 0 ||
-          payment.clientName.toLowerCase().includes(term) ||
-          payment.note.toLowerCase().includes(term)
+          term.length === 0 || clientName.includes(term) || note.includes(term) || serviceName.includes(term)
         return matchesMethod && matchesTerm
       })
   }, [payments, methodFilter, searchTerm, selectedPeriod])
@@ -192,7 +269,11 @@ export default function PaymentsPage() {
                   <select
                     value={paymentForm.clientId}
                     onChange={(event) =>
-                      setPaymentForm((prev) => ({ ...prev, clientId: event.target.value }))
+                      setPaymentForm((prev) => ({
+                        ...prev,
+                        clientId: event.target.value,
+                        serviceId: '',
+                      }))
                     }
                     className="rounded-md border border-slate-300 px-3 py-2 text-sm"
                     disabled={isLoadingClients}
@@ -221,6 +302,61 @@ export default function PaymentsPage() {
               </div>
 
               <div className="grid gap-3 md:grid-cols-3">
+                <label className="grid gap-1 text-xs font-medium text-slate-600 md:col-span-2">
+                  Servicio
+                  <select
+                    value={paymentForm.serviceId}
+                    onChange={(event) =>
+                      setPaymentForm((prev) => ({ ...prev, serviceId: event.target.value }))
+                    }
+                    className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+                    disabled={!serviceOptions.length}
+                  >
+                    <option value="">
+                      {selectedClient
+                        ? serviceOptions.length
+                          ? 'Selecciona un servicio'
+                          : 'Este cliente no tiene servicios disponibles'
+                        : 'Selecciona primero un cliente'}
+                    </option>
+                    {serviceOptions.map((service) => (
+                      <option key={service.value} value={service.value}>
+                        {service.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                  {selectedService ? (
+                    <div className="space-y-1">
+                      <p className="font-semibold text-slate-700">{selectedService.name}</p>
+                      <p className="capitalize text-slate-500">
+                        {selectedService.type.replace(/_/g, ' ')} · Estado: {selectedServiceStatusLabel}
+                      </p>
+                      {selectedServicePrice > 0 && (
+                        <p className="text-slate-500">
+                          Tarifa: {peso(selectedServicePrice)} al mes
+                        </p>
+                      )}
+                      {selectedService.nextBillingDate ? (
+                        <p className="text-slate-500">
+                          Próximo cobro: {formatDate(selectedService.nextBillingDate)}
+                        </p>
+                      ) : selectedService.billingDay ? (
+                        <p className="text-slate-500">
+                          Cobro recurrente día {selectedService.billingDay}
+                        </p>
+                      ) : (
+                        <p className="text-slate-500">Sin fecha de cobro configurada</p>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-slate-500">Selecciona un cliente y servicio para ver el detalle.</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-3">
                 <label className="grid gap-1 text-xs font-medium text-slate-600">
                   Meses pagados
                   <input
@@ -233,6 +369,7 @@ export default function PaymentsPage() {
                     }
                     className="rounded-md border border-slate-300 px-3 py-2 text-sm"
                     placeholder="0"
+                    disabled={!selectedService}
                   />
                 </label>
                 <label className="grid gap-1 text-xs font-medium text-slate-600">
@@ -247,6 +384,7 @@ export default function PaymentsPage() {
                     }
                     className="rounded-md border border-slate-300 px-3 py-2 text-sm"
                     placeholder="0.00"
+                    disabled={!selectedService}
                   />
                 </label>
                 <label className="grid gap-1 text-xs font-medium text-slate-600">
@@ -276,6 +414,7 @@ export default function PaymentsPage() {
                   }
                   className="min-h-[80px] rounded-md border border-slate-300 px-3 py-2 text-sm"
                   placeholder="Referencia, folio o comentarios relevantes"
+                  disabled={!selectedService}
                 />
               </label>
 
@@ -286,7 +425,10 @@ export default function PaymentsPage() {
               )}
 
               <div className="flex justify-end">
-                <Button type="submit" disabled={isSubmittingPayment || isLoadingClients}>
+                <Button
+                  type="submit"
+                  disabled={isSubmittingPayment || isLoadingClients || !selectedService}
+                >
                   {isSubmittingPayment ? 'Guardando…' : 'Registrar pago'}
                 </Button>
               </div>
@@ -384,6 +526,9 @@ export default function PaymentsPage() {
                       Cliente
                     </th>
                     <th scope="col" className="px-3 py-2 font-medium">
+                      Servicio
+                    </th>
+                    <th scope="col" className="px-3 py-2 font-medium">
                       Periodos
                     </th>
                     <th scope="col" className="px-3 py-2 font-medium">
@@ -402,7 +547,10 @@ export default function PaymentsPage() {
                     <tr key={payment.id}>
                       <td className="px-3 py-2 text-slate-600">{payment.date}</td>
                       <td className="px-3 py-2 text-slate-700">{payment.clientName}</td>
-                      <td className="px-3 py-2 text-slate-600">{payment.months}</td>
+                      <td className="px-3 py-2 text-slate-600">{payment.serviceName}</td>
+                      <td className="px-3 py-2 text-slate-600">
+                        {payment.months ? `${payment.months} mes(es)` : '—'}
+                      </td>
                       <td className="px-3 py-2 text-slate-600">{payment.method}</td>
                       <td className="px-3 py-2 text-slate-600">{peso(payment.amount)}</td>
                       <td className="px-3 py-2 text-slate-500">{payment.note || '—'}</td>
@@ -410,7 +558,7 @@ export default function PaymentsPage() {
                   ))}
                   {filteredPayments.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="px-3 py-6 text-center text-sm text-slate-500">
+                      <td colSpan={7} className="px-3 py-6 text-center text-sm text-slate-500">
                         No hay pagos registrados con los criterios seleccionados en {periodLabel}.
                       </td>
                     </tr>

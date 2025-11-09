@@ -9,10 +9,12 @@ from .account_management import (
     stop_overdue_monitor,
 )
 from .clients import ClientService
+from .client_contracts import ClientContractService, ClientContractError
 from .payments import PaymentService, PaymentServiceError
 from .resellers import ResellerService
 from .expenses import ExpenseService
 from .inventory import InventoryService
+from .ip_pools import IpPoolService, IpPoolServiceError
 from .metrics import MetricsService
 from .pos import PosService, PosServiceError
 from .billing_periods import BillingPeriodService
@@ -33,11 +35,15 @@ __all__ = [
     "start_overdue_monitor",
     "stop_overdue_monitor",
     "ClientService",
+    "ClientContractService",
+    "ClientContractError",
     "PaymentService",
     "PaymentServiceError",
     "ResellerService",
     "ExpenseService",
     "InventoryService",
+    "IpPoolService",
+    "IpPoolServiceError",
     "MetricsService",
     "PosService",
     "PosServiceError",

@@ -10,6 +10,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ..models.client import ClientType, ServiceStatus
 from .common import PaginatedResponse
+from .payment import ServicePaymentRead
+from .service import ClientServiceRead
 
 
 class ClientBase(BaseModel):
@@ -62,6 +64,8 @@ class ClientRead(ClientBase):
     id: str
     created_at: datetime
     updated_at: datetime
+    services: list[ClientServiceRead] = Field(default_factory=list)
+    recent_payments: list[ServicePaymentRead] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
 

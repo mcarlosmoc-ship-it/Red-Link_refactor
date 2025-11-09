@@ -52,7 +52,10 @@ class MetricsService:
             internet_costs, base_cost_breakdown = MetricsService._total_operating_costs_for_period(db, period_key)
             payments_for_period = client_income
         else:
-            payments_for_period = sum(Decimal(payment.amount or 0) for payment in db.query(models.Payment).all())
+            payments_for_period = sum(
+                Decimal(payment.amount or 0)
+                for payment in db.query(models.ServicePayment).all()
+            )
             client_income = payments_for_period
             reseller_income = ResellerService.total_settlements_for_period(db, period_key=None)
             expenses_total = sum(Decimal(expense.amount or 0) for expense in db.query(models.Expense).all())

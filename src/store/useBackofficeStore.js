@@ -587,17 +587,32 @@ export const useBackofficeStore = create((set, get) => ({
     invalidateQuery(queryKeys.resellers())
     await get().loadResellers({ force: true, retries: 1 })
   },
-  toggleClientService: async (clientId) => {
+  toggleClientService: async (clientId, serviceId) => {
     const state = get()
-    const client = state.clients.find((item) => item.id === clientId)
-    const nextStatus = client?.service === 'Activo' ? 'Suspendido' : 'Activo'
+    const client = state.clients.find((item) => String(item.id) === String(clientId))
+    if (!client) {
+      throw new Error('Cliente no encontrado')
+    }
+
+    const availableServices = Array.isArray(client.services) ? client.services : []
+    const normalizedServiceId =
+      serviceId ?? availableServices[0]?.id ?? null
+    const targetService = availableServices.find(
+      (service) => String(service.id) === String(normalizedServiceId),
+    )
+
+    if (!targetService) {
+      throw new Error('El cliente no tiene servicios asociados')
+    }
+
+    const nextStatus = targetService.status === 'active' ? 'suspended' : 'active'
 
     await runMutation({
       set,
       resources: 'clients',
       action: async () => {
-        await apiClient.patch(`/clients/${clientId}`, {
-          service_status: nextStatus,
+        await apiClient.put(`/client-services/${targetService.id}`, {
+          status: nextStatus,
         })
       },
     })
@@ -612,10 +627,26 @@ export const useBackofficeStore = create((set, get) => ({
 
     return nextStatus
   },
-  recordPayment: async ({ clientId, months, amount, method, note, periodKey, paidOn }) => {
+  recordPayment: async ({ clientId, serviceId, months, amount, method, note, periodKey, paidOn }) => {
     const state = get()
-    const client = state.clients.find((item) => item.id === clientId)
-    const monthlyFee = client?.monthlyFee ?? CLIENT_PRICE
+    const client = state.clients.find((item) => String(item.id) === String(clientId))
+    if (!client) {
+      throw new Error('Cliente no encontrado')
+    }
+
+    const availableServices = Array.isArray(client.services) ? client.services : []
+    const normalizedServiceId =
+      serviceId ?? availableServices[0]?.id ?? null
+
+    const service = availableServices.find(
+      (item) => String(item.id) === String(normalizedServiceId),
+    )
+
+    if (!service) {
+      throw new Error('Selecciona un servicio válido para registrar el pago')
+    }
+
+    const monthlyFee = service?.price ?? client?.monthlyFee ?? CLIENT_PRICE
     const normalizedMonths = normalizeDecimal(months, 0)
     const normalizedAmount = normalizeDecimal(amount, 0)
 
@@ -638,11 +669,11 @@ export const useBackofficeStore = create((set, get) => ({
       resources: 'payments',
       action: async () => {
         await apiClient.post('/payments', {
-          client_id: clientId,
+          client_service_id: service.id,
           period_key: periodKey ?? state.periods?.selected ?? state.periods?.current,
           paid_on: paidOn ?? today(),
           amount: computedAmount,
-          months_paid: computedMonths,
+          months_paid: computedMonths > 0 ? computedMonths : null,
           method: method ?? 'Efectivo',
           note: note ?? '',
         })
