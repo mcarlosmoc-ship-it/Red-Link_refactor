@@ -124,4 +124,20 @@ it('returns default metrics and empty projected clients when metrics are unavail
   expect(result.metrics.internetCosts).toBe(175)
   expect(result.projectedClients).toHaveLength(0)
 })
+
+it('sums all base costs when metrics are unavailable', () => {
+  mockState.metrics = null
+  mockState.dashboardClients = []
+  mockState.baseCosts = {
+    baseNorth: '120.50',
+    baseSouth: 79.5,
+    baseEast: '30',
+    baseWest: 10,
+  }
+
+  const result = renderHook()
+
+  expect(result.metrics.internetCosts).toBeCloseTo(240)
+  expect(result.metrics).toMatchObject({ totalClients: 0, netEarnings: 0 })
+})
 })
