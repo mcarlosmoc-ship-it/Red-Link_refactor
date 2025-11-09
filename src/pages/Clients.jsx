@@ -146,6 +146,7 @@ export default function ClientsPage() {
   })
   const [serviceFormErrors, setServiceFormErrors] = useState({})
   const clientDetailsRef = useRef(null)
+  const shouldOpenServiceFormRef = useRef(false)
   const isMutatingClients = Boolean(clientsStatus?.isMutating)
   const isSyncingClients = Boolean(clientsStatus?.isLoading)
   const isLoadingClients = Boolean(clientsStatus?.isLoading && clients.length === 0)
@@ -527,7 +528,12 @@ export default function ClientsPage() {
   useEffect(() => {
     setServiceFormState(buildDefaultServiceFormState())
     setServiceFormErrors({})
-    setIsAddingService(false)
+    if (shouldOpenServiceFormRef.current) {
+      setIsAddingService(true)
+      shouldOpenServiceFormRef.current = false
+    } else {
+      setIsAddingService(false)
+    }
   }, [buildDefaultServiceFormState, selectedClientId])
   const selectedClientServices = useMemo(
     () => (selectedClient?.services ? [...selectedClient.services] : []),
@@ -694,16 +700,41 @@ export default function ClientsPage() {
   }
 
   const validateServiceForm = useCallback(() => {
-    const errors = computeServiceFormErrors(serviceFormState)
+    const errors = {}
+
+    const displayName = serviceFormState.displayName?.trim() ?? ''
+    if (!displayName) {
+      errors.displayName = 'Ingresa el nombre del servicio.'
+    }
+
+    if (!serviceFormState.serviceType) {
+      errors.serviceType = 'Selecciona el tipo de servicio.'
+    }
+
+    if (serviceFormState.price !== '') {
+      const parsedPrice = Number(serviceFormState.price)
+      if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
+        errors.price = 'Ingresa una tarifa mensual válida (cero o mayor).'
+      }
+    }
+
+    if (serviceFormState.billingDay !== '') {
+      const parsedDay = Number(serviceFormState.billingDay)
+      if (!Number.isInteger(parsedDay) || parsedDay < 1 || parsedDay > 31) {
+        errors.billingDay = 'Indica un día de cobro entre 1 y 31.'
+      }
+    }
+
+    if (serviceFormState.baseId !== '') {
+      const parsedBase = Number(serviceFormState.baseId)
+      if (!Number.isInteger(parsedBase) || parsedBase < 1) {
+        errors.baseId = 'Selecciona una base válida.'
+      }
+    }
+
     setServiceFormErrors(errors)
     return Object.keys(errors).length === 0
   }, [serviceFormState])
-
-  const validateInitialService = useCallback(() => {
-    const errors = computeServiceFormErrors(initialServiceState)
-    setInitialServiceErrors(errors)
-    return Object.keys(errors).length === 0
-  }, [initialServiceState])
 
   const handleCancelNewService = useCallback(() => {
     setServiceFormState(buildDefaultServiceFormState())
@@ -837,55 +868,12 @@ export default function ClientsPage() {
       })
       setFormState({ ...defaultForm })
       setFormErrors({})
-      setInitialServiceState(createInitialServiceState(defaultForm.base))
-      setInitialServiceErrors({})
 
       const normalizedNewClientId = normalizeId(newClient?.id)
       if (normalizedNewClientId) {
+        shouldOpenServiceFormRef.current = true
         setSelectedClientId(normalizedNewClientId)
         setHighlightedClientId(normalizedNewClientId)
-
-        const normalizedPrice =
-          initialServiceSnapshot.price === '' || initialServiceSnapshot.price === null
-            ? undefined
-            : Number(initialServiceSnapshot.price)
-        const normalizedBillingDay =
-          initialServiceSnapshot.billingDay === '' || initialServiceSnapshot.billingDay === null
-            ? undefined
-            : Number(initialServiceSnapshot.billingDay)
-        const normalizedBaseId =
-          initialServiceSnapshot.baseId === '' || initialServiceSnapshot.baseId === null
-            ? undefined
-            : Number(initialServiceSnapshot.baseId)
-
-        try {
-          await createClientService({
-            clientId: normalizedNewClientId,
-            serviceType: initialServiceSnapshot.serviceType,
-            displayName: initialServiceSnapshot.displayName.trim(),
-            price: normalizedPrice,
-            billingDay: normalizedBillingDay,
-            baseId: normalizedBaseId,
-            notes: initialServiceSnapshot.notes?.trim()
-              ? initialServiceSnapshot.notes.trim()
-              : null,
-            status: initialServiceSnapshot.status,
-          })
-
-          showToast({
-            type: 'success',
-            title: 'Servicio asignado',
-            description: `Se asignó ${initialServiceSnapshot.displayName.trim()} a ${clientName}.`,
-          })
-        } catch (error) {
-          showToast({
-            type: 'error',
-            title: 'El servicio no se pudo crear',
-            description:
-              error?.message ??
-              'El cliente se registró correctamente, pero el servicio inicial falló. Intenta agregarlo manualmente.',
-          })
-        }
       }
     } catch (error) {
       showToast({

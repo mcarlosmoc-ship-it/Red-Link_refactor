@@ -20,7 +20,6 @@ import {
   mapClientAccount,
   serializeClientPayload,
   serializeClientServicePayload,
-  serializeClientServiceUpdatePayload,
   serializeClientAccountPayload,
   convertBaseCosts,
   VOUCHER_TYPE_IDS,
@@ -525,29 +524,6 @@ export const useBackofficeStore = create((set, get) => ({
     })
 
     invalidateQuery(queryKeys.clients())
-    invalidateQuery(['metrics'])
-
-    await Promise.all([
-      get().loadClients({ force: true, retries: 1 }),
-      get().loadMetrics({ force: true, retries: 1 }),
-    ])
-
-    return createdClient
-  },
-  createClientService: async (payload) => {
-    const createdService = await runMutation({
-      set,
-      resources: ['clients', 'clientServices'],
-      action: async () => {
-        const response = await apiClient.post(
-          '/client-services',
-          serializeClientServicePayload(payload),
-        )
-        return mapClientService(response.data)
-      },
-    })
-
-    invalidateQuery(queryKeys.clients())
     invalidateQuery(queryKeys.clientServices())
     invalidateQuery(['metrics'])
 
@@ -615,6 +591,31 @@ export const useBackofficeStore = create((set, get) => ({
       get().loadClients({ force: true, retries: 1 }),
       get().loadMetrics({ force: true, retries: 1 }),
     ])
+
+    return createdClient
+  },
+  createClientService: async (payload) => {
+    const createdService = await runMutation({
+      set,
+      resources: 'clients',
+      action: async () => {
+        const response = await apiClient.post(
+          '/client-services',
+          serializeClientServicePayload(payload),
+        )
+        return mapClientService(response.data)
+      },
+    })
+
+    invalidateQuery(queryKeys.clients())
+    invalidateQuery(['metrics'])
+
+    await Promise.all([
+      get().loadClients({ force: true, retries: 1 }),
+      get().loadMetrics({ force: true, retries: 1 }),
+    ])
+
+    return createdService
   },
   createClientAccount: async (payload) => {
     await runMutation({

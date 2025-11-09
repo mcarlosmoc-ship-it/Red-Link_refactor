@@ -275,52 +275,6 @@ export const serializeClientServicePayload = (payload) => {
     body.metadata = payload.metadata
   }
 
-  if (payload.status) {
-    body.status = payload.status
-  }
-
-  return body
-}
-
-export const serializeClientServiceUpdatePayload = (payload) => {
-  const body = {}
-
-  if (payload.displayName !== undefined) {
-    body.display_name = payload.displayName
-  }
-
-  if (payload.status !== undefined) {
-    body.status = payload.status
-  }
-
-  if (payload.price !== undefined) {
-    body.price = payload.price
-  }
-
-  if (payload.currency !== undefined) {
-    body.currency = payload.currency
-  }
-
-  if (payload.billingDay !== undefined) {
-    body.billing_day = payload.billingDay
-  }
-
-  if (payload.nextBillingDate !== undefined) {
-    body.next_billing_date = payload.nextBillingDate
-  }
-
-  if (payload.baseId !== undefined) {
-    body.base_id = payload.baseId
-  }
-
-  if (payload.notes !== undefined) {
-    body.notes = payload.notes
-  }
-
-  if (payload.metadata !== undefined) {
-    body.metadata = payload.metadata
-  }
-
   return body
 }
 
