@@ -198,7 +198,7 @@ class AccountService:
             service_type=service_type,
             display_name=display_name,
             next_billing_date=next_billing_date,
-            service_metadata=metadata,
+            metadata=metadata,
         )
         try:
             return ClientContractService.create_service(db, service_payload)

@@ -20,14 +20,7 @@ class ClientServiceBase(BaseModel):
     next_billing_date: Optional[date] = None
     base_id: Optional[int] = Field(default=None, ge=1)
     notes: Optional[str] = None
-    service_metadata: Optional[dict[str, Any]] = Field(
-        default=None,
-        alias="metadata",
-        validation_alias="metadata",
-        serialization_alias="metadata",
-    )
-
-    model_config = ConfigDict(populate_by_name=True)
+    metadata: Optional[dict[str, Any]] = None
 
 
 class ClientServiceCreate(ClientServiceBase):
@@ -47,14 +40,7 @@ class ClientServiceUpdate(BaseModel):
     next_billing_date: Optional[date] = None
     base_id: Optional[int] = Field(default=None, ge=1)
     notes: Optional[str] = None
-    service_metadata: Optional[dict[str, Any]] = Field(
-        default=None,
-        alias="metadata",
-        validation_alias="metadata",
-        serialization_alias="metadata",
-    )
-
-    model_config = ConfigDict(populate_by_name=True)
+    metadata: Optional[dict[str, Any]] = None
 
 
 class ClientServiceRead(ClientServiceBase):
@@ -66,7 +52,7 @@ class ClientServiceRead(ClientServiceBase):
     updated_at: datetime
     cancelled_at: Optional[datetime] = None
 
-    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ClientServiceListResponse(PaginatedResponse[ClientServiceRead]):

@@ -100,9 +100,7 @@ class ClientService(Base):
     currency = Column(String(3), nullable=False, default="MXN")
     base_id = Column(Integer, ForeignKey("base_stations.base_id", ondelete="SET NULL"), nullable=True)
     notes = Column(Text, nullable=True)
-    service_metadata = Column(
-        "metadata", JSON().with_variant(SQLiteJSON(), "sqlite"), nullable=True
-    )
+    metadata = Column(JSON().with_variant(SQLiteJSON(), "sqlite"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(
         DateTime(timezone=True),
@@ -129,7 +127,6 @@ class ClientService(Base):
         back_populates="service",
         cascade="all, delete-orphan",
     )
-
 
 
 class ServicePayment(Base):
