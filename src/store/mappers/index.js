@@ -243,6 +243,38 @@ export const serializeClientPayload = (payload) => ({
   service_status: payload.service ?? 'Activo',
 })
 
+export const serializeClientServicePayload = (payload) => {
+  const body = {
+    client_id: payload.clientId,
+    service_type: payload.serviceType,
+    display_name: payload.displayName,
+    price: payload.price ?? 0,
+    currency: payload.currency ?? 'MXN',
+  }
+
+  if (payload.billingDay) {
+    body.billing_day = payload.billingDay
+  }
+
+  if (payload.nextBillingDate) {
+    body.next_billing_date = payload.nextBillingDate
+  }
+
+  if (payload.baseId) {
+    body.base_id = payload.baseId
+  }
+
+  if (payload.notes) {
+    body.notes = payload.notes
+  }
+
+  if (payload.metadata) {
+    body.metadata = payload.metadata
+  }
+
+  return body
+}
+
 export const serializeClientAccountPayload = (payload) => {
   const body = {
     principal_account_id: payload.principalAccountId,
