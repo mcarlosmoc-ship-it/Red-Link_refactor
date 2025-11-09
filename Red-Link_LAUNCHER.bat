@@ -110,7 +110,7 @@ if not exist "%VENV_PYTHON%" (
     python -m venv .venv
     if errorlevel 1 (
         popd >nul
-        call :log ERROR "No se pudo crear el entorno virtual. Verifica tu instalacion de Python."
+        call :log ERROR "No se pudo crear el entorno virtual. Verifica tu instalación de Python."
         exit /b 1
     )
     call :log SUCCESS "Entorno virtual creado correctamente."
