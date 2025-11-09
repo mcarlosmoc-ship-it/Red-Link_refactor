@@ -102,6 +102,7 @@ export default function ClientsPage() {
     status: clientsStatus,
     reload: reloadClients,
     createClient,
+    createClientService,
     updateClientServiceStatus,
     deleteClient,
     importClients,
@@ -133,6 +134,7 @@ export default function ClientsPage() {
   })
   const [serviceFormErrors, setServiceFormErrors] = useState({})
   const clientDetailsRef = useRef(null)
+  const shouldOpenServiceFormRef = useRef(false)
   const isMutatingClients = Boolean(clientsStatus?.isMutating)
   const isSyncingClients = Boolean(clientsStatus?.isLoading)
   const isLoadingClients = Boolean(clientsStatus?.isLoading && clients.length === 0)
@@ -450,7 +452,12 @@ export default function ClientsPage() {
   useEffect(() => {
     setServiceFormState(buildDefaultServiceFormState())
     setServiceFormErrors({})
-    setIsAddingService(false)
+    if (shouldOpenServiceFormRef.current) {
+      setIsAddingService(true)
+      shouldOpenServiceFormRef.current = false
+    } else {
+      setIsAddingService(false)
+    }
   }, [buildDefaultServiceFormState, selectedClientId])
   const selectedClientServices = useMemo(
     () => (selectedClient?.services ? [...selectedClient.services] : []),
@@ -616,6 +623,128 @@ export default function ClientsPage() {
     return Object.keys(errors).length === 0
   }
 
+  const validateServiceForm = useCallback(() => {
+    const errors = {}
+
+    const displayName = serviceFormState.displayName?.trim() ?? ''
+    if (!displayName) {
+      errors.displayName = 'Ingresa el nombre del servicio.'
+    }
+
+    if (!serviceFormState.serviceType) {
+      errors.serviceType = 'Selecciona el tipo de servicio.'
+    }
+
+    if (serviceFormState.price !== '') {
+      const parsedPrice = Number(serviceFormState.price)
+      if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
+        errors.price = 'Ingresa una tarifa mensual válida (cero o mayor).'
+      }
+    }
+
+    if (serviceFormState.billingDay !== '') {
+      const parsedDay = Number(serviceFormState.billingDay)
+      if (!Number.isInteger(parsedDay) || parsedDay < 1 || parsedDay > 31) {
+        errors.billingDay = 'Indica un día de cobro entre 1 y 31.'
+      }
+    }
+
+    if (serviceFormState.baseId !== '') {
+      const parsedBase = Number(serviceFormState.baseId)
+      if (!Number.isInteger(parsedBase) || parsedBase < 1) {
+        errors.baseId = 'Selecciona una base válida.'
+      }
+    }
+
+    setServiceFormErrors(errors)
+    return Object.keys(errors).length === 0
+  }, [serviceFormState])
+
+  const handleCancelNewService = useCallback(() => {
+    setServiceFormState(buildDefaultServiceFormState())
+    setServiceFormErrors({})
+    setIsAddingService(false)
+  }, [buildDefaultServiceFormState])
+
+  const handleSubmitNewService = useCallback(
+    async (event) => {
+      event.preventDefault()
+
+      if (!selectedClient || !selectedClient.id) {
+        showToast({
+          type: 'error',
+          title: 'Cliente no disponible',
+          description: 'Selecciona un cliente válido para agregar un servicio.',
+        })
+        return
+      }
+
+      if (!validateServiceForm()) {
+        return
+      }
+
+      const normalizedPrice = (() => {
+        if (serviceFormState.price === '' || serviceFormState.price === null) {
+          return null
+        }
+        const parsed = Number(serviceFormState.price)
+        return Number.isFinite(parsed) ? parsed : null
+      })()
+
+      const normalizedBillingDay = (() => {
+        if (serviceFormState.billingDay === '' || serviceFormState.billingDay === null) {
+          return null
+        }
+        const parsed = Number(serviceFormState.billingDay)
+        return Number.isInteger(parsed) ? parsed : null
+      })()
+
+      const normalizedBaseId = (() => {
+        if (serviceFormState.baseId === '' || serviceFormState.baseId === null) {
+          return null
+        }
+        const parsed = Number(serviceFormState.baseId)
+        return Number.isInteger(parsed) ? parsed : null
+      })()
+
+      try {
+        await createClientService({
+          clientId: selectedClient.id,
+          serviceType: serviceFormState.serviceType,
+          displayName: serviceFormState.displayName.trim(),
+          price: normalizedPrice,
+          billingDay: normalizedBillingDay,
+          baseId: normalizedBaseId,
+          notes: serviceFormState.notes?.trim() ? serviceFormState.notes.trim() : null,
+        })
+
+        showToast({
+          type: 'success',
+          title: 'Servicio agregado',
+          description: `Se agregó ${serviceFormState.displayName.trim()} a ${selectedClient.name}.`,
+        })
+
+        setServiceFormState(buildDefaultServiceFormState())
+        setServiceFormErrors({})
+        setIsAddingService(false)
+      } catch (error) {
+        showToast({
+          type: 'error',
+          title: 'No se pudo agregar el servicio',
+          description: error?.message ?? 'Intenta nuevamente.',
+        })
+      }
+    },
+    [
+      selectedClient,
+      serviceFormState,
+      createClientService,
+      showToast,
+      validateServiceForm,
+      buildDefaultServiceFormState,
+    ],
+  )
+
   const handleSubmit = async (event) => {
     event.preventDefault()
     if (!validateForm()) return
@@ -651,7 +780,7 @@ export default function ClientsPage() {
     }
 
     try {
-      await createClient(payload)
+      const newClient = await createClient(payload)
       showToast({
         type: 'success',
         title: 'Cliente agregado',
@@ -659,6 +788,13 @@ export default function ClientsPage() {
       })
       setFormState({ ...defaultForm })
       setFormErrors({})
+
+      const normalizedNewClientId = normalizeId(newClient?.id)
+      if (normalizedNewClientId) {
+        shouldOpenServiceFormRef.current = true
+        setSelectedClientId(normalizedNewClientId)
+        setHighlightedClientId(normalizedNewClientId)
+      }
     } catch (error) {
       showToast({
         type: 'error',
