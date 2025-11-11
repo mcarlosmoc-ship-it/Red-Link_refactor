@@ -72,7 +72,9 @@ class ClientService:
         status: Optional[models.ServiceStatus] = None,
     ) -> Tuple[Iterable[models.Client], int]:
         query = db.query(models.Client).options(
-            selectinload(models.Client.services)
+            selectinload(models.Client.services).selectinload(
+                models.ClientService.service_plan
+            )
         )
 
         if search:
@@ -99,9 +101,9 @@ class ClientService:
         client = (
             db.query(models.Client)
             .options(
-                selectinload(models.Client.services).selectinload(
-                    models.ClientService.payments
-                ),
+                selectinload(models.Client.services)
+                .selectinload(models.ClientService.payments)
+                .selectinload(models.ClientService.service_plan),
                 selectinload(models.Client.payments),
             )
             .filter(models.Client.id == client_id)

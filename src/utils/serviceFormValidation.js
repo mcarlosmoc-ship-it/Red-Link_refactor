@@ -2,17 +2,55 @@ import { SERVICE_STATUS_OPTIONS } from '../constants/serviceTypes.js'
 
 const SERVICE_STATUS_VALUES = new Set(SERVICE_STATUS_OPTIONS.map((option) => option.value))
 
-const isBillingDayRequired = (plan) => {
+const isBillingDayRequired = (plan, effectivePrice) => {
   if (!plan) {
     return false
   }
   const category = plan.serviceType ?? plan.category ?? null
-  return Boolean(plan.requiresIp || plan.requiresBase || category === 'internet' || category === 'hotspot')
+  const requiresSchedule = Boolean(
+    plan.requiresIp || plan.requiresBase || category === 'internet' || category === 'hotspot',
+  )
+
+  if (!requiresSchedule) {
+    return false
+  }
+
+  if (typeof effectivePrice === 'number') {
+    return effectivePrice > 0
+  }
+
+  if (effectivePrice === null || effectivePrice === undefined) {
+    if (plan?.monthlyPrice !== undefined && plan?.monthlyPrice !== null) {
+      const planPrice = Number(plan.monthlyPrice)
+      if (Number.isFinite(planPrice)) {
+        return planPrice > 0
+      }
+    }
+
+    if (
+      plan?.defaultMonthlyFee !== undefined &&
+      plan?.defaultMonthlyFee !== null
+    ) {
+      const fallbackPrice = Number(plan.defaultMonthlyFee)
+      if (Number.isFinite(fallbackPrice)) {
+        return fallbackPrice > 0
+      }
+    }
+
+    return false
+  }
+
+  const numericEffectivePrice = Number(effectivePrice)
+  if (Number.isFinite(numericEffectivePrice)) {
+    return numericEffectivePrice > 0
+  }
+
+  return false
 }
 
 export const computeServiceFormErrors = (
   state,
-  { requireClientId = false, plan = null } = {},
+  { requireClientId = false, plan = null, effectivePrice: overrideEffectivePrice = null } = {},
 ) => {
   const errors = {}
 
@@ -21,13 +59,48 @@ export const computeServiceFormErrors = (
     errors.servicePlanId = 'Selecciona un servicio mensual.'
   }
 
+  const resolvedEffectivePrice = (() => {
+    if (typeof overrideEffectivePrice === 'number') {
+      return overrideEffectivePrice
+    }
+    if (overrideEffectivePrice !== null && overrideEffectivePrice !== undefined) {
+      const numeric = Number(overrideEffectivePrice)
+      if (Number.isFinite(numeric)) {
+        return numeric
+      }
+    }
+
+    if (state?.isCustomPriceEnabled) {
+      const customValue = Number(state?.price)
+      if (Number.isFinite(customValue)) {
+        return customValue
+      }
+    }
+
+    if (plan && plan.monthlyPrice !== undefined && plan.monthlyPrice !== null) {
+      const planPrice = Number(plan.monthlyPrice)
+      if (Number.isFinite(planPrice)) {
+        return planPrice
+      }
+    }
+
+    if (plan && plan.defaultMonthlyFee !== undefined && plan.defaultMonthlyFee !== null) {
+      const planDefault = Number(plan.defaultMonthlyFee)
+      if (Number.isFinite(planDefault)) {
+        return planDefault
+      }
+    }
+
+    return null
+  })()
+
   const billingDayValue = state?.billingDay
   if (billingDayValue !== '' && billingDayValue !== null && billingDayValue !== undefined) {
     const parsedDay = Number(billingDayValue)
     if (!Number.isInteger(parsedDay) || parsedDay < 1 || parsedDay > 31) {
       errors.billingDay = 'Indica un día de cobro entre 1 y 31.'
     }
-  } else if (isBillingDayRequired(plan)) {
+  } else if (isBillingDayRequired(plan, resolvedEffectivePrice)) {
     errors.billingDay = 'Selecciona un día de cobro entre 1 y 31.'
   }
 

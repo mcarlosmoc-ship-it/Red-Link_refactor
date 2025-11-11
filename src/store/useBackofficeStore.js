@@ -21,6 +21,7 @@ import {
   mapServicePlan,
   serializeClientPayload,
   serializeClientServicePayload,
+  serializeClientServiceBulkPayload,
   serializeClientServiceUpdatePayload,
   serializeClientAccountPayload,
   serializeServicePlanPayload,
@@ -661,6 +662,36 @@ export const useBackofficeStore = create((set, get) => ({
     ])
 
     return createdService
+  },
+  bulkAssignClientServices: async (payload) => {
+    if (!payload || !Array.isArray(payload.clientIds) || payload.clientIds.length === 0) {
+      throw new Error('Selecciona al menos un cliente para asignar el servicio')
+    }
+
+    const createdServices = await runMutation({
+      set,
+      resources: 'clients',
+      action: async () => {
+        const response = await apiClient.post(
+          '/client-services/bulk-assign',
+          serializeClientServiceBulkPayload(payload),
+        )
+        const data = Array.isArray(response.data) ? response.data : []
+        return data.map(mapClientService)
+      },
+    })
+
+    invalidateQuery(queryKeys.clients())
+    invalidateQuery(queryKeys.clientServices())
+    invalidateQuery(['metrics'])
+
+    await Promise.all([
+      get().loadClients({ force: true, retries: 1 }),
+      get().loadClientServices({ force: true, retries: 1 }),
+      get().loadMetrics({ force: true, retries: 1 }),
+    ])
+
+    return createdServices
   },
   createServicePlan: async (payload) => {
     const createdPlan = await runMutation({

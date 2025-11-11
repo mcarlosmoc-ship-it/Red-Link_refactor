@@ -91,7 +91,7 @@ class ClientContractService:
         *,
         client: Optional[models.Client] = None,
         existing: Optional[models.ClientService] = None,
-    ) -> tuple[dict, models.ServicePlan]:
+    ) -> tuple[dict, models.ServicePlan, Decimal]:
         payload = data.model_dump(exclude_unset=True, by_alias=True)
         if existing is not None:
             client = client or existing.client
@@ -130,18 +130,32 @@ class ClientContractService:
             if not payload.get("ip_address"):
                 raise ClientContractError("Este servicio requiere asignar una dirección IP.")
 
+        plan_monthly_price = (
+            Decimal(str(plan.monthly_price))
+            if plan.monthly_price is not None
+            else Decimal("0")
+        )
+        effective_price = plan_monthly_price
+
         if payload.get("custom_price") is not None:
             custom_price = Decimal(str(payload["custom_price"]))
             if custom_price < 0:
                 raise ClientContractError("El precio personalizado no puede ser negativo.")
             if custom_price == plan.monthly_price:
                 payload["custom_price"] = None
+                effective_price = plan_monthly_price
             else:
                 payload["custom_price"] = custom_price
+                effective_price = custom_price
         else:
             payload["custom_price"] = None
 
-        return payload, plan
+        if effective_price <= Decimal("0"):
+            payload["billing_day"] = None
+            payload.pop("next_billing_date", None)
+            payload["next_billing_date"] = None
+
+        return payload, plan, effective_price
 
     @staticmethod
     def _validate_capacity(
@@ -173,10 +187,14 @@ class ClientContractService:
         cls, db: Session, data: schemas.ClientServiceCreate
     ) -> models.ClientService:
         client = cls._resolve_client(db, data.client_id)
-        payload, plan = cls._normalize_payload(db, data, client=client)
+        payload, plan, effective_price = cls._normalize_payload(db, data, client=client)
         payload["client_id"] = client.id
 
-        if payload.get("next_billing_date") is None and payload.get("billing_day"):
+        if (
+            effective_price > Decimal("0")
+            and payload.get("next_billing_date") is None
+            and payload.get("billing_day")
+        ):
             payload["next_billing_date"] = cls._compute_next_billing_date(payload["billing_day"])
 
         status = payload.get("status", models.ClientServiceStatus.ACTIVE)
@@ -249,7 +267,7 @@ class ClientContractService:
                     client_id=client_id,
                     **base_payload,
                 )
-                payload, normalized_plan = cls._normalize_payload(
+                payload, normalized_plan, effective_price = cls._normalize_payload(
                     db, create_payload, client=client
                 )
                 status = payload.get("status", models.ClientServiceStatus.ACTIVE)
@@ -277,6 +295,8 @@ class ClientContractService:
                     )
 
                 payload["client_id"] = client.id
+                if effective_price <= Decimal("0"):
+                    payload.pop("next_billing_date", None)
                 service = models.ClientService(**payload)
                 db.add(service)
                 created.append(service)
@@ -301,14 +321,18 @@ class ClientContractService:
     def update_service(
         cls, db: Session, service: models.ClientService, data: schemas.ClientServiceUpdate
     ) -> models.ClientService:
-        update_data, plan = cls._normalize_payload(
+        update_data, plan, effective_price = cls._normalize_payload(
             db, data, client=service.client, existing=service
         )
 
         status = update_data.get("status", service.status)
         cls._validate_capacity(db, plan, status, exclude_service_id=str(service.id))
 
-        if update_data.get("billing_day") and not update_data.get("next_billing_date"):
+        if (
+            effective_price > Decimal("0")
+            and update_data.get("billing_day")
+            and not update_data.get("next_billing_date")
+        ):
             update_data["next_billing_date"] = cls._compute_next_billing_date(
                 update_data["billing_day"], base_date=service.next_billing_date
             )
