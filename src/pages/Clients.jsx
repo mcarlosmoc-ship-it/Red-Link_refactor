@@ -309,10 +309,6 @@ export default function ClientsPage() {
   const hasClientsError = Boolean(clientsStatus?.error)
   const shouldShowSkeleton = Boolean(initializeStatus?.isLoading) || isRefreshing
 
-  if (shouldShowSkeleton) {
-    return <ClientsSkeleton />
-  }
-
   useEffect(() => {
     if (!location?.hash) {
       setHighlightedClientId(null)
@@ -1626,6 +1622,10 @@ export default function ClientsPage() {
   }
 
   const isClientsTabActive = activeMainTab === 'clients'
+
+  if (shouldShowSkeleton) {
+    return <ClientsSkeleton />
+  }
 
   return (
     <div className="space-y-8">
