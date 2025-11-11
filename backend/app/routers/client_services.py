@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -47,6 +47,20 @@ def create_service(
 ) -> schemas.ClientServiceRead:
     try:
         return ClientContractService.create_service(db, payload)
+    except (ValueError, ClientContractError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.post(
+    "/bulk",
+    response_model=List[schemas.ClientServiceRead],
+    status_code=status.HTTP_201_CREATED,
+)
+def bulk_create_services(
+    payload: schemas.ClientServiceBulkCreate, db: Session = Depends(get_db)
+) -> List[schemas.ClientServiceRead]:
+    try:
+        return ClientContractService.bulk_create_services(db, payload)
     except (ValueError, ClientContractError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 

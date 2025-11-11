@@ -40,7 +40,7 @@ from .reseller_delivery import (
     ResellerSettlement,
     ResellerSettlementStatus,
 )
-from .service_plan import ClientPlan, ServicePlan
+from .service_plan import CapacityType, ClientPlan, ServicePlan, ServicePlanStatus
 from .streaming import StreamingAccount, StreamingPlatform, StreamingSlot
 from .support_ticket import SupportTicket, TicketPriority, TicketStatus
 from .voucher import Voucher, VoucherPrice, VoucherStatus, VoucherType
@@ -94,8 +94,10 @@ __all__ = [
     "ResellerSettlementStatus",
     "BaseOperatingCost",
     "FinancialSnapshot",
+    "CapacityType",
     "ClientPlan",
     "ServicePlan",
+    "ServicePlanStatus",
     "StreamingAccount",
     "StreamingSlot",
     "StreamingPlatform",

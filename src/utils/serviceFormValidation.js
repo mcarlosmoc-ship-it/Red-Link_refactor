@@ -2,23 +2,23 @@ import { SERVICE_STATUS_OPTIONS } from '../constants/serviceTypes.js'
 
 const SERVICE_STATUS_VALUES = new Set(SERVICE_STATUS_OPTIONS.map((option) => option.value))
 
-export const computeServiceFormErrors = (state, { requireClientId = false } = {}) => {
+const isBillingDayRequired = (plan) => {
+  if (!plan) {
+    return false
+  }
+  const category = plan.serviceType ?? plan.category ?? null
+  return Boolean(plan.requiresIp || plan.requiresBase || category === 'internet' || category === 'hotspot')
+}
+
+export const computeServiceFormErrors = (
+  state,
+  { requireClientId = false, plan = null } = {},
+) => {
   const errors = {}
-  const displayName = state?.displayName?.trim() ?? ''
-  if (!displayName) {
-    errors.displayName = 'Ingresa el nombre del servicio.'
-  }
 
-  if (!state?.serviceType) {
-    errors.serviceType = 'Selecciona el tipo de servicio.'
-  }
-
-  const priceValue = state?.price
-  if (priceValue !== '' && priceValue !== null && priceValue !== undefined) {
-    const parsedPrice = Number(priceValue)
-    if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
-      errors.price = 'Ingresa una tarifa mensual válida (cero o mayor).'
-    }
+  const planId = state?.servicePlanId
+  if (!planId) {
+    errors.servicePlanId = 'Selecciona un servicio mensual.'
   }
 
   const billingDayValue = state?.billingDay
@@ -27,13 +27,32 @@ export const computeServiceFormErrors = (state, { requireClientId = false } = {}
     if (!Number.isInteger(parsedDay) || parsedDay < 1 || parsedDay > 31) {
       errors.billingDay = 'Indica un día de cobro entre 1 y 31.'
     }
+  } else if (isBillingDayRequired(plan)) {
+    errors.billingDay = 'Selecciona un día de cobro entre 1 y 31.'
   }
 
   const baseIdValue = state?.baseId
-  if (baseIdValue !== '' && baseIdValue !== null && baseIdValue !== undefined) {
+  if (plan?.requiresBase) {
     const parsedBase = Number(baseIdValue)
     if (!Number.isInteger(parsedBase) || parsedBase < 1) {
       errors.baseId = 'Selecciona una base válida.'
+    }
+  } else if (baseIdValue !== '' && baseIdValue !== null && baseIdValue !== undefined) {
+    const parsedBase = Number(baseIdValue)
+    if (!Number.isInteger(parsedBase) || parsedBase < 1) {
+      errors.baseId = 'Selecciona una base válida.'
+    }
+  }
+
+  if (state?.isCustomPriceEnabled) {
+    const priceValue = state?.price
+    if (priceValue === '' || priceValue === null || priceValue === undefined) {
+      errors.price = 'Ingresa una tarifa mensual válida (cero o mayor).'
+    } else {
+      const parsedPrice = Number(priceValue)
+      if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
+        errors.price = 'Ingresa una tarifa mensual válida (cero o mayor).'
+      }
     }
   }
 

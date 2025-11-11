@@ -111,6 +111,7 @@ __all__ = [
     "ClientImportRequest",
     "ClientImportSummary",
     "ClientServiceBase",
+    "ClientServiceBulkCreate",
     "ClientServiceCreate",
     "ClientServiceRead",
     "ClientServiceUpdate",
@@ -167,6 +168,7 @@ __all__ = [
     "AdminLoginRequest",
     "TokenResponse",
     "ServicePlanBase",
+    "ServicePlanSummary",
     "ServicePlanCreate",
     "ServicePlanUpdate",
     "ServicePlanRead",
@@ -174,10 +176,12 @@ __all__ = [
 ]
 from .service import (
     ClientServiceBase,
+    ClientServiceBulkCreate,
     ClientServiceCreate,
     ClientServiceListResponse,
     ClientServiceRead,
     ClientServiceUpdate,
+    ServicePlanSummary,
 )
 
 # Resolve forward references for schemas that rely on cross-module types.

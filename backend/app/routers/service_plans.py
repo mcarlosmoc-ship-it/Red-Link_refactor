@@ -19,7 +19,7 @@ router = APIRouter(dependencies=[Depends(require_admin)])
 @router.get("/", response_model=schemas.ServicePlanListResponse)
 def list_service_plans(
     db: Session = Depends(get_db),
-    service_type: Optional[ClientServiceType] = Query(None, description="Filter by service type"),
+    category: Optional[ClientServiceType] = Query(None, description="Filter by category"),
     include_inactive: bool = Query(True, description="Include inactive plans"),
     search: Optional[str] = Query(None, description="Filter by name"),
     skip: int = Query(0, ge=0, description="Records to skip"),
@@ -28,7 +28,7 @@ def list_service_plans(
     items, total = ServicePlanService.list_plans(
         db,
         include_inactive=include_inactive,
-        service_type=service_type,
+        category=category,
         search=search,
         skip=skip,
         limit=limit,

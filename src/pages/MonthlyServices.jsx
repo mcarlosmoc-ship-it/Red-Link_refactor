@@ -33,12 +33,14 @@ const STATUS_LABELS = {
 
 const createDefaultPlanForm = () => ({
   name: 'Internet mensual',
-  serviceType: 'internet',
-  defaultMonthlyFee: '300',
+  category: 'internet',
+  monthlyPrice: '300',
   description: '',
   status: 'active',
   requiresIp: true,
   requiresBase: true,
+  capacityType: 'unlimited',
+  capacityLimit: '',
 })
 
 const formatCurrency = (value) => {
@@ -79,7 +81,7 @@ export default function MonthlyServicesPage({ variant = 'page' }) {
     () =>
       servicePlans.map((plan) => ({
         ...plan,
-        status: plan.isActive ? 'active' : 'inactive',
+        status: (plan.status ?? (plan.isActive ? 'active' : 'inactive')).toLowerCase(),
       })),
     [servicePlans],
   )
@@ -87,7 +89,7 @@ export default function MonthlyServicesPage({ variant = 'page' }) {
   const filteredPlans = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase()
     return plansWithStatus.filter((plan) => {
-      if (typeFilter !== 'all' && plan.serviceType !== typeFilter) {
+      if (typeFilter !== 'all' && plan.category !== typeFilter) {
         return false
       }
       if (statusFilter !== 'all' && plan.status !== statusFilter) {
@@ -146,15 +148,20 @@ export default function MonthlyServicesPage({ variant = 'page' }) {
     setFormErrors({})
     setFormState({
       name: plan.name ?? '',
-      serviceType: plan.serviceType ?? 'internet',
-      defaultMonthlyFee:
-        plan.defaultMonthlyFee === null || plan.defaultMonthlyFee === undefined
+      category: plan.category ?? 'internet',
+      monthlyPrice:
+        plan.monthlyPrice === null || plan.monthlyPrice === undefined
           ? ''
-          : String(plan.defaultMonthlyFee),
+          : String(plan.monthlyPrice),
       description: plan.description ?? '',
-      status: plan.isActive ? 'active' : 'inactive',
+      status: plan.status ?? 'active',
       requiresIp: Boolean(plan.requiresIp),
       requiresBase: Boolean(plan.requiresBase),
+      capacityType: plan.capacityType ?? 'unlimited',
+      capacityLimit:
+        plan.capacityLimit === null || plan.capacityLimit === undefined
+          ? ''
+          : String(plan.capacityLimit),
     })
   }, [])
 
@@ -194,21 +201,32 @@ export default function MonthlyServicesPage({ variant = 'page' }) {
 
       const trimmedName = formState.name.trim()
       const trimmedDescription = formState.description?.trim() ?? ''
-      const priceValue = formState.defaultMonthlyFee
+      const priceValue = formState.monthlyPrice
       const parsedPrice =
         priceValue === '' || priceValue === null
           ? null
           : Number(priceValue)
-      const normalizedPrice = Number.isFinite(parsedPrice) ? parsedPrice : null
+      const normalizedPrice = Number.isFinite(parsedPrice) ? parsedPrice : 0
+
+      const capacityValue =
+        formState.capacityType === 'limited'
+          ? Number.parseInt(formState.capacityLimit, 10)
+          : null
+      const normalizedCapacityLimit =
+        formState.capacityType === 'limited' && Number.isInteger(capacityValue) && capacityValue > 0
+          ? capacityValue
+          : null
 
       const payload = {
         name: trimmedName,
-        serviceType: formState.serviceType,
-        defaultMonthlyFee: normalizedPrice ?? 0,
+        category: formState.category,
+        monthlyPrice: normalizedPrice,
         description: trimmedDescription,
-        isActive: formState.status === 'active',
+        status: formState.status,
         requiresIp: Boolean(formState.requiresIp),
         requiresBase: Boolean(formState.requiresBase),
+        capacityType: formState.capacityType,
+        capacityLimit: normalizedCapacityLimit,
       }
 
       try {
@@ -335,26 +353,27 @@ export default function MonthlyServicesPage({ variant = 'page' }) {
 
               <div className="grid gap-4 md:grid-cols-2">
                 <label className="grid gap-1 text-xs font-semibold text-slate-700">
-                  <span>Tipo de servicio</span>
+                  <span>Categoría del servicio</span>
                   <select
-                    value={formState.serviceType}
+                    value={formState.category}
                     onChange={(event) => {
                       const nextType = event.target.value
                       setFormState((prev) => {
-                        if (prev.serviceType === nextType) {
+                        if (prev.category === nextType) {
                           return prev
                         }
                         const isInternet = nextType === 'internet'
                         return {
                           ...prev,
-                          serviceType: nextType,
+                          category: nextType,
                           requiresIp: isInternet ? true : false,
                           requiresBase: isInternet ? true : false,
+                          capacityType: prev.capacityType,
                         }
                       })
                     }}
                     className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
-                      formErrors.serviceType
+                      formErrors.category
                         ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
                         : 'border-slate-300'
                     }`}
@@ -365,21 +384,21 @@ export default function MonthlyServicesPage({ variant = 'page' }) {
                       </option>
                     ))}
                   </select>
-                  {formErrors.serviceType && (
+                  {formErrors.category && (
                     <span className="text-xs font-medium text-red-600">
-                      {formErrors.serviceType}
+                      {formErrors.category}
                     </span>
                   )}
                 </label>
 
                 <label className="grid gap-1 text-xs font-semibold text-slate-700">
-                  <span>Tarifa mensual predeterminada (MXN)</span>
+                  <span>Tarifa mensual (MXN)</span>
                   <input
-                    value={formState.defaultMonthlyFee}
+                    value={formState.monthlyPrice}
                     onChange={(event) =>
                       setFormState((prev) => ({
                         ...prev,
-                        defaultMonthlyFee: event.target.value,
+                        monthlyPrice: event.target.value,
                       }))
                     }
                     type="number"
@@ -387,17 +406,74 @@ export default function MonthlyServicesPage({ variant = 'page' }) {
                     step="0.01"
                     min="0"
                     className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
-                      formErrors.defaultMonthlyFee
+                      formErrors.monthlyPrice
                         ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
                         : 'border-slate-300'
                     }`}
                   />
-                  {formErrors.defaultMonthlyFee && (
+                  {formErrors.monthlyPrice && (
                     <span className="text-xs font-medium text-red-600">
-                      {formErrors.defaultMonthlyFee}
+                      {formErrors.monthlyPrice}
                     </span>
                   )}
                 </label>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="grid gap-1 text-xs font-semibold text-slate-700">
+                  <span>Capacidad</span>
+                  <select
+                    value={formState.capacityType}
+                    onChange={(event) => {
+                      const nextType = event.target.value
+                      setFormState((prev) => ({
+                        ...prev,
+                        capacityType: nextType,
+                        capacityLimit: nextType === 'limited' ? prev.capacityLimit || '' : '',
+                      }))
+                    }}
+                    className="rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200"
+                  >
+                    <option value="unlimited">Sin límite de cupos</option>
+                    <option value="limited">Cupo limitado</option>
+                  </select>
+                </label>
+
+                {formState.capacityType === 'limited' ? (
+                  <label className="grid gap-1 text-xs font-semibold text-slate-700">
+                    <span>Cupo máximo de servicios activos</span>
+                    <input
+                      value={formState.capacityLimit}
+                      onChange={(event) =>
+                        setFormState((prev) => ({
+                          ...prev,
+                          capacityLimit: event.target.value,
+                        }))
+                      }
+                      type="number"
+                      inputMode="numeric"
+                      min="1"
+                      step="1"
+                      className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
+                        formErrors.capacityLimit
+                          ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
+                          : 'border-slate-300'
+                      }`}
+                    />
+                    <span className="text-[11px] font-normal text-slate-500">
+                      Limita el número de clientes activos en este plan.
+                    </span>
+                    {formErrors.capacityLimit && (
+                      <span className="text-xs font-medium text-red-600">
+                        {formErrors.capacityLimit}
+                      </span>
+                    )}
+                  </label>
+                ) : (
+                  <div className="text-xs font-normal text-slate-500">
+                    Los servicios ilimitados no tienen restricción de cupos activos.
+                  </div>
+                )}
               </div>
 
               <div className="grid gap-3 md:grid-cols-2">
@@ -559,7 +635,7 @@ export default function MonthlyServicesPage({ variant = 'page' }) {
                             <div>
                               <p className="text-sm font-semibold text-slate-900">{plan.name}</p>
                               <p className="text-xs uppercase text-slate-500">
-                                {getServiceTypeLabel(plan.serviceType)}
+                                {getServiceTypeLabel(plan.category)}
                               </p>
                             </div>
                             <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${badgeClasses}`}>
@@ -567,7 +643,13 @@ export default function MonthlyServicesPage({ variant = 'page' }) {
                             </span>
                           </div>
                           <div className="space-y-1 text-xs text-slate-600">
-                            <p>Tarifa predeterminada: {formatCurrency(plan.defaultMonthlyFee)}</p>
+                            <p>Tarifa mensual: {formatCurrency(plan.monthlyPrice)}</p>
+                            <p>
+                              Capacidad:{' '}
+                              {plan.capacityType === 'limited'
+                                ? `Hasta ${plan.capacityLimit ?? '—'} servicios activos`
+                                : 'Sin límite de servicios activos'}
+                            </p>
                             {plan.description ? <p className="text-slate-500">{plan.description}</p> : null}
                             <div className="flex flex-wrap gap-2">
                               {plan.requiresIp ? (

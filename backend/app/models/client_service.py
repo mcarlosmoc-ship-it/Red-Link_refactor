@@ -17,7 +17,6 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
-    UniqueConstraint,
     func,
     JSON,
 )
@@ -25,7 +24,7 @@ from sqlalchemy.dialects.sqlite import JSON as SQLiteJSON
 from sqlalchemy.orm import foreign, relationship
 
 from ..database import Base
-from ..db_types import GUID
+from ..db_types import GUID, INET
 from .payment import PAYMENT_METHOD_ENUM
 
 
@@ -53,17 +52,14 @@ class ClientService(Base):
 
     __tablename__ = "client_services"
     __table_args__ = (
-        UniqueConstraint(
-            "client_id",
-            "service_type",
-            "display_name",
-            name="uq_client_services_client_type_name",
-        ),
         CheckConstraint(
             "billing_day IS NULL OR (billing_day >= 1 AND billing_day <= 31)",
             name="ck_client_services_billing_day_range",
         ),
-        CheckConstraint("price >= 0", name="ck_client_services_price_non_negative"),
+        CheckConstraint(
+            "custom_price IS NULL OR custom_price >= 0",
+            name="ck_client_services_custom_price_non_negative",
+        ),
     )
 
     id = Column("client_service_id", GUID(), primary_key=True, default=uuid.uuid4)
@@ -73,15 +69,12 @@ class ClientService(Base):
         nullable=False,
         index=True,
     )
-    service_type = Column(
-        Enum(
-            ClientServiceType,
-            name="client_service_type_enum",
-            values_callable=lambda enum_cls: [member.value for member in enum_cls],
-        ),
+    service_plan_id = Column(
+        Integer,
+        ForeignKey("service_plans.plan_id", ondelete="RESTRICT"),
         nullable=False,
+        index=True,
     )
-    display_name = Column(String(200), nullable=False)
     status = Column(
         Enum(
             ClientServiceStatus,
@@ -93,18 +86,16 @@ class ClientService(Base):
     )
     billing_day = Column(Integer, nullable=True)
     next_billing_date = Column(Date, nullable=True)
-    price = Column(Numeric(12, 2), nullable=False, default=0)
-    currency = Column(String(3), nullable=False, default="MXN")
-    base_id = Column(Integer, ForeignKey("base_stations.base_id", ondelete="SET NULL"), nullable=True)
+    custom_price = Column(Numeric(12, 2), nullable=True)
+    base_id = Column(
+        Integer,
+        ForeignKey("base_stations.base_id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    ip_address = Column(INET(), nullable=True)
     notes = Column(Text, nullable=True)
     service_metadata = Column(
         "metadata", JSON().with_variant(SQLiteJSON(), "sqlite"), nullable=True
-    )
-    service_plan_id = Column(
-        Integer,
-        ForeignKey("service_plans.plan_id", ondelete="SET NULL"),
-        nullable=True,
-        index=True,
     )
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(
@@ -136,6 +127,22 @@ class ClientService(Base):
         back_populates="service",
         cascade="all, delete-orphan",
     )
+
+    @property
+    def category(self) -> ClientServiceType | None:
+        """Expose the plan category associated with the service."""
+
+        return self.service_plan.category if self.service_plan else None
+
+    @property
+    def effective_price(self):
+        """Price to charge for the service, using custom price when available."""
+
+        if self.custom_price is not None:
+            return self.custom_price
+        if self.service_plan:
+            return self.service_plan.monthly_price
+        return None
 
 
 class ServicePayment(Base):

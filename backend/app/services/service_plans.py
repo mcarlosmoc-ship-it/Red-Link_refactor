@@ -15,30 +15,36 @@ from .. import models, schemas
 DEFAULT_SERVICE_PLANS = [
     {
         "name": "Internet mensual",
-        "service_type": models.ClientServiceType.INTERNET,
+        "category": models.ClientServiceType.INTERNET,
         "description": "Plan base de internet residencial",
-        "default_monthly_fee": Decimal("300"),
-        "is_active": True,
+        "monthly_price": Decimal("300"),
+        "status": models.ServicePlanStatus.ACTIVE,
         "requires_ip": True,
         "requires_base": True,
+        "capacity_type": models.CapacityType.UNLIMITED,
+        "capacity_limit": None,
     },
     {
         "name": "NETFLIX",
-        "service_type": models.ClientServiceType.STREAMING,
+        "category": models.ClientServiceType.STREAMING,
         "description": "Servicio de streaming Netflix",
-        "default_monthly_fee": Decimal("120"),
-        "is_active": True,
+        "monthly_price": Decimal("120"),
+        "status": models.ServicePlanStatus.ACTIVE,
         "requires_ip": False,
         "requires_base": False,
+        "capacity_type": models.CapacityType.LIMITED,
+        "capacity_limit": 5,
     },
     {
         "name": "SPOTIFY",
-        "service_type": models.ClientServiceType.STREAMING,
+        "category": models.ClientServiceType.STREAMING,
         "description": "Servicio de streaming Spotify",
-        "default_monthly_fee": Decimal("70"),
-        "is_active": True,
+        "monthly_price": Decimal("70"),
+        "status": models.ServicePlanStatus.ACTIVE,
         "requires_ip": False,
         "requires_base": False,
+        "capacity_type": models.CapacityType.LIMITED,
+        "capacity_limit": 5,
     },
 ]
 
@@ -70,7 +76,7 @@ class ServicePlanService:
         db: Session,
         *,
         include_inactive: bool = True,
-        service_type: Optional[models.ClientServiceType] = None,
+        category: Optional[models.ClientServiceType] = None,
         search: Optional[str] = None,
         skip: int = 0,
         limit: int = 100,
@@ -80,10 +86,10 @@ class ServicePlanService:
         query = db.query(models.ServicePlan)
 
         if not include_inactive:
-            query = query.filter(models.ServicePlan.is_active.is_(True))
+            query = query.filter(models.ServicePlan.status == models.ServicePlanStatus.ACTIVE)
 
-        if service_type:
-            query = query.filter(models.ServicePlan.service_type == service_type)
+        if category:
+            query = query.filter(models.ServicePlan.category == category)
 
         if search:
             normalized = f"%{search.strip().lower()}%"
@@ -106,7 +112,7 @@ class ServicePlanService:
     def create_plan(db: Session, data: schemas.ServicePlanCreate) -> models.ServicePlan:
         payload = data.model_dump()
         payload["name"] = payload["name"].strip()
-        ServicePlanService._apply_flag_defaults(payload)
+        ServicePlanService._apply_defaults(payload)
         plan = models.ServicePlan(**payload)
         db.add(plan)
         try:
@@ -126,8 +132,7 @@ class ServicePlanService:
         update_data = data.model_dump(exclude_unset=True)
         if "name" in update_data and update_data["name"]:
             update_data["name"] = update_data["name"].strip()
-        if "service_type" in update_data:
-            ServicePlanService._apply_flag_defaults(update_data)
+        ServicePlanService._apply_defaults(update_data, original=plan)
         for field, value in update_data.items():
             setattr(plan, field, value)
         try:
@@ -140,14 +145,35 @@ class ServicePlanService:
         return plan
 
     @staticmethod
-    def _apply_flag_defaults(payload: dict) -> None:
-        service_type = payload.get("service_type")
-        if service_type == models.ClientServiceType.INTERNET:
-            payload["requires_ip"] = True
-            payload["requires_base"] = True
-        elif service_type == models.ClientServiceType.STREAMING:
-            payload["requires_ip"] = False
-            payload["requires_base"] = False
+    def _apply_defaults(payload: dict, *, original: Optional[models.ServicePlan] = None) -> None:
+        if "category" in payload:
+            category = payload.get("category")
+        else:
+            category = original.category if original else None
+
+        if category == models.ClientServiceType.INTERNET:
+            payload.setdefault("requires_ip", True)
+            payload.setdefault("requires_base", True)
+        elif category == models.ClientServiceType.STREAMING:
+            payload.setdefault("requires_ip", False)
+            payload.setdefault("requires_base", False)
+
+        if "capacity_type" not in payload and original is not None:
+            payload["capacity_type"] = original.capacity_type
+
+        if payload.get("capacity_type") == models.CapacityType.UNLIMITED:
+            payload["capacity_limit"] = None
+        elif payload.get("capacity_type") == models.CapacityType.LIMITED:
+            limit = payload.get("capacity_limit")
+            if limit is None:
+                raise ServicePlanError("Los planes con cupo limitado requieren un límite definido.")
+            if int(limit) <= 0:
+                raise ServicePlanError("El cupo debe ser mayor a cero.")
+        elif "capacity_type" in payload and payload.get("capacity_type") is not None:
+            raise ServicePlanError("Tipo de capacidad no soportado para el plan.")
+
+        if "status" not in payload and original is not None:
+            payload["status"] = original.status
 
     @staticmethod
     def delete_plan(db: Session, plan: models.ServicePlan) -> None:

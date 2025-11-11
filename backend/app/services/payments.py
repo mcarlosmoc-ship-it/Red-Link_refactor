@@ -50,8 +50,10 @@ class PaymentService:
                 models.ServicePayment.client_service_id == client_service_id
             )
         if service_type:
-            query = query.join(models.ServicePayment.service).filter(
-                models.ClientService.service_type == service_type
+            query = (
+                query.join(models.ServicePayment.service)
+                .join(models.ClientService.service_plan)
+                .filter(models.ServicePlan.category == service_type)
             )
         if period_key:
             query = query.filter(models.ServicePayment.period_key == period_key)
@@ -165,7 +167,7 @@ class PaymentService:
     def _apply_client_balances(
         service: models.ClientService, client: models.Client, months_paid: Decimal
     ) -> None:
-        if service.service_type not in {
+        if service.category not in {
             models.ClientServiceType.INTERNET,
             models.ClientServiceType.HOTSPOT,
         }:
@@ -187,7 +189,7 @@ class PaymentService:
     def _revert_client_balances(
         service: models.ClientService, client: models.Client, months_paid: Decimal
     ) -> None:
-        if service.service_type not in {
+        if service.category not in {
             models.ClientServiceType.INTERNET,
             models.ClientServiceType.HOTSPOT,
         }:
