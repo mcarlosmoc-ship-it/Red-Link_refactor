@@ -22,6 +22,7 @@ export const useClients = ({ autoLoad = true, ttl = DEFAULT_TTL } = {}) => {
     loadClients: state.loadClients,
     createClient: state.createClient,
     createClientService: state.createClientService,
+    bulkAssignClientServices: state.bulkAssignClientServices,
     toggleClientService: state.toggleClientService,
     updateClientServiceStatus: state.updateClientServiceStatus,
     deleteClient: state.deleteClient,
