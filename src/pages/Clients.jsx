@@ -301,7 +301,6 @@ export default function ClientsPage() {
   const shouldRequireInitialBillingDay = planRequiresBillingDay && !isInitialCourtesy
   const shouldRequireServiceBillingDay =
     servicePlanRequiresBillingDay && !isServiceFormCourtesy
-  const clientDetailsRef = useRef(null)
   const selectAllCheckboxRef = useRef(null)
   const shouldOpenServiceFormRef = useRef(false)
   const isMutatingClients = Boolean(clientsStatus?.isMutating)
@@ -636,24 +635,6 @@ export default function ClientsPage() {
     })
   }, [clients])
 
-  useEffect(() => {
-    const selectedIds = Array.from(selectedClientIds)
-    if (selectedIds.length === 1) {
-      const [onlyId] = selectedIds
-      setSelectedClientId((prev) => (prev === onlyId ? prev : onlyId))
-      return
-    }
-
-    if (selectedIds.length > 1) {
-      setSelectedClientId((prev) => {
-        if (prev && selectedClientIds.has(prev)) {
-          return prev
-        }
-        return null
-      })
-    }
-  }, [selectedClientIds])
-
   const selectedClientsForBulk = useMemo(
     () =>
       clients.filter((client) => {
@@ -690,20 +671,58 @@ export default function ClientsPage() {
     setIsBulkAssignModalOpen(true)
   }, [selectedClientsCount, showToast])
 
-  const handleOpenSingleSelectedClient = useCallback(() => {
+  const handleCloseClientPanel = useCallback(() => {
+    setSelectedClientId(null)
+    setActiveClientDetailTab('summary')
+  }, [])
+
+  const handleViewSelectedClientInfo = useCallback(() => {
     if (!isSingleSelection || selectedClientsForBulk.length === 0) {
+      showToast({
+        type: 'info',
+        title: 'Selecciona un cliente',
+        description: 'Elige un solo cliente para revisar su información detallada.',
+      })
       return
     }
     const normalizedId = normalizeId(selectedClientsForBulk[0]?.id)
     if (!normalizedId) {
       return
     }
-    setSelectedClientId((prev) => (prev === normalizedId ? prev : normalizedId))
-  }, [isSingleSelection, selectedClientsForBulk])
+    setActiveClientDetailTab('summary')
+    setSelectedClientId(normalizedId)
+  }, [isSingleSelection, selectedClientsForBulk, showToast])
+
+  const handleEditSelectedClientServices = useCallback(() => {
+    if (!isSingleSelection || selectedClientsForBulk.length === 0) {
+      showToast({
+        type: 'info',
+        title: 'Selecciona un cliente',
+        description: 'Elige un solo cliente para editar sus servicios.',
+      })
+      return
+    }
+    const normalizedId = normalizeId(selectedClientsForBulk[0]?.id)
+    if (!normalizedId) {
+      return
+    }
+    setActiveClientDetailTab('services')
+    setSelectedClientId(normalizedId)
+  }, [isSingleSelection, selectedClientsForBulk, showToast])
+
+  const handleToggleClientDetails = useCallback((clientId) => {
+    const normalizedId = normalizeId(clientId)
+    if (!normalizedId) {
+      return
+    }
+    setActiveClientDetailTab('summary')
+    setSelectedClientId((prev) => (prev === normalizedId ? null : normalizedId))
+  }, [])
 
   const handleClearSelection = useCallback(() => {
     setSelectedClientIds(new Set())
-  }, [])
+    handleCloseClientPanel()
+  }, [handleCloseClientPanel])
 
   const handleCloseBulkAssign = useCallback(() => {
     if (isProcessingBulkAssign) {
@@ -817,21 +836,27 @@ export default function ClientsPage() {
     checkbox.indeterminate = selectedClientsCount > 0 && !allFilteredSelected
   }, [allFilteredSelected, selectedClientsCount])
 
-  const handleToggleClientSelection = useCallback((clientId) => {
-    const normalizedId = normalizeId(clientId)
-    if (!normalizedId) {
-      return
-    }
-    setSelectedClientIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(normalizedId)) {
-        next.delete(normalizedId)
-      } else {
-        next.add(normalizedId)
+  const handleToggleClientSelection = useCallback(
+    (clientId) => {
+      const normalizedId = normalizeId(clientId)
+      if (!normalizedId) {
+        return
       }
-      return next
-    })
-  }, [])
+      setSelectedClientIds((prev) => {
+        const next = new Set(prev)
+        if (next.has(normalizedId)) {
+          next.delete(normalizedId)
+          if (normalizedId === selectedClientId) {
+            handleCloseClientPanel()
+          }
+        } else {
+          next.add(normalizedId)
+        }
+        return next
+      })
+    },
+    [handleCloseClientPanel, selectedClientId],
+  )
 
   const handleSelectAllFiltered = useCallback(
     (checked) => {
@@ -852,10 +877,13 @@ export default function ClientsPage() {
             }
           })
         }
+        if (selectedClientId && !next.has(selectedClientId)) {
+          handleCloseClientPanel()
+        }
         return next
       })
     },
-    [filteredResidentialClients],
+    [filteredResidentialClients, handleCloseClientPanel, selectedClientId],
   )
 
   const handleSort = useCallback((field) => {
@@ -877,9 +905,9 @@ export default function ClientsPage() {
 
     const exists = clients.some((client) => normalizeId(client.id) === selectedClientId)
     if (!exists) {
-      setSelectedClientId(null)
+      handleCloseClientPanel()
     }
-  }, [clients, selectedClientId])
+  }, [clients, handleCloseClientPanel, selectedClientId])
 
   useEffect(() => {
     if (!planRequiresBase) {
@@ -1015,6 +1043,7 @@ export default function ClientsPage() {
     },
     [clients, selectedClientId],
   )
+  const isClientPanelOpen = Boolean(selectedClientId && selectedClient)
   const isSelectedClientCourtesy = Boolean(selectedClient?.isCourtesyService)
   const buildDefaultServiceFormState = useCallback(
     () => ({
@@ -1113,24 +1142,6 @@ export default function ClientsPage() {
     const parsedClientFee = Number(selectedClient?.monthlyFee)
     return Number.isFinite(parsedClientFee) ? parsedClientFee : CLIENT_PRICE
   }, [primaryService?.price, selectedClient?.monthlyFee])
-
-  useEffect(() => {
-    if (!selectedClientId || !selectedClient) {
-      return
-    }
-
-    const scrollToDetails = () => {
-      if (clientDetailsRef.current) {
-        clientDetailsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      }
-    }
-
-    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
-      window.requestAnimationFrame(scrollToDetails)
-    } else {
-      scrollToDetails()
-    }
-  }, [selectedClientId, selectedClient])
 
   const validateForm = () => {
     const errors = {}
@@ -1620,6 +1631,7 @@ export default function ClientsPage() {
         }
 
         shouldOpenServiceFormRef.current = shouldOpenServiceForm
+        setActiveClientDetailTab('summary')
         setSelectedClientId(normalizedNewClientId)
         setHighlightedClientId(normalizedNewClientId)
       }
@@ -1709,7 +1721,7 @@ export default function ClientsPage() {
       })
 
       if (normalizedClientId && selectedClientId === normalizedClientId) {
-        setSelectedClientId(null)
+        handleCloseClientPanel()
       }
 
       if (normalizedClientId && highlightedClientId === normalizedClientId) {
@@ -1724,6 +1736,31 @@ export default function ClientsPage() {
     }
   }
 
+  const handleDeleteSelectedClient = useCallback(() => {
+    if (selectedClientsForBulk.length === 0) {
+      showToast({
+        type: 'info',
+        title: 'Selecciona clientes',
+        description: 'Elige al menos un cliente antes de eliminar.',
+      })
+      return
+    }
+
+    if (!isSingleSelection) {
+      showToast({
+        type: 'info',
+        title: 'Eliminación individual',
+        description: 'Elimina a los clientes uno por uno para evitar errores.',
+      })
+      return
+    }
+
+    const [clientToDelete] = selectedClientsForBulk
+    if (clientToDelete) {
+      handleDeleteClient(clientToDelete)
+    }
+  }, [handleDeleteClient, isSingleSelection, selectedClientsForBulk, showToast])
+
   const isClientsTabActive = activeMainTab === 'clients'
 
   if (shouldShowSkeleton) {
@@ -1731,7 +1768,76 @@ export default function ClientsPage() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className={`space-y-8 ${hasSelectedClients ? 'pb-24' : ''}`}>
+      {hasSelectedClients ? (
+        <div className="fixed inset-x-0 bottom-4 z-40 flex justify-center px-4">
+          <div className="w-full max-w-5xl rounded-2xl border border-blue-200 bg-white/95 p-4 shadow-lg backdrop-blur">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div className="space-y-0.5">
+                <p className="text-sm font-semibold text-slate-900">
+                  {selectedClientsCount === 1
+                    ? '1 cliente seleccionado'
+                    : `${selectedClientsCount} clientes seleccionados`}
+                </p>
+                <p className="text-xs text-slate-600">
+                  {isSingleSelection
+                    ? 'Elige una acción para revisar o actualizar los datos del cliente.'
+                    : 'Aplica cambios masivos para sincronizar servicios, estado o base asignada.'}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  onClick={handleViewSelectedClientInfo}
+                  disabled={!isSingleSelection}
+                >
+                  Ver información
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  onClick={handleEditSelectedClientServices}
+                  disabled={!isSingleSelection}
+                >
+                  Editar servicio
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={handleOpenBulkAssign}
+                  disabled={!isMultiSelection || isProcessingBulkAssign}
+                >
+                  {isProcessingBulkAssign
+                    ? 'Preparando…'
+                    : `Aplicar cambios masivos${isMultiSelection ? ` (${selectedClientsCount})` : ''}`}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="danger"
+                  onClick={handleDeleteSelectedClient}
+                  disabled={!isSingleSelection || isMutatingClients}
+                >
+                  Eliminar
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={handleClearSelection}
+                  className="border border-transparent text-slate-600 hover:border-slate-200 hover:bg-slate-100"
+                >
+                  Limpiar selección
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold text-slate-900">Panel operativo de clientes</h1>
@@ -2482,54 +2588,6 @@ export default function ClientsPage() {
               </div>
             </div>
 
-            {hasSelectedClients ? (
-              <div className="flex flex-col gap-3 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 md:flex-row md:items-center md:justify-between">
-                <div className="space-y-1">
-                  <p className="font-semibold">
-                    {selectedClientsCount === 1
-                      ? '1 cliente seleccionado'
-                      : `${selectedClientsCount} clientes seleccionados`}
-                  </p>
-                  <p className="text-xs text-blue-800">
-                    {isSingleSelection
-                      ? 'Abre la ficha del cliente para editar todos sus datos.'
-                      : 'Aplica cambios masivos para servicio, estado, base o notas.'}
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  {isSingleSelection ? (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      onClick={handleOpenSingleSelectedClient}
-                    >
-                      Editar cliente
-                    </Button>
-                  ) : null}
-                  {isMultiSelection ? (
-                    <Button
-                      type="button"
-                      size="sm"
-                      onClick={handleOpenBulkAssign}
-                      disabled={isProcessingBulkAssign}
-                    >
-                      {isProcessingBulkAssign ? 'Preparando…' : 'Aplicar cambios masivos'}
-                    </Button>
-                  ) : null}
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    onClick={handleClearSelection}
-                    className="border border-transparent text-blue-800 hover:border-blue-200 hover:bg-blue-100"
-                  >
-                    Limpiar selección
-                  </Button>
-                </div>
-              </div>
-            ) : null}
-
             <div className="space-y-6">
               <section aria-label="Clientes residenciales" className="space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -2755,14 +2813,7 @@ export default function ClientsPage() {
                                 size="sm"
                                 variant="ghost"
                                 className={ACTION_BUTTON_CLASSES}
-                                onClick={() =>
-                                  setSelectedClientId((prev) => {
-                                    if (!clientRowId) {
-                                      return prev
-                                    }
-                                    return prev === clientRowId ? null : clientRowId
-                                  })
-                                }
+                                onClick={() => handleToggleClientDetails(clientRowId)}
                               >
                                 {selectedClientId === clientRowId ? 'Ocultar' : 'Ver detalles'}
                               </Button>
@@ -2818,21 +2869,20 @@ export default function ClientsPage() {
         </Card>
       </section>
 
-      {selectedClient && (
-        <section
-          ref={clientDetailsRef}
-          aria-labelledby="detalles-cliente"
-          className="space-y-4"
-        >
-          <Card>
-            <CardContent className="space-y-6">
+      {isClientPanelOpen ? (
+        <div className="pointer-events-none fixed inset-y-0 right-0 z-30 flex max-w-full">
+          <div className="pointer-events-auto flex h-full w-full max-w-4xl flex-col border-l border-slate-200 bg-white shadow-2xl">
+            <div className="h-full overflow-y-auto p-4">
+              <section aria-labelledby="detalles-cliente" className="space-y-4">
+                <Card>
+                  <CardContent className="space-y-6">
               <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                 <div className="flex flex-col gap-1">
                   <h2 id="detalles-cliente" className="text-lg font-semibold text-slate-900">
                     Detalles de {selectedClient.name}
                   </h2>
                   <p className="text-sm text-slate-500">
-                    Base {selectedClient.base} · {selectedClient.location}
+                    Base {selectedClient.base} · {selectedClient.location || 'Sin localidad'}
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -2865,6 +2915,14 @@ export default function ClientsPage() {
                     disabled={isMutatingClients}
                   >
                     Eliminar cliente
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className={ACTION_BUTTON_CLASSES}
+                    onClick={handleCloseClientPanel}
+                  >
+                    Cerrar
                   </Button>
                 </div>
               </div>
@@ -3378,10 +3436,13 @@ export default function ClientsPage() {
                   </p>
                 )}
               </div>
-            </CardContent>
-          </Card>
-        </section>
-      )}
+                  </CardContent>
+                </Card>
+              </section>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
         </>
       ) : (
