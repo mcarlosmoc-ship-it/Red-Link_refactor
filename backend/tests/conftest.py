@@ -125,9 +125,13 @@ def seed_basic_data(db_session: Session) -> dict:
 
     plan = models.ServicePlan(
         name="Internet mensual",
-        service_type=models.ClientServiceType.INTERNET,
-        default_monthly_fee=Decimal("300"),
+        category=models.ClientServiceType.INTERNET,
+        monthly_price=Decimal("300"),
         description="Plan base de internet residencial",
+        requires_ip=True,
+        requires_base=True,
+        capacity_type=models.CapacityType.UNLIMITED,
+        status=models.ServicePlanStatus.ACTIVE,
     )
     db_session.add(plan)
     db_session.flush()
@@ -135,11 +139,8 @@ def seed_basic_data(db_session: Session) -> dict:
     client_service = models.ClientService(
         client=client,
         service_plan=plan,
-        service_type=plan.service_type,
-        display_name=plan.name,
         status=models.ClientServiceStatus.ACTIVE,
-        price=plan.default_monthly_fee,
-        currency="MXN",
+        billing_day=10,
     )
     db_session.add(client_service)
 

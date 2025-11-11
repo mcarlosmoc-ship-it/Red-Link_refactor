@@ -19,17 +19,28 @@ const isInternetLikeService = (serviceType) =>
 export const mapClientService = (service) => ({
   id: service.id,
   clientId: service.client_id ?? service.clientId ?? null,
-  type: service.service_type,
-  name: service.display_name,
+  servicePlanId: service.service_plan_id ?? service.servicePlanId ?? null,
+  plan: service.service_plan ? mapServicePlan(service.service_plan) : null,
+  type:
+    service.service_plan?.category ?? service.category ?? service.type ?? null,
+  name:
+    service.service_plan?.name ?? service.name ?? service.display_name ?? 'Servicio',
   status: service.status,
   billingDay: service.billing_day ?? null,
   nextBillingDate: service.next_billing_date ?? null,
-  price: normalizeDecimal(service.price),
+  baseId: service.base_id ?? null,
+  ipAddress: service.ip_address ?? null,
+  customPrice: normalizeDecimal(service.custom_price),
+  effectivePrice: normalizeDecimal(
+    service.effective_price ?? service.effectivePrice ?? service.custom_price,
+  ),
+  price: normalizeDecimal(
+    service.effective_price ?? service.custom_price,
+  ),
   currency: service.currency ?? 'MXN',
   baseId: service.base_id ?? null,
   notes: service.notes ?? '',
   metadata: service.metadata ?? {},
-  servicePlanId: service.service_plan_id ?? service.servicePlanId ?? null,
   createdAt: service.created_at ?? null,
   updatedAt: service.updated_at ?? null,
 })
@@ -37,13 +48,24 @@ export const mapClientService = (service) => ({
 export const mapServicePlan = (plan) => ({
   id: plan.id ?? plan.plan_id ?? null,
   name: plan.name ?? '',
-  serviceType: plan.service_type ?? 'internet',
-  defaultMonthlyFee: normalizeDecimal(plan.default_monthly_fee),
+  category: plan.category ?? plan.service_type ?? 'internet',
+  monthlyPrice: normalizeDecimal(
+    plan.monthly_price ?? plan.default_monthly_fee ?? 0,
+  ),
+  defaultMonthlyFee: normalizeDecimal(
+    plan.monthly_price ?? plan.default_monthly_fee ?? 0,
+  ),
   description: plan.description ?? '',
-  isActive: plan.is_active ?? true,
+  status: plan.status ?? (plan.is_active === false ? 'inactive' : 'active'),
+  isActive: plan.status
+    ? String(plan.status).toLowerCase() === 'active'
+    : plan.is_active ?? true,
   requiresIp: Boolean(plan.requires_ip),
   requiresBase: Boolean(plan.requires_base),
+  capacityType: plan.capacity_type ?? 'unlimited',
+  capacityLimit: plan.capacity_limit ?? null,
   createdAt: plan.created_at ?? null,
+  serviceType: plan.category ?? plan.service_type ?? 'internet',
 })
 
 const mapRecentPayment = (payment) => ({
@@ -55,8 +77,9 @@ const mapRecentPayment = (payment) => ({
   note: payment.note ?? '',
   periodKey: payment.period_key ?? null,
   serviceId: payment.client_service_id ?? null,
-  serviceName: payment.service?.display_name ?? 'Servicio',
-  serviceType: payment.service?.service_type ?? null,
+  serviceName:
+    payment.service?.service_plan?.name ?? payment.service?.name ?? 'Servicio',
+  serviceType: payment.service?.service_plan?.category ?? null,
 })
 
 export const mapClient = (client) => {
@@ -97,7 +120,10 @@ export const mapClient = (client) => {
     ip: client.ip_address,
     antennaIp: client.antenna_ip,
     modemIp: client.modem_ip,
-    monthlyFee: normalizeDecimal(internetService?.price ?? client.monthly_fee, CLIENT_PRICE),
+    monthlyFee: normalizeDecimal(
+      internetService?.effectivePrice ?? client.monthly_fee,
+      CLIENT_PRICE,
+    ),
     paidMonthsAhead: normalizeDecimal(client.paid_months_ahead),
     debtMonths: normalizeDecimal(client.debt_months),
     service: serviceStatus,
@@ -117,8 +143,9 @@ export const mapPayment = (payment) => ({
   clientName: payment.client?.full_name ?? 'Cliente',
   clientId: payment.client_id ?? payment.client?.id ?? null,
   serviceId: payment.client_service_id ?? payment.service?.id ?? null,
-  serviceName: payment.service?.display_name ?? 'Servicio',
-  serviceType: payment.service?.service_type ?? null,
+  serviceName:
+    payment.service?.service_plan?.name ?? payment.service?.name ?? 'Servicio',
+  serviceType: payment.service?.service_plan?.category ?? null,
 })
 
 export const mapExpense = (expense) => ({
@@ -265,14 +292,11 @@ export const serializeClientPayload = (payload) => ({
 export const serializeClientServicePayload = (payload) => {
   const body = {
     client_id: payload.clientId,
-    service_type: payload.serviceType,
-    display_name: payload.displayName,
-    price: payload.price ?? 0,
-    currency: payload.currency ?? 'MXN',
+    service_plan_id: payload.servicePlanId,
   }
 
-  if (payload.servicePlanId) {
-    body.service_plan_id = payload.servicePlanId
+  if (payload.status) {
+    body.status = payload.status
   }
 
   if (payload.billingDay) {
@@ -287,6 +311,14 @@ export const serializeClientServicePayload = (payload) => {
     body.base_id = payload.baseId
   }
 
+  if (payload.ipAddress) {
+    body.ip_address = payload.ipAddress
+  }
+
+  if (payload.customPrice !== undefined && payload.customPrice !== null) {
+    body.custom_price = payload.customPrice
+  }
+
   if (payload.notes) {
     body.notes = payload.notes
   }
@@ -298,14 +330,64 @@ export const serializeClientServicePayload = (payload) => {
   return body
 }
 
+export const serializeClientServiceUpdatePayload = (payload = {}) => {
+  const body = {}
+
+  if (payload.servicePlanId) {
+    body.service_plan_id = payload.servicePlanId
+  }
+
+  if (payload.status) {
+    body.status = payload.status
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'billingDay')) {
+    body.billing_day = payload.billingDay ?? null
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'nextBillingDate')) {
+    body.next_billing_date = payload.nextBillingDate ?? null
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'baseId')) {
+    body.base_id = payload.baseId ?? null
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'ipAddress')) {
+    body.ip_address = payload.ipAddress ?? null
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'customPrice')) {
+    body.custom_price = payload.customPrice ?? null
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'notes')) {
+    body.notes = payload.notes ?? null
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'metadata')) {
+    body.metadata = payload.metadata ?? null
+  }
+
+  return body
+}
+
 export const serializeServicePlanPayload = (payload) => {
   const body = {
     name: payload.name,
-    service_type: payload.serviceType,
-    default_monthly_fee: payload.defaultMonthlyFee ?? 0,
-    is_active: payload.isActive ?? true,
+    category: payload.category ?? payload.serviceType ?? 'internet',
+    monthly_price: payload.monthlyPrice ?? payload.defaultMonthlyFee ?? 0,
+    status: payload.status ?? (payload.isActive === false ? 'inactive' : 'active'),
     requires_ip: payload.requiresIp ?? false,
     requires_base: payload.requiresBase ?? false,
+  }
+
+  if (payload.capacityType) {
+    body.capacity_type = payload.capacityType
+  }
+
+  if (payload.capacityLimit !== undefined) {
+    body.capacity_limit = payload.capacityLimit ?? null
   }
 
   if (Object.prototype.hasOwnProperty.call(payload, 'description')) {

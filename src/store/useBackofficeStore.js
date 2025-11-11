@@ -21,6 +21,7 @@ import {
   mapServicePlan,
   serializeClientPayload,
   serializeClientServicePayload,
+  serializeClientServiceUpdatePayload,
   serializeClientAccountPayload,
   serializeServicePlanPayload,
   convertBaseCosts,
@@ -577,7 +578,7 @@ export const useBackofficeStore = create((set, get) => ({
       get().loadMetrics({ force: true, retries: 1 }),
     ])
 
-    return createdService
+    return createdClient
   },
   updateClientService: async (serviceId, payload) => {
     if (!serviceId) {
@@ -636,7 +637,7 @@ export const useBackofficeStore = create((set, get) => ({
       get().loadMetrics({ force: true, retries: 1 }),
     ])
 
-    return createdClient
+    return true
   },
   createClientService: async (payload) => {
     const createdService = await runMutation({

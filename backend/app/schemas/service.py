@@ -5,20 +5,36 @@ from typing import Any, Optional
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from ..models.client_service import ClientServiceStatus, ClientServiceType
+from ..models.service_plan import CapacityType, ServicePlanStatus
 from .common import PaginatedResponse
+
+
+class ServicePlanSummary(BaseModel):
+    """Minimal representation of a service plan linked to a client."""
+
+    id: int
+    name: str
+    category: ClientServiceType
+    monthly_price: Decimal
+    requires_ip: bool
+    requires_base: bool
+    capacity_type: CapacityType
+    capacity_limit: Optional[int] = None
+    status: ServicePlanStatus
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ClientServiceBase(BaseModel):
     """Shared fields for service creation and updates."""
 
-    service_type: ClientServiceType
-    display_name: str
+    service_plan_id: int = Field(..., ge=1)
     status: ClientServiceStatus = ClientServiceStatus.ACTIVE
-    price: Decimal = Field(default=Decimal("0"), ge=0)
-    currency: str = Field(default="MXN", min_length=3, max_length=3)
     billing_day: Optional[int] = Field(default=None, ge=1, le=31)
     next_billing_date: Optional[date] = None
     base_id: Optional[int] = Field(default=None, ge=1)
+    ip_address: Optional[str] = None
+    custom_price: Optional[Decimal] = Field(default=None, ge=0)
     notes: Optional[str] = None
     service_metadata: Optional[dict[str, Any]] = Field(
         default=None,
@@ -33,21 +49,19 @@ class ClientServiceCreate(ClientServiceBase):
     """Payload required to create a new service for a client."""
 
     client_id: str
-    service_plan_id: Optional[int] = Field(default=None, ge=1)
 
 
 class ClientServiceUpdate(BaseModel):
     """Payload to update an existing client service."""
 
-    display_name: Optional[str] = None
+    service_plan_id: Optional[int] = Field(default=None, ge=1)
     status: Optional[ClientServiceStatus] = None
-    price: Optional[Decimal] = Field(default=None, ge=0)
-    currency: Optional[str] = Field(default=None, min_length=3, max_length=3)
     billing_day: Optional[int] = Field(default=None, ge=1, le=31)
     next_billing_date: Optional[date] = None
     base_id: Optional[int] = Field(default=None, ge=1)
+    ip_address: Optional[str] = None
+    custom_price: Optional[Decimal] = Field(default=None, ge=0)
     notes: Optional[str] = None
-    service_plan_id: Optional[int] = Field(default=None, ge=1)
     service_metadata: Optional[dict[str, Any]] = Field(
         default=None,
         validation_alias=AliasChoices("service_metadata", "metadata"),
@@ -57,11 +71,26 @@ class ClientServiceUpdate(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
-class ClientServiceRead(ClientServiceBase):
+class ClientServiceRead(BaseModel):
     """Representation of a client service."""
 
     id: str
     client_id: str
+    service_plan_id: int
+    status: ClientServiceStatus
+    billing_day: Optional[int] = None
+    next_billing_date: Optional[date] = None
+    base_id: Optional[int] = None
+    ip_address: Optional[str] = None
+    custom_price: Optional[Decimal] = None
+    effective_price: Optional[Decimal] = None
+    notes: Optional[str] = None
+    service_metadata: Optional[dict[str, Any]] = Field(
+        default=None,
+        alias="metadata",
+        validation_alias=AliasChoices("service_metadata", "metadata"),
+    )
+    service_plan: ServicePlanSummary
     created_at: datetime
     updated_at: datetime
     cancelled_at: Optional[datetime] = None
@@ -73,3 +102,23 @@ class ClientServiceListResponse(PaginatedResponse[ClientServiceRead]):
     """Paginated listing of client services."""
 
     pass
+
+
+class ClientServiceBulkCreate(BaseModel):
+    """Payload to assign the same service plan to multiple clients."""
+
+    service_plan_id: int = Field(..., ge=1)
+    client_ids: list[str] = Field(..., min_length=1)
+    status: ClientServiceStatus = ClientServiceStatus.ACTIVE
+    billing_day: Optional[int] = Field(default=None, ge=1, le=31)
+    base_id: Optional[int] = Field(default=None, ge=1)
+    ip_address: Optional[str] = None
+    custom_price: Optional[Decimal] = Field(default=None, ge=0)
+    notes: Optional[str] = None
+    service_metadata: Optional[dict[str, Any]] = Field(
+        default=None,
+        validation_alias=AliasChoices("service_metadata", "metadata"),
+        serialization_alias="metadata",
+    )
+
+    model_config = ConfigDict(populate_by_name=True)

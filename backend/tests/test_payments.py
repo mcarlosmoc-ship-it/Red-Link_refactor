@@ -273,8 +273,12 @@ def test_payment_reuses_period_with_mismatched_key(client, db_session):
 
     plan = models.ServicePlan(
         name="Internet mensual legado",
-        service_type=models.ClientServiceType.INTERNET,
-        default_monthly_fee=Decimal("300"),
+        category=models.ClientServiceType.INTERNET,
+        monthly_price=Decimal("300"),
+        requires_ip=True,
+        requires_base=True,
+        capacity_type=models.CapacityType.UNLIMITED,
+        status=models.ServicePlanStatus.ACTIVE,
     )
     db_session.add(plan)
     db_session.flush()
@@ -282,10 +286,8 @@ def test_payment_reuses_period_with_mismatched_key(client, db_session):
     client_service = models.ClientService(
         client=client_model,
         service_plan=plan,
-        service_type=plan.service_type,
-        display_name=plan.name,
         status=models.ClientServiceStatus.ACTIVE,
-        price=plan.default_monthly_fee,
+        billing_day=10,
     )
     db_session.add(client_service)
     db_session.commit()
@@ -369,8 +371,12 @@ def test_preloaded_sqlite_database_allows_creating_payments(tmp_path, monkeypatc
 
         plan = models.ServicePlan(
             name="Internet mensual",
-            service_type=models.ClientServiceType.INTERNET,
-            default_monthly_fee=Decimal("300"),
+            category=models.ClientServiceType.INTERNET,
+            monthly_price=Decimal("300"),
+            requires_ip=True,
+            requires_base=True,
+            capacity_type=models.CapacityType.UNLIMITED,
+            status=models.ServicePlanStatus.ACTIVE,
         )
         session.add(plan)
         session.flush()
@@ -378,10 +384,8 @@ def test_preloaded_sqlite_database_allows_creating_payments(tmp_path, monkeypatc
         client_service = models.ClientService(
             client=client_model,
             service_plan=plan,
-            service_type=plan.service_type,
-            display_name=plan.name,
             status=models.ClientServiceStatus.ACTIVE,
-            price=plan.default_monthly_fee,
+            billing_day=10,
         )
         session.add(client_service)
 

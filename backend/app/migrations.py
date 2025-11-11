@@ -39,6 +39,14 @@ def _column_exists(inspector: Inspector, table_name: str, column_name: str) -> b
 
 REVISION_SENTINELS: Sequence[RevisionSentinel] = (
     (
+        "20250501_0002",
+        lambda inspector: (
+            _column_exists(inspector, "service_plans", "capacity_type")
+            and _column_exists(inspector, "client_services", "custom_price")
+            and not _column_exists(inspector, "client_services", "price")
+        ),
+    ),
+    (
         "20250320_0010",
         lambda inspector: _column_exists(inspector, "service_plans", "service_type"),
     ),

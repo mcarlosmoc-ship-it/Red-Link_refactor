@@ -57,6 +57,7 @@ class ClientAccountBase(BaseModel):
     client_id: Optional[str] = None
     client_service_id: Optional[str] = None
     service_type: Optional[ClientServiceType] = None
+    service_plan_id: Optional[int] = Field(default=None, ge=1)
     correo_cliente: str = Field(..., min_length=3)
     contrasena_cliente: str = Field(..., min_length=1)
     perfil: str = Field(..., min_length=1)
@@ -79,6 +80,7 @@ class ClientAccountUpdate(BaseModel):
     client_id: Optional[str] = None
     client_service_id: Optional[str] = None
     service_type: Optional[ClientServiceType] = None
+    service_plan_id: Optional[int] = Field(default=None, ge=1)
     correo_cliente: Optional[str] = Field(default=None, min_length=3)
     contrasena_cliente: Optional[str] = Field(default=None, min_length=1)
     perfil: Optional[str] = Field(default=None, min_length=1)

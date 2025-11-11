@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
 from typing import Iterable, Optional, Tuple
 
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 
@@ -31,12 +33,15 @@ class ClientContractService:
         query = db.query(models.ClientService).options(
             selectinload(models.ClientService.client),
             selectinload(models.ClientService.payments),
+            selectinload(models.ClientService.service_plan),
         )
 
         if client_id:
             query = query.filter(models.ClientService.client_id == client_id)
         if service_type:
-            query = query.filter(models.ClientService.service_type == service_type)
+            query = query.join(models.ServicePlan).filter(
+                models.ServicePlan.category == service_type
+            )
         if status:
             query = query.filter(models.ClientService.status == status)
 
@@ -56,6 +61,7 @@ class ClientContractService:
             .options(
                 selectinload(models.ClientService.client),
                 selectinload(models.ClientService.payments),
+                selectinload(models.ClientService.service_plan),
             )
             .filter(models.ClientService.id == service_id)
             .first()
@@ -73,7 +79,7 @@ class ClientContractService:
         plan = db.query(models.ServicePlan).filter(models.ServicePlan.id == plan_id).first()
         if plan is None:
             raise ValueError("Service plan not found")
-        if not plan.is_active:
+        if plan.status != models.ServicePlanStatus.ACTIVE:
             raise ValueError("Service plan is inactive")
         return plan
 
@@ -84,36 +90,97 @@ class ClientContractService:
         data: schemas.ClientServiceCreate | schemas.ClientServiceUpdate,
         *,
         client: Optional[models.Client] = None,
-    ) -> dict:
+        existing: Optional[models.ClientService] = None,
+    ) -> tuple[dict, models.ServicePlan]:
         payload = data.model_dump(exclude_unset=True, by_alias=True)
-        if "display_name" in payload and payload["display_name"]:
-            payload["display_name"] = payload["display_name"].strip()
-        if not payload.get("currency"):
-            payload["currency"] = "MXN"
-        if client and payload.get("base_id") is None:
-            payload["base_id"] = client.base_id
-        plan_id = payload.get("service_plan_id")
-        if plan_id:
-            plan = cls._resolve_service_plan(db, int(plan_id))
+        if existing is not None:
+            client = client or existing.client
+
+        plan: Optional[models.ServicePlan] = None
+        if "service_plan_id" in payload and payload["service_plan_id"] is not None:
+            plan = cls._resolve_service_plan(db, int(payload["service_plan_id"]))
             payload["service_plan_id"] = plan.id
-            if not payload.get("service_type"):
-                payload["service_type"] = plan.service_type.value
-            if payload.get("price") is None:
-                payload["price"] = plan.default_monthly_fee
-            if not payload.get("display_name"):
-                payload["display_name"] = plan.name
-        return payload
+        elif existing and existing.service_plan is not None:
+            plan = existing.service_plan
+            payload["service_plan_id"] = existing.service_plan.id
+        else:
+            raise ValueError("Service plan not found")
+
+        if plan is None:
+            raise ValueError("Service plan not found")
+
+        if payload.get("status") is None and existing is None:
+            payload["status"] = models.ClientServiceStatus.ACTIVE
+
+        if client and payload.get("base_id") is None and plan.requires_base:
+            payload["base_id"] = client.base_id
+
+        if plan.requires_base and payload.get("base_id") is None:
+            raise ClientContractError("Este servicio requiere asignar una base.")
+
+        if plan.requires_ip:
+            if not payload.get("ip_address"):
+                inferred_ip = None
+                if existing and existing.ip_address:
+                    inferred_ip = existing.ip_address
+                elif client and client.ip_address:
+                    inferred_ip = client.ip_address
+                if inferred_ip:
+                    payload.setdefault("ip_address", inferred_ip)
+            if not payload.get("ip_address"):
+                raise ClientContractError("Este servicio requiere asignar una dirección IP.")
+
+        if payload.get("custom_price") is not None:
+            custom_price = Decimal(str(payload["custom_price"]))
+            if custom_price < 0:
+                raise ClientContractError("El precio personalizado no puede ser negativo.")
+            if custom_price == plan.monthly_price:
+                payload["custom_price"] = None
+            else:
+                payload["custom_price"] = custom_price
+        else:
+            payload["custom_price"] = None
+
+        return payload, plan
+
+    @staticmethod
+    def _validate_capacity(
+        db: Session,
+        plan: models.ServicePlan,
+        status: models.ClientServiceStatus,
+        *,
+        exclude_service_id: Optional[str] = None,
+    ) -> None:
+        if plan.capacity_type != models.CapacityType.LIMITED:
+            return
+        limit = plan.capacity_limit or 0
+        if limit <= 0:
+            raise ClientContractError("El plan no tiene cupos configurados correctamente.")
+
+        query = db.query(func.count(models.ClientService.id)).filter(
+            models.ClientService.service_plan_id == plan.id,
+            models.ClientService.status == models.ClientServiceStatus.ACTIVE,
+        )
+        if exclude_service_id:
+            query = query.filter(models.ClientService.id != exclude_service_id)
+
+        active_count = query.scalar() or 0
+        if status == models.ClientServiceStatus.ACTIVE and active_count >= limit:
+            raise ClientContractError("No hay cupos disponibles para este servicio.")
 
     @classmethod
     def create_service(
         cls, db: Session, data: schemas.ClientServiceCreate
     ) -> models.ClientService:
         client = cls._resolve_client(db, data.client_id)
-        payload = cls._normalize_payload(db, data, client=client)
+        payload, plan = cls._normalize_payload(db, data, client=client)
         payload["client_id"] = client.id
 
         if payload.get("next_billing_date") is None and payload.get("billing_day"):
             payload["next_billing_date"] = cls._compute_next_billing_date(payload["billing_day"])
+
+        status = payload.get("status", models.ClientServiceStatus.ACTIVE)
+        cls._validate_capacity(db, plan, status)
 
         service = models.ClientService(**payload)
 
@@ -122,15 +189,124 @@ class ClientContractService:
             db.commit()
         except IntegrityError as exc:
             db.rollback()
-            raise ClientContractError("Ya existe un servicio con ese nombre para el cliente.") from exc
+            raise ClientContractError(
+                "El cliente ya tiene un servicio activo con ese plan."
+            ) from exc
         db.refresh(service)
         return service
+
+    @classmethod
+    def bulk_create_services(
+        cls, db: Session, data: schemas.ClientServiceBulkCreate
+    ) -> list[models.ClientService]:
+        if not data.client_ids:
+            raise ClientContractError("Selecciona al menos un cliente.")
+
+        unique_client_ids: list[str] = []
+        seen = set()
+        for client_id in data.client_ids:
+            normalized = str(client_id)
+            if normalized in seen:
+                continue
+            seen.add(normalized)
+            unique_client_ids.append(normalized)
+
+        plan = cls._resolve_service_plan(db, data.service_plan_id)
+        target_status = data.status or models.ClientServiceStatus.ACTIVE
+
+        active_assignments = (
+            len(unique_client_ids)
+            if target_status == models.ClientServiceStatus.ACTIVE
+            else 0
+        )
+
+        if plan.capacity_type == models.CapacityType.LIMITED:
+            current_active = (
+                db.query(func.count(models.ClientService.id))
+                .filter(
+                    models.ClientService.service_plan_id == plan.id,
+                    models.ClientService.status == models.ClientServiceStatus.ACTIVE,
+                )
+                .scalar()
+                or 0
+            )
+            available = (plan.capacity_limit or 0) - current_active
+            if available < active_assignments:
+                raise ClientContractError(
+                    "No hay cupos suficientes para asignar este servicio a todos los clientes."
+                )
+
+        created: list[models.ClientService] = []
+        base_payload = data.model_dump(
+            exclude={"client_ids"}, by_alias=True, exclude_none=True
+        )
+
+        try:
+            for client_id in unique_client_ids:
+                client = cls._resolve_client(db, client_id)
+
+                create_payload = schemas.ClientServiceCreate(
+                    client_id=client_id,
+                    **base_payload,
+                )
+                payload, normalized_plan = cls._normalize_payload(
+                    db, create_payload, client=client
+                )
+                status = payload.get("status", models.ClientServiceStatus.ACTIVE)
+
+                cls._validate_capacity(
+                    db,
+                    normalized_plan,
+                    status,
+                )
+
+                existing_service = (
+                    db.query(models.ClientService)
+                    .filter(
+                        models.ClientService.client_id == client.id,
+                        models.ClientService.service_plan_id
+                        == normalized_plan.id,
+                        models.ClientService.status
+                        != models.ClientServiceStatus.CANCELLED,
+                    )
+                    .first()
+                )
+                if existing_service is not None:
+                    raise ClientContractError(
+                        f"{client.full_name} ya tiene este servicio asignado."
+                    )
+
+                payload["client_id"] = client.id
+                service = models.ClientService(**payload)
+                db.add(service)
+                created.append(service)
+
+            db.commit()
+        except IntegrityError as exc:
+            db.rollback()
+            raise ClientContractError(
+                "No se pudieron asignar los servicios masivamente."
+            ) from exc
+        except SQLAlchemyError as exc:
+            db.rollback()
+            raise ClientContractError(
+                "No se pudieron asignar los servicios masivamente."
+            ) from exc
+
+        for service in created:
+            db.refresh(service)
+        return created
 
     @classmethod
     def update_service(
         cls, db: Session, service: models.ClientService, data: schemas.ClientServiceUpdate
     ) -> models.ClientService:
-        update_data = cls._normalize_payload(db, data, client=service.client)
+        update_data, plan = cls._normalize_payload(
+            db, data, client=service.client, existing=service
+        )
+
+        status = update_data.get("status", service.status)
+        cls._validate_capacity(db, plan, status, exclude_service_id=str(service.id))
 
         if update_data.get("billing_day") and not update_data.get("next_billing_date"):
             update_data["next_billing_date"] = cls._compute_next_billing_date(

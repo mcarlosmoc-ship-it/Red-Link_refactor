@@ -15,7 +15,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
-from ..models.client_service import ClientServiceType
+from ..models.client_service import ClientServiceStatus, ClientServiceType
 from .client_contracts import ClientContractError, ClientContractService
 from ..models.audit import ClientAccountSecurityAction
 from ..database import session_scope
@@ -167,7 +167,7 @@ class AccountService:
 
     @staticmethod
     def _ensure_streaming_service(service: models.ClientService) -> None:
-        if service.service_type not in AccountService.STREAMING_SERVICE_TYPES:
+        if service.category not in AccountService.STREAMING_SERVICE_TYPES:
             raise AccountServiceError("El servicio seleccionado no es de streaming.")
 
     @staticmethod
@@ -176,22 +176,45 @@ class AccountService:
         *,
         principal: models.PrincipalAccount,
         client_id: str,
-        display_name: str,
-        service_type: ClientServiceType,
+        service_plan: models.ServicePlan,
+        profile_name: Optional[str],
         next_billing_date: Optional[date],
     ) -> models.ClientService:
         metadata = {"principal_account_id": str(principal.id)}
+        if profile_name:
+            metadata["profile_name"] = profile_name
         service_payload = schemas.ClientServiceCreate(
             client_id=client_id,
-            service_type=service_type,
-            display_name=display_name,
+            service_plan_id=service_plan.id,
             next_billing_date=next_billing_date,
             metadata=metadata,
+            status=ClientServiceStatus.ACTIVE,
         )
         try:
             return ClientContractService.create_service(db, service_payload)
         except ClientContractError as exc:
             raise AccountServiceError(str(exc)) from exc
+
+    @staticmethod
+    def _pick_streaming_plan(
+        db: Session, plan_id: Optional[int]
+    ) -> models.ServicePlan:
+        plan: Optional[models.ServicePlan]
+        if plan_id is not None:
+            plan = ClientContractService._resolve_service_plan(db, plan_id)
+        else:
+            plan = (
+                db.query(models.ServicePlan)
+                .filter(
+                    models.ServicePlan.category == ClientServiceType.STREAMING,
+                    models.ServicePlan.status == models.ServicePlanStatus.ACTIVE,
+                )
+                .order_by(models.ServicePlan.name.asc())
+                .first()
+            )
+        if plan is None or plan.category != ClientServiceType.STREAMING:
+            raise AccountServiceError("No se encontró un plan de streaming activo.")
+        return plan
 
     @staticmethod
     def _enforce_client_limit(db: Session, principal: models.PrincipalAccount) -> None:
@@ -217,7 +240,8 @@ class AccountService:
 
         payload = data.model_dump()
         service_id = payload.pop("client_service_id", None)
-        requested_service_type = payload.pop("service_type", None)
+        payload.pop("service_type", None)
+        service_plan_id = payload.pop("service_plan_id", None)
         fecha_registro: Optional[datetime] = payload.get("fecha_registro")
         if fecha_registro is None:
             fecha_registro = datetime.now(timezone.utc)
@@ -236,15 +260,15 @@ class AccountService:
                 raise AccountServiceError("El servicio seleccionado no existe.")
             AccountService._ensure_streaming_service(streaming_service)
         elif client_id_for_service:
-            service_type = requested_service_type or ClientServiceType.STREAMING
+            service_plan = AccountService._pick_streaming_plan(db, service_plan_id)
             display_name = payload.get("nombre_cliente") or payload.get("correo_cliente")
             display_name = display_name.strip() if display_name else "Streaming"
             streaming_service = AccountService._create_streaming_service(
                 db,
                 principal=principal,
                 client_id=client_id_for_service,
-                display_name=display_name,
-                service_type=service_type,
+                service_plan=service_plan,
+                profile_name=display_name,
                 next_billing_date=payload.get("fecha_proximo_pago"),
             )
 
@@ -294,7 +318,8 @@ class AccountService:
                 db, account.principal_account_id
             )
 
-        requested_service_type = update_data.pop("service_type", None)
+        update_data.pop("service_type", None)
+        plan_id_for_service = update_data.pop("service_plan_id", None)
         if "client_service_id" in update_data:
             new_service_id = update_data.get("client_service_id")
             client_id_for_service = update_data.get("client_id", account.client_id)
@@ -315,13 +340,13 @@ class AccountService:
                     or account.correo_cliente
                     or "Streaming"
                 )
-                service_type = requested_service_type or ClientServiceType.STREAMING
+                service_plan = AccountService._pick_streaming_plan(db, plan_id_for_service)
                 streaming_service = AccountService._create_streaming_service(
                     db,
                     principal=principal_for_service,
                     client_id=client_id_for_service,
-                    display_name=display_name,
-                    service_type=service_type,
+                    service_plan=service_plan,
+                    profile_name=display_name,
                     next_billing_date=update_data.get("fecha_proximo_pago"),
                 )
                 update_data["client_service_id"] = streaming_service.id

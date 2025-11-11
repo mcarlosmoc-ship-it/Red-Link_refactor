@@ -9,12 +9,7 @@ import { useClients } from '../hooks/useClients.js'
 import { useServicePlans } from '../hooks/useServicePlans.js'
 import { useToast } from '../hooks/useToast.js'
 import { peso, formatDate, formatPeriodLabel, addMonthsToPeriod } from '../utils/formatters.js'
-import {
-  SERVICE_TYPE_OPTIONS,
-  SERVICE_STATUS_OPTIONS,
-  getServiceTypeLabel,
-  getServiceStatusLabel,
-} from '../constants/serviceTypes.js'
+import { SERVICE_STATUS_OPTIONS, getServiceTypeLabel, getServiceStatusLabel } from '../constants/serviceTypes.js'
 import { computeServiceFormErrors } from '../utils/serviceFormValidation.js'
 import {
   CLIENT_ANTENNA_MODELS,
@@ -57,7 +52,7 @@ const formatServiceStatus = (status) => getServiceStatusLabel(status)
 const formatServiceType = (type) => getServiceTypeLabel(type)
 
 const formatServicePlanOptionLabel = (plan) => {
-  const fee = Number(plan?.defaultMonthlyFee)
+  const fee = Number(plan?.monthlyPrice ?? plan?.defaultMonthlyFee)
   if (Number.isFinite(fee) && fee > 0) {
     return `${plan.name} · ${peso(fee)}`
   }
@@ -83,14 +78,14 @@ const normalizeId = (value) => {
 }
 
 const createInitialServiceState = (baseId) => ({
-  displayName: getServiceTypeLabel('internet'),
+  servicePlanId: '',
+  displayName: '',
   serviceType: 'internet',
   price: '',
   billingDay: '',
   baseId: baseId ? String(baseId) : '',
   status: 'active',
   notes: '',
-  servicePlanId: '',
   isCustomPriceEnabled: false,
 })
 
@@ -158,11 +153,12 @@ export default function ClientsPage() {
   )
   const [initialServiceErrors, setInitialServiceErrors] = useState({})
   const [serviceFormState, setServiceFormState] = useState({
-    displayName: '',
-    serviceType: 'other',
+    servicePlanId: '',
     price: '',
+    isCustomPriceEnabled: false,
     billingDay: '',
     baseId: '',
+    status: 'active',
     notes: '',
   })
   const [serviceFormErrors, setServiceFormErrors] = useState({})
@@ -191,12 +187,29 @@ export default function ClientsPage() {
       ) ?? null
     )
   }, [initialServiceState.servicePlanId, servicePlans])
+  const selectedServicePlan = useMemo(() => {
+    if (!serviceFormState.servicePlanId) {
+      return null
+    }
+    return (
+      servicePlans.find(
+        (plan) => String(plan.id) === String(serviceFormState.servicePlanId),
+      ) ?? null
+    )
+  }, [serviceFormState.servicePlanId, servicePlans])
   const planRequiresIp = Boolean(selectedInitialPlan?.requiresIp)
   const planRequiresBase = Boolean(selectedInitialPlan?.requiresBase)
   const planRequiresBillingDay = Boolean(
     planRequiresIp ||
       planRequiresBase ||
       (selectedInitialPlan && isInternetLikeService(selectedInitialPlan.serviceType)),
+  )
+  const servicePlanRequiresIp = Boolean(selectedServicePlan?.requiresIp)
+  const servicePlanRequiresBase = Boolean(selectedServicePlan?.requiresBase)
+  const servicePlanRequiresBillingDay = Boolean(
+    servicePlanRequiresIp ||
+      servicePlanRequiresBase ||
+      (selectedServicePlan && isInternetLikeService(selectedServicePlan.serviceType)),
   )
   const clientDetailsRef = useRef(null)
   const shouldOpenServiceFormRef = useRef(false)
@@ -637,11 +650,12 @@ export default function ClientsPage() {
   )
   const buildDefaultServiceFormState = useCallback(
     () => ({
-      displayName: '',
-      serviceType: 'other',
+      servicePlanId: '',
       price: '',
+      isCustomPriceEnabled: false,
       billingDay: '',
       baseId: selectedClient?.base ? String(selectedClient.base) : '',
+      status: 'active',
       notes: '',
     }),
     [selectedClient?.base],
@@ -824,41 +838,17 @@ export default function ClientsPage() {
   }
 
   const validateServiceForm = useCallback(() => {
-    const errors = {}
-
-    const displayName = serviceFormState.displayName?.trim() ?? ''
-    if (!displayName) {
-      errors.displayName = 'Ingresa el nombre del servicio.'
-    }
-
-    if (!serviceFormState.serviceType) {
-      errors.serviceType = 'Selecciona el tipo de servicio.'
-    }
-
-    if (serviceFormState.price !== '') {
-      const parsedPrice = Number(serviceFormState.price)
-      if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
-        errors.price = 'Ingresa una tarifa mensual válida (cero o mayor).'
-      }
-    }
-
-    if (serviceFormState.billingDay !== '') {
-      const parsedDay = Number(serviceFormState.billingDay)
-      if (!Number.isInteger(parsedDay) || parsedDay < 1 || parsedDay > 31) {
-        errors.billingDay = 'Indica un día de cobro entre 1 y 31.'
-      }
-    }
-
-    if (serviceFormState.baseId !== '') {
-      const parsedBase = Number(serviceFormState.baseId)
-      if (!Number.isInteger(parsedBase) || parsedBase < 1) {
-        errors.baseId = 'Selecciona una base válida.'
-      }
-    }
+    const errors = computeServiceFormErrors(
+      {
+        ...serviceFormState,
+        price: serviceFormState.isCustomPriceEnabled ? serviceFormState.price : '',
+      },
+      { plan: selectedServicePlan },
+    )
 
     setServiceFormErrors(errors)
     return Object.keys(errors).length === 0
-  }, [serviceFormState])
+  }, [serviceFormState, selectedServicePlan])
 
   const validateInitialService = useCallback(() => {
     const computedErrors = computeServiceFormErrors(
@@ -866,30 +856,12 @@ export default function ClientsPage() {
         ...initialServiceState,
         price: initialServiceState.isCustomPriceEnabled ? initialServiceState.price : '',
       },
-      { requireClientId: false },
+      { requireClientId: false, plan: selectedInitialPlan },
     )
 
-    const errors = { ...computedErrors }
-
-    if (!initialServiceState.servicePlanId) {
-      errors.servicePlanId = 'Selecciona un servicio mensual.'
-    }
-
-    if (planRequiresBase && !initialServiceState.baseId) {
-      errors.baseId = 'Selecciona una base válida.'
-    }
-
-    const billingDayValue = initialServiceState.billingDay
-    if (planRequiresBillingDay) {
-      const parsedDay = Number(billingDayValue)
-      if (!Number.isInteger(parsedDay) || parsedDay < 1 || parsedDay > 31) {
-        errors.billingDay = 'Define el día de cobro del servicio.'
-      }
-    }
-
-    setInitialServiceErrors(errors)
-    return Object.keys(errors).length === 0
-  }, [initialServiceState, planRequiresBase, planRequiresBillingDay])
+    setInitialServiceErrors(computedErrors)
+    return Object.keys(computedErrors).length === 0
+  }, [initialServiceState, selectedInitialPlan])
 
   const handleSelectInitialPlan = useCallback(
     (planId) => {
@@ -974,6 +946,64 @@ export default function ClientsPage() {
     [servicePlans],
   )
 
+  const handleSelectServicePlan = useCallback(
+    (planId) => {
+      if (!planId) {
+        setServiceFormState((prev) => ({
+          ...prev,
+          servicePlanId: '',
+          isCustomPriceEnabled: false,
+          price: '',
+        }))
+        setServiceFormErrors((prev) => ({ ...prev, servicePlanId: 'Selecciona un servicio mensual.' }))
+        return
+      }
+
+      const foundPlan = servicePlans.find((plan) => String(plan.id) === String(planId))
+      if (!foundPlan) {
+        setServiceFormState((prev) => ({
+          ...prev,
+          servicePlanId: '',
+          isCustomPriceEnabled: false,
+          price: '',
+        }))
+        setServiceFormErrors((prev) => ({ ...prev, servicePlanId: 'Selecciona un servicio mensual.' }))
+        return
+      }
+
+      const defaultPrice =
+        foundPlan.defaultMonthlyFee === null || foundPlan.defaultMonthlyFee === undefined
+          ? ''
+          : String(foundPlan.defaultMonthlyFee)
+
+      setServiceFormState((prev) => ({
+        ...prev,
+        servicePlanId: String(foundPlan.id),
+        isCustomPriceEnabled: false,
+        price: defaultPrice,
+        status: 'active',
+        baseId: foundPlan.requiresBase
+          ? selectedClient?.base
+            ? String(selectedClient.base)
+            : prev.baseId
+          : prev.baseId,
+      }))
+
+      setServiceFormErrors((prev) => {
+        if (!prev || typeof prev !== 'object') {
+          return {}
+        }
+        const next = { ...prev }
+        delete next.servicePlanId
+        delete next.price
+        delete next.baseId
+        delete next.billingDay
+        return next
+      })
+    },
+    [selectedClient?.base, servicePlans],
+  )
+
   const handleCancelNewService = useCallback(() => {
     setServiceFormState(buildDefaultServiceFormState())
     setServiceFormErrors({})
@@ -998,6 +1028,9 @@ export default function ClientsPage() {
       }
 
       const normalizedPrice = (() => {
+        if (!serviceFormState.isCustomPriceEnabled) {
+          return null
+        }
         if (serviceFormState.price === '' || serviceFormState.price === null) {
           return null
         }
@@ -1021,21 +1054,31 @@ export default function ClientsPage() {
         return Number.isInteger(parsed) ? parsed : null
       })()
 
+      const parsedPlanId = Number(serviceFormState.servicePlanId)
+      if (!Number.isFinite(parsedPlanId) || parsedPlanId <= 0) {
+        showToast({
+          type: 'error',
+          title: 'Servicio mensual inválido',
+          description: 'Selecciona un servicio mensual válido antes de continuar.',
+        })
+        return
+      }
+
       try {
         await createClientService({
           clientId: selectedClient.id,
-          serviceType: serviceFormState.serviceType,
-          displayName: serviceFormState.displayName.trim(),
-          price: normalizedPrice,
+          servicePlanId: parsedPlanId,
+          customPrice: normalizedPrice,
           billingDay: normalizedBillingDay,
           baseId: normalizedBaseId,
+          status: serviceFormState.status || 'active',
           notes: serviceFormState.notes?.trim() ? serviceFormState.notes.trim() : null,
         })
 
         showToast({
           type: 'success',
           title: 'Servicio agregado',
-          description: `Se agregó ${serviceFormState.displayName.trim()} a ${selectedClient.name}.`,
+          description: `Se agregó ${selectedServicePlan?.name ?? 'el servicio seleccionado'} a ${selectedClient.name}.`,
         })
 
         setServiceFormState(buildDefaultServiceFormState())
@@ -1056,6 +1099,7 @@ export default function ClientsPage() {
       showToast,
       validateServiceForm,
       buildDefaultServiceFormState,
+      selectedServicePlan,
     ],
   )
 
@@ -1119,13 +1163,18 @@ export default function ClientsPage() {
       const normalizedNewClientId = normalizeId(newClient?.id)
       if (normalizedNewClientId) {
         let shouldOpenServiceForm = true
-        const trimmedServiceName = initialServiceSnapshot.displayName?.trim() ?? ''
+        const trimmedServiceName =
+          initialServiceSnapshot.displayName?.trim() ?? selectedInitialPlan?.name ?? ''
 
-        if (trimmedServiceName) {
+        const parsedInitialPlanId = Number(initialServiceSnapshot.servicePlanId)
+
+        if (Number.isFinite(parsedInitialPlanId) && parsedInitialPlanId > 0) {
           const normalizedPrice =
-            normalizedPlanPrice === null || normalizedPlanPrice === undefined
-              ? null
-              : normalizedPlanPrice
+            initialServiceSnapshot.isCustomPriceEnabled &&
+            normalizedPlanPrice !== null &&
+            normalizedPlanPrice !== undefined
+              ? normalizedPlanPrice
+              : null
 
           const normalizedBillingDay = (() => {
             if (initialServiceSnapshot.billingDay === '' || initialServiceSnapshot.billingDay === null) {
@@ -1145,9 +1194,7 @@ export default function ClientsPage() {
 
           const servicePayload = {
             clientId: normalizedNewClientId,
-            serviceType: initialServiceSnapshot.serviceType,
-            displayName: trimmedServiceName,
-            price: normalizedPrice,
+            servicePlanId: parsedInitialPlanId,
             billingDay: normalizedBillingDay,
             baseId: normalizedBaseId,
             status: initialServiceSnapshot.status,
@@ -1157,11 +1204,8 @@ export default function ClientsPage() {
                 : null,
           }
 
-          if (initialServiceSnapshot.servicePlanId) {
-            const parsedPlanId = Number(initialServiceSnapshot.servicePlanId)
-            if (Number.isFinite(parsedPlanId) && parsedPlanId > 0) {
-              servicePayload.servicePlanId = parsedPlanId
-            }
+          if (normalizedPrice !== null) {
+            servicePayload.customPrice = normalizedPrice
           }
 
           try {
@@ -1169,7 +1213,7 @@ export default function ClientsPage() {
             showToast({
               type: 'success',
               title: 'Servicio asignado',
-              description: `${trimmedServiceName} se registró para ${clientName}.`,
+              description: `${trimmedServiceName || 'Servicio seleccionado'} se registró para ${clientName}.`,
             })
             shouldOpenServiceForm = false
           } catch (error) {
@@ -2404,85 +2448,127 @@ export default function ClientsPage() {
                     className="space-y-4 rounded-md border border-dashed border-slate-300 bg-slate-50/80 p-4"
                   >
                     <div className="grid gap-4 md:grid-cols-2">
-                      <label className="grid gap-1 text-xs font-semibold text-slate-700">
-                        <span>Nombre del servicio</span>
-                        <input
-                          value={serviceFormState.displayName}
-                          onChange={(event) =>
-                            setServiceFormState((prev) => ({
-                              ...prev,
-                              displayName: event.target.value,
-                            }))
-                          }
-                          className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
-                            serviceFormErrors.displayName
-                              ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
-                              : 'border-slate-300'
-                          }`}
-                          placeholder="Nombre del nuevo servicio"
-                          autoComplete="off"
-                        />
-                        {serviceFormErrors.displayName && (
-                          <span className="text-xs font-medium text-red-600">
-                            {serviceFormErrors.displayName}
-                          </span>
-                        )}
-                      </label>
-
-                      <label className="grid gap-1 text-xs font-semibold text-slate-700">
-                        <span>Tipo de servicio</span>
+                      <label className="grid gap-1 text-xs font-semibold text-slate-700 md:col-span-2">
+                        <span>Servicio mensual</span>
                         <select
-                          value={serviceFormState.serviceType}
-                          onChange={(event) =>
-                            setServiceFormState((prev) => ({
-                              ...prev,
-                              serviceType: event.target.value,
-                            }))
-                          }
-                          className={`rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
-                            serviceFormErrors.serviceType
+                          value={serviceFormState.servicePlanId || ''}
+                          onChange={(event) => handleSelectServicePlan(event.target.value)}
+                          className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
+                            serviceFormErrors.servicePlanId
                               ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
                               : 'border-slate-300'
                           }`}
+                          disabled={isLoadingServicePlans && servicePlanOptions.length === 0}
                         >
-                          {SERVICE_TYPE_OPTIONS.map((option) => (
+                          <option value="">
+                            {isLoadingServicePlans ? 'Cargando servicios…' : 'Selecciona un servicio mensual'}
+                          </option>
+                          {servicePlanOptions.map((option) => (
                             <option key={option.value} value={option.value}>
                               {option.label}
                             </option>
                           ))}
                         </select>
-                        {serviceFormErrors.serviceType && (
+                        {serviceFormErrors.servicePlanId && (
                           <span className="text-xs font-medium text-red-600">
-                            {serviceFormErrors.serviceType}
+                            {serviceFormErrors.servicePlanId}
+                          </span>
+                        )}
+                        {servicePlansStatus?.error && (
+                          <span className="text-xs font-medium text-red-600">
+                            {servicePlansStatus.error}
                           </span>
                         )}
                       </label>
-                    </div>
 
-                    <div className="grid gap-4 md:grid-cols-3">
+                      {selectedServicePlan ? (
+                        <div className="md:col-span-2 space-y-1 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
+                          <p>
+                            <span className="font-semibold text-slate-700">Plan seleccionado:</span>{' '}
+                            {selectedServicePlan.name}
+                          </p>
+                          <p>
+                            <span className="font-semibold text-slate-700">Tipo de servicio:</span>{' '}
+                            {getServiceTypeLabel(selectedServicePlan.serviceType ?? 'internet')}
+                          </p>
+                          <p>
+                            <span className="font-semibold text-slate-700">Tarifa mensual:</span>{' '}
+                            {selectedServicePlan.defaultMonthlyFee === null ||
+                            selectedServicePlan.defaultMonthlyFee === undefined
+                              ? 'Monto variable'
+                              : peso(selectedServicePlan.defaultMonthlyFee)}
+                          </p>
+                          {selectedServicePlan.capacityType === 'limited' ? (
+                            <p>
+                              <span className="font-semibold text-slate-700">Cupos disponibles:</span>{' '}
+                              {selectedServicePlan.capacityLimit ?? 'Definir en catálogo'}
+                            </p>
+                          ) : null}
+                          {selectedServicePlan.description ? (
+                            <p className="text-slate-500">{selectedServicePlan.description}</p>
+                          ) : null}
+                        </div>
+                      ) : null}
+
+                      <label className="flex items-start gap-2 text-xs font-semibold text-slate-700 md:col-span-2">
+                        <input
+                          type="checkbox"
+                          className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                          checked={Boolean(serviceFormState.isCustomPriceEnabled)}
+                          onChange={(event) => {
+                            const isEnabled = event.target.checked
+                            setServiceFormState((prev) => {
+                              const nextState = { ...prev, isCustomPriceEnabled: isEnabled }
+                              const defaultPrice =
+                                selectedServicePlan?.defaultMonthlyFee === null ||
+                                selectedServicePlan?.defaultMonthlyFee === undefined
+                                  ? ''
+                                  : String(selectedServicePlan.defaultMonthlyFee)
+                              if (!isEnabled) {
+                                nextState.price = defaultPrice
+                              } else if (
+                                (prev.price === '' || prev.price === null || prev.price === undefined) &&
+                                selectedServicePlan
+                              ) {
+                                nextState.price = defaultPrice
+                              }
+                              return nextState
+                            })
+                            if (!isEnabled) {
+                              setServiceFormErrors((prev) => ({ ...prev, price: undefined }))
+                            }
+                          }}
+                          disabled={!selectedServicePlan}
+                        />
+                        <span>
+                          Personalizar tarifa para este cliente
+                          <span className="block text-[11px] font-normal text-slate-500">
+                            Si no marcas esta opción, se aplicará la tarifa del plan sin cambios.
+                          </span>
+                        </span>
+                      </label>
+
                       <label className="grid gap-1 text-xs font-semibold text-slate-700">
                         <span>Tarifa mensual (MXN)</span>
                         <input
                           type="number"
                           min="0"
                           step="0.01"
-                          value={serviceFormState.price}
+                          value={serviceFormState.price ?? ''}
                           onChange={(event) =>
                             setServiceFormState((prev) => ({
                               ...prev,
                               price: event.target.value,
                             }))
                           }
-                          className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
+                          disabled={!serviceFormState.isCustomPriceEnabled || !selectedServicePlan}
+                          className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 disabled:cursor-not-allowed disabled:bg-slate-100 ${
                             serviceFormErrors.price
                               ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
                               : 'border-slate-300'
                           }`}
                           placeholder="0.00"
                         />
-                        <span className="text-[11px] text-slate-500">
-                          Puedes dejarlo en 0 si el monto cambia cada mes.
-                        </span>
                         {serviceFormErrors.price && (
                           <span className="text-xs font-medium text-red-600">
                             {serviceFormErrors.price}
@@ -2491,7 +2577,10 @@ export default function ClientsPage() {
                       </label>
 
                       <label className="grid gap-1 text-xs font-semibold text-slate-700">
-                        <span>Día de cobro (1-31)</span>
+                        <span>
+                          Día de cobro (1-31){' '}
+                          {servicePlanRequiresBillingDay ? <span className="text-red-500">*</span> : null}
+                        </span>
                         <input
                           type="number"
                           min="1"
@@ -2508,10 +2597,12 @@ export default function ClientsPage() {
                               ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
                               : 'border-slate-300'
                           }`}
-                          placeholder="Opcional"
+                          placeholder={servicePlanRequiresBillingDay ? 'Obligatorio' : 'Opcional'}
                         />
                         <span className="text-[11px] text-slate-500">
-                          Déjalo vacío si la fecha cambia según la contratación.
+                          {servicePlanRequiresBillingDay
+                            ? 'Este plan requiere registrar un día de cobro.'
+                            : 'Puedes dejarlo en blanco si no aplica un día fijo.'}
                         </span>
                         {serviceFormErrors.billingDay && (
                           <span className="text-xs font-medium text-red-600">
@@ -2521,7 +2612,9 @@ export default function ClientsPage() {
                       </label>
 
                       <label className="grid gap-1 text-xs font-semibold text-slate-700">
-                        <span>Base (opcional)</span>
+                        <span>
+                          {servicePlanRequiresBase ? 'Base asignada *' : 'Base (opcional)'}
+                        </span>
                         <select
                           value={serviceFormState.baseId}
                           onChange={(event) =>

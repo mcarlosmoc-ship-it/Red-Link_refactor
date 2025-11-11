@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import enum
 import uuid
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     Column,
     Date,
     DateTime,
@@ -25,18 +27,42 @@ from ..db_types import GUID
 from .client_service import ClientServiceType
 
 
+class CapacityType(str, enum.Enum):
+    """Represents how many clients can use a plan simultaneously."""
+
+    UNLIMITED = "unlimited"
+    LIMITED = "limited"
+
+
+class ServicePlanStatus(str, enum.Enum):
+    """Operational status for catalog plans."""
+
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+
+
 class ServicePlan(Base):
     """Catalog of available service plans for clients."""
 
     __tablename__ = "service_plans"
+    __table_args__ = (
+        CheckConstraint(
+            "capacity_limit IS NULL OR capacity_limit >= 0",
+            name="ck_service_plans_capacity_limit_non_negative",
+        ),
+        CheckConstraint(
+            "(capacity_type <> 'limited') OR (capacity_limit IS NOT NULL AND capacity_limit > 0)",
+            name="ck_service_plans_capacity_limit_required",
+        ),
+    )
 
     id = Column("plan_id", Integer, primary_key=True, autoincrement=True)
     name = Column(String(120), nullable=False, unique=True)
     description = Column(Text, nullable=True)
-    service_type = Column(
+    category = Column(
         Enum(
             ClientServiceType,
-            name="service_plan_type_enum",
+            name="service_plan_category_enum",
             values_callable=lambda enum_cls: [member.value for member in enum_cls],
         ),
         nullable=False,
@@ -44,11 +70,28 @@ class ServicePlan(Base):
     )
     download_speed_mbps = Column(Numeric(8, 2), nullable=True)
     upload_speed_mbps = Column(Numeric(8, 2), nullable=True)
-    default_monthly_fee = Column(Numeric(10, 2), nullable=False)
+    monthly_price = Column(Numeric(10, 2), nullable=False)
     requires_ip = Column(Boolean, nullable=False, default=False, server_default="0")
     requires_base = Column(Boolean, nullable=False, default=False, server_default="0")
-    is_token_plan = Column(Boolean, nullable=False, default=False, server_default="0")
-    is_active = Column(Boolean, nullable=False, default=True, server_default="1")
+    capacity_type = Column(
+        Enum(
+            CapacityType,
+            name="service_plan_capacity_type_enum",
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+        ),
+        nullable=False,
+        default=CapacityType.UNLIMITED,
+    )
+    capacity_limit = Column(Integer, nullable=True)
+    status = Column(
+        Enum(
+            ServicePlanStatus,
+            name="service_plan_status_enum",
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+        ),
+        nullable=False,
+        default=ServicePlanStatus.ACTIVE,
+    )
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     client_plans = relationship("ClientPlan", back_populates="service_plan")
@@ -58,6 +101,12 @@ class ServicePlan(Base):
         back_populates="service_plan",
         cascade="all, delete-orphan",
     )
+
+    @property
+    def is_active(self) -> bool:
+        """Expose compatibility flag for legacy callers."""
+
+        return self.status == ServicePlanStatus.ACTIVE
 
 
 class ClientPlan(Base):
