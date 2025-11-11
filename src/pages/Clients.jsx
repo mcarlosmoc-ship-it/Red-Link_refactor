@@ -309,10 +309,6 @@ export default function ClientsPage() {
   const hasClientsError = Boolean(clientsStatus?.error)
   const shouldShowSkeleton = Boolean(initializeStatus?.isLoading) || isRefreshing
 
-  if (shouldShowSkeleton) {
-    return <ClientsSkeleton />
-  }
-
   useEffect(() => {
     if (!location?.hash) {
       setHighlightedClientId(null)
@@ -545,64 +541,6 @@ export default function ClientsPage() {
     }
   }, [clients, showToast])
 
-  const handleOpenBulkAssign = useCallback(() => {
-    if (!hasSelectedClients) {
-      showToast({
-        type: 'info',
-        title: 'Selecciona clientes',
-        description: 'Elige uno o más clientes desde el listado para asignar un servicio.',
-      })
-      return
-    }
-    setIsBulkAssignModalOpen(true)
-  }, [hasSelectedClients, showToast])
-
-  const handleCloseBulkAssign = useCallback(() => {
-    if (isProcessingBulkAssign) {
-      return
-    }
-    setIsBulkAssignModalOpen(false)
-  }, [isProcessingBulkAssign])
-
-  const handleBulkAssignSubmit = useCallback(
-    async (values) => {
-      if (selectedClientsForBulk.length === 0) {
-        showToast({
-          type: 'error',
-          title: 'Sin clientes seleccionados',
-          description: 'Elige al menos un cliente antes de asignar un servicio.',
-        })
-        return
-      }
-
-      try {
-        setIsProcessingBulkAssign(true)
-        await bulkAssignClientServices({
-          ...values,
-          clientIds: selectedClientsForBulk
-            .map((client) => normalizeId(client.id))
-            .filter(Boolean),
-        })
-        showToast({
-          type: 'success',
-          title: 'Servicios asignados',
-          description: 'Se asignaron los servicios seleccionados correctamente.',
-        })
-        setIsBulkAssignModalOpen(false)
-        setSelectedClientIds(new Set())
-      } catch (error) {
-        showToast({
-          type: 'error',
-          title: 'No se pudo asignar el servicio',
-          description: resolveApiErrorMessage(error, 'Intenta nuevamente.'),
-        })
-      } finally {
-        setIsProcessingBulkAssign(false)
-      }
-    },
-    [bulkAssignClientServices, selectedClientsForBulk, showToast],
-  )
-
   const availableLocations = useMemo(() => {
     const unique = new Set(LOCATIONS)
     clients.forEach((client) => {
@@ -707,6 +645,64 @@ export default function ClientsPage() {
   )
 
   const hasSelectedClients = selectedClientsForBulk.length > 0
+
+  const handleOpenBulkAssign = useCallback(() => {
+    if (!hasSelectedClients) {
+      showToast({
+        type: 'info',
+        title: 'Selecciona clientes',
+        description: 'Elige uno o más clientes desde el listado para asignar un servicio.',
+      })
+      return
+    }
+    setIsBulkAssignModalOpen(true)
+  }, [hasSelectedClients, showToast])
+
+  const handleCloseBulkAssign = useCallback(() => {
+    if (isProcessingBulkAssign) {
+      return
+    }
+    setIsBulkAssignModalOpen(false)
+  }, [isProcessingBulkAssign])
+
+  const handleBulkAssignSubmit = useCallback(
+    async (values) => {
+      if (selectedClientsForBulk.length === 0) {
+        showToast({
+          type: 'error',
+          title: 'Sin clientes seleccionados',
+          description: 'Elige al menos un cliente antes de asignar un servicio.',
+        })
+        return
+      }
+
+      try {
+        setIsProcessingBulkAssign(true)
+        await bulkAssignClientServices({
+          ...values,
+          clientIds: selectedClientsForBulk
+            .map((client) => normalizeId(client.id))
+            .filter(Boolean),
+        })
+        showToast({
+          type: 'success',
+          title: 'Servicios asignados',
+          description: 'Se asignaron los servicios seleccionados correctamente.',
+        })
+        setIsBulkAssignModalOpen(false)
+        setSelectedClientIds(new Set())
+      } catch (error) {
+        showToast({
+          type: 'error',
+          title: 'No se pudo asignar el servicio',
+          description: resolveApiErrorMessage(error, 'Intenta nuevamente.'),
+        })
+      } finally {
+        setIsProcessingBulkAssign(false)
+      }
+    },
+    [bulkAssignClientServices, selectedClientsForBulk, showToast],
+  )
 
   const allFilteredSelected = useMemo(() => {
     if (filteredResidentialClients.length === 0) {
@@ -1626,6 +1622,10 @@ export default function ClientsPage() {
   }
 
   const isClientsTabActive = activeMainTab === 'clients'
+
+  if (shouldShowSkeleton) {
+    return <ClientsSkeleton />
+  }
 
   return (
     <div className="space-y-8">
