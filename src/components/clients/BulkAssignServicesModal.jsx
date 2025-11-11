@@ -8,6 +8,7 @@ import { peso } from '../../utils/formatters.js'
 const STATUS_OPTIONS = [
   { value: 'active', label: 'Activo' },
   { value: 'suspended', label: 'Suspendido' },
+  { value: 'courtesy', label: 'Gratis / Cortesía' },
 ]
 
 const createDefaultFormState = () => ({
@@ -60,7 +61,15 @@ export default function BulkAssignServicesModal({
     () => resolveEffectivePriceForFormState(formState, selectedPlan),
     [formState, selectedPlan],
   )
-  const isCourtesy = useMemo(() => isCourtesyPrice(effectivePrice), [effectivePrice])
+  const isCourtesyMode = formState.status === 'courtesy'
+  const isCourtesyPriceSelection = useMemo(
+    () => isCourtesyPrice(effectivePrice),
+    [effectivePrice],
+  )
+  const isCourtesy = useMemo(
+    () => isCourtesyMode || isCourtesyPriceSelection,
+    [isCourtesyMode, isCourtesyPriceSelection],
+  )
 
   useEffect(() => {
     if (!isOpen) {
@@ -124,13 +133,17 @@ export default function BulkAssignServicesModal({
       .map((client) => String(client?.id ?? client?.clientId ?? ''))
       .filter((id) => id)
 
+    const isCourtesySelection = formState.status === 'courtesy'
+
     const payload = {
       servicePlanId: normalizedPlanId,
       clientIds,
-      status: formState.status || 'active',
+      status: isCourtesySelection ? 'active' : formState.status || 'active',
     }
 
-    if (formState.isCustomPriceEnabled) {
+    if (isCourtesySelection) {
+      payload.customPrice = 0
+    } else if (formState.isCustomPriceEnabled) {
       const parsedPrice = Number(formState.price)
       if (Number.isFinite(parsedPrice)) {
         payload.customPrice = parsedPrice
@@ -160,15 +173,34 @@ export default function BulkAssignServicesModal({
 
   const handlePlanChange = (event) => {
     const nextPlanId = event.target.value
-    setFormState((prev) => ({
-      ...prev,
-      servicePlanId: nextPlanId,
-      isCustomPriceEnabled: false,
-      price:
-        selectedPlan && String(selectedPlan.id) === nextPlanId
-          ? prev.price
-          : selectedPlan?.defaultMonthlyFee ?? selectedPlan?.monthlyPrice ?? '',
-    }))
+    const planForNext =
+      activePlans.find((plan) => String(plan.id) === String(nextPlanId)) ?? null
+    setFormState((prev) => {
+      const shouldForceCourtesy = prev.status === 'courtesy'
+      if (shouldForceCourtesy) {
+        return {
+          ...prev,
+          servicePlanId: nextPlanId,
+          isCustomPriceEnabled: true,
+          price: '0',
+        }
+      }
+
+      const nextSuggestedPrice = planForNext
+        ? planForNext.defaultMonthlyFee ?? planForNext.monthlyPrice ?? ''
+        : ''
+
+      const nextPrice = prev.isCustomPriceEnabled
+        ? prev.price
+        : nextSuggestedPrice
+
+      return {
+        ...prev,
+        servicePlanId: nextPlanId,
+        isCustomPriceEnabled: prev.isCustomPriceEnabled,
+        price: nextPrice,
+      }
+    })
     setErrors((prev) => ({ ...prev, servicePlanId: undefined, price: undefined }))
   }
 
@@ -185,7 +217,7 @@ export default function BulkAssignServicesModal({
       <div className="w-full max-w-3xl rounded-lg bg-white shadow-xl">
         <header className="flex items-start justify-between border-b border-slate-200 px-6 py-4">
           <div>
-            <h2 className="text-lg font-semibold text-slate-900">Asignar servicio masivamente</h2>
+            <h2 className="text-lg font-semibold text-slate-900">Edición masiva de servicios</h2>
             <p className="mt-1 text-sm text-slate-500">
               Selecciona un plan mensual y aplícalo a los clientes elegidos. Se validarán bases, IPs y cupos
               antes de guardar.
@@ -247,9 +279,37 @@ export default function BulkAssignServicesModal({
                 <span>Estado inicial</span>
                 <select
                   value={formState.status}
-                  onChange={(event) =>
-                    setFormState((prev) => ({ ...prev, status: event.target.value }))
-                  }
+                  onChange={(event) => {
+                    const nextStatus = event.target.value
+                    setFormState((prev) => {
+                      if (nextStatus === 'courtesy') {
+                        return {
+                          ...prev,
+                          status: nextStatus,
+                          isCustomPriceEnabled: true,
+                          price: '0',
+                          billingDay: '',
+                        }
+                      }
+
+                      const shouldKeepCustomPrice = Boolean(
+                        prev.isCustomPriceEnabled && prev.price !== '' && prev.price !== null,
+                      )
+
+                      return {
+                        ...prev,
+                        status: nextStatus,
+                        isCustomPriceEnabled: shouldKeepCustomPrice,
+                        price: shouldKeepCustomPrice && prev.price !== '0' ? prev.price : '',
+                      }
+                    })
+                    setErrors((prevErrors) => ({
+                      ...prevErrors,
+                      status: undefined,
+                      price: undefined,
+                      billingDay: undefined,
+                    }))
+                  }}
                   className="rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200"
                   disabled={isProcessing}
                 >
@@ -318,7 +378,7 @@ export default function BulkAssignServicesModal({
                         price: event.target.checked ? prev.price : '',
                       }))
                     }
-                    disabled={isProcessing}
+                    disabled={isProcessing || isCourtesyMode}
                     className="h-4 w-4 rounded border-slate-300 text-blue-600 focus-visible:ring-blue-500"
                   />
                   <span>Usar tarifa personalizada</span>
@@ -333,10 +393,12 @@ export default function BulkAssignServicesModal({
                       ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
                       : 'border-slate-300'
                   } ${
-                    !formState.isCustomPriceEnabled ? 'bg-slate-100 text-slate-500' : ''
+                    !formState.isCustomPriceEnabled || isCourtesyMode
+                      ? 'bg-slate-100 text-slate-500'
+                      : ''
                   }`}
                   placeholder={selectedPlan ? `Tarifa sugerida: ${formatPlanLabel(selectedPlan)}` : '300'}
-                  disabled={isProcessing || !formState.isCustomPriceEnabled}
+                  disabled={isProcessing || !formState.isCustomPriceEnabled || isCourtesyMode}
                 />
                 {errors.price && (
                   <span className="text-xs font-medium text-red-600">{errors.price}</span>
@@ -363,7 +425,7 @@ export default function BulkAssignServicesModal({
               Cancelar
             </Button>
             <Button type="submit" disabled={isProcessing || selectedCount === 0}>
-              {isProcessing ? 'Asignando…' : 'Asignar servicio'}
+              {isProcessing ? 'Aplicando…' : 'Aplicar cambios'}
             </Button>
           </div>
         </form>

@@ -13,6 +13,16 @@ from ..models.client_service import ClientServiceStatus, ClientServiceType
 from ..security import require_admin
 from ..services import ClientContractError, ClientContractService
 
+
+def _build_error_detail(exc: Exception) -> object:
+    if isinstance(exc, ClientContractError):
+        detail = getattr(exc, "detail", None)
+        if detail is not None:
+            return detail
+    if exc.args:
+        return exc.args[0]
+    return str(exc)
+
 router = APIRouter(dependencies=[Depends(require_admin)])
 
 
@@ -48,7 +58,9 @@ def create_service(
     try:
         return ClientContractService.create_service(db, payload)
     except (ValueError, ClientContractError) as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=_build_error_detail(exc)
+        ) from exc
 
 
 @router.post(
@@ -62,7 +74,9 @@ def bulk_create_services(
     try:
         return ClientContractService.bulk_create_services(db, payload)
     except (ValueError, ClientContractError) as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=_build_error_detail(exc)
+        ) from exc
 
 
 @router.post(
@@ -76,7 +90,9 @@ def bulk_assign_services(
     try:
         return ClientContractService.bulk_create_services(db, payload)
     except (ValueError, ClientContractError) as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=_build_error_detail(exc)
+        ) from exc
 
 
 @router.get("/{service_id}", response_model=schemas.ClientServiceRead)
@@ -99,7 +115,9 @@ def update_service(
     try:
         return ClientContractService.update_service(db, service, payload)
     except ClientContractError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=_build_error_detail(exc)
+        ) from exc
 
 
 @router.delete("/{service_id}", status_code=status.HTTP_204_NO_CONTENT)
