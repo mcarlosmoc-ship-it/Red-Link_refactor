@@ -1,0 +1,373 @@
+import { useEffect, useMemo, useState } from 'react'
+import { X } from 'lucide-react'
+import Button from '../ui/Button.jsx'
+import { computeServiceFormErrors } from '../../utils/serviceFormValidation.js'
+import { isCourtesyPrice, resolveEffectivePriceForFormState } from '../../utils/effectivePrice.js'
+import { peso } from '../../utils/formatters.js'
+
+const STATUS_OPTIONS = [
+  { value: 'active', label: 'Activo' },
+  { value: 'suspended', label: 'Suspendido' },
+]
+
+const createDefaultFormState = () => ({
+  servicePlanId: '',
+  status: 'active',
+  billingDay: '',
+  baseId: '',
+  isCustomPriceEnabled: false,
+  price: '',
+  notes: '',
+})
+
+const formatPlanLabel = (plan) => {
+  const price = Number(plan?.monthlyPrice ?? plan?.defaultMonthlyFee)
+  if (Number.isFinite(price) && price > 0) {
+    return `${plan.name} · ${peso(price)}`
+  }
+  if (Number.isFinite(price) && price === 0) {
+    return `${plan.name} · ${peso(0)} (cortesía)`
+  }
+  return `${plan?.name ?? 'Servicio'} · Monto variable`
+}
+
+export default function BulkAssignServicesModal({
+  isOpen,
+  onClose,
+  onSubmit,
+  isProcessing = false,
+  clients = [],
+  servicePlans = [],
+}) {
+  const [formState, setFormState] = useState(() => createDefaultFormState())
+  const [errors, setErrors] = useState({})
+
+  const activePlans = useMemo(
+    () => servicePlans.filter((plan) => plan.isActive !== false),
+    [servicePlans],
+  )
+
+  const selectedPlan = useMemo(() => {
+    if (!formState.servicePlanId) {
+      return null
+    }
+    return (
+      activePlans.find((plan) => String(plan.id) === String(formState.servicePlanId)) ?? null
+    )
+  }, [activePlans, formState.servicePlanId])
+
+  const effectivePrice = useMemo(
+    () => resolveEffectivePriceForFormState(formState, selectedPlan),
+    [formState, selectedPlan],
+  )
+  const isCourtesy = useMemo(() => isCourtesyPrice(effectivePrice), [effectivePrice])
+
+  useEffect(() => {
+    if (!isOpen) {
+      setFormState(createDefaultFormState())
+      setErrors({})
+    }
+  }, [isOpen])
+
+  useEffect(() => {
+    if (!isCourtesy) {
+      return
+    }
+    setFormState((prev) => {
+      if (prev.billingDay === '' || prev.billingDay === null) {
+        return prev
+      }
+      return { ...prev, billingDay: '' }
+    })
+  }, [isCourtesy])
+
+  if (!isOpen) {
+    return null
+  }
+
+  const selectedCount = clients.length
+  const selectedClientNames = useMemo(
+    () =>
+      clients
+        .map((client) => client?.name ?? 'Cliente')
+        .filter(Boolean)
+        .slice(0, 5),
+    [clients],
+  )
+
+  const handleSubmit = (event) => {
+    event.preventDefault()
+    const validationErrors = computeServiceFormErrors(
+      {
+        ...formState,
+        price: formState.isCustomPriceEnabled ? formState.price : '',
+      },
+      { plan: selectedPlan, effectivePrice },
+    )
+
+    if (!formState.servicePlanId) {
+      validationErrors.servicePlanId = 'Selecciona un servicio mensual.'
+    }
+
+    if (Object.keys(validationErrors).length > 0) {
+      setErrors(validationErrors)
+      return
+    }
+
+    const normalizedPlanId = Number(formState.servicePlanId)
+    if (!Number.isFinite(normalizedPlanId) || normalizedPlanId <= 0) {
+      setErrors({ servicePlanId: 'Selecciona un servicio mensual válido.' })
+      return
+    }
+
+    const clientIds = clients
+      .map((client) => String(client?.id ?? client?.clientId ?? ''))
+      .filter((id) => id)
+
+    const payload = {
+      servicePlanId: normalizedPlanId,
+      clientIds,
+      status: formState.status || 'active',
+    }
+
+    if (formState.isCustomPriceEnabled) {
+      const parsedPrice = Number(formState.price)
+      if (Number.isFinite(parsedPrice)) {
+        payload.customPrice = parsedPrice
+      }
+    }
+
+    if (!isCourtesy && formState.billingDay !== '' && formState.billingDay !== null) {
+      const parsedDay = Number(formState.billingDay)
+      if (Number.isInteger(parsedDay) && parsedDay >= 1 && parsedDay <= 31) {
+        payload.billingDay = parsedDay
+      }
+    }
+
+    if (formState.baseId !== '' && formState.baseId !== null) {
+      const parsedBase = Number(formState.baseId)
+      if (Number.isInteger(parsedBase) && parsedBase > 0) {
+        payload.baseId = parsedBase
+      }
+    }
+
+    if (formState.notes?.trim()) {
+      payload.notes = formState.notes.trim()
+    }
+
+    onSubmit(payload)
+  }
+
+  const handlePlanChange = (event) => {
+    const nextPlanId = event.target.value
+    setFormState((prev) => ({
+      ...prev,
+      servicePlanId: nextPlanId,
+      isCustomPriceEnabled: false,
+      price:
+        selectedPlan && String(selectedPlan.id) === nextPlanId
+          ? prev.price
+          : selectedPlan?.defaultMonthlyFee ?? selectedPlan?.monthlyPrice ?? '',
+    }))
+    setErrors((prev) => ({ ...prev, servicePlanId: undefined, price: undefined }))
+  }
+
+  const planOptions = useMemo(
+    () =>
+      activePlans
+        .map((plan) => ({ value: String(plan.id), label: formatPlanLabel(plan) }))
+        .sort((a, b) => a.label.localeCompare(b.label, 'es', { sensitivity: 'base' })),
+    [activePlans],
+  )
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4 py-6">
+      <div className="w-full max-w-3xl rounded-lg bg-white shadow-xl">
+        <header className="flex items-start justify-between border-b border-slate-200 px-6 py-4">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900">Asignar servicio masivamente</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Selecciona un plan mensual y aplícalo a los clientes elegidos. Se validarán bases, IPs y cupos
+              antes de guardar.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+            aria-label="Cerrar"
+            disabled={isProcessing}
+          >
+            <X className="h-5 w-5" aria-hidden />
+          </button>
+        </header>
+
+        <form onSubmit={handleSubmit} className="px-6 py-5">
+          <div className="space-y-4">
+            <div className="rounded-md border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+              <p className="font-medium text-slate-700">
+                {selectedCount === 1
+                  ? '1 cliente seleccionado'
+                  : `${selectedCount} clientes seleccionados`}
+              </p>
+              {selectedClientNames.length > 0 && (
+                <p className="mt-1 text-xs text-slate-500">
+                  {selectedClientNames.join(', ')}
+                  {selectedCount > selectedClientNames.length ? '…' : ''}
+                </p>
+              )}
+            </div>
+
+            <label className="grid gap-1 text-xs font-semibold text-slate-700">
+              <span>Servicio mensual</span>
+              <select
+                value={formState.servicePlanId}
+                onChange={handlePlanChange}
+                className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
+                  errors.servicePlanId
+                    ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
+                    : 'border-slate-300'
+                }`}
+                disabled={isProcessing}
+              >
+                <option value="">Selecciona un servicio mensual</option>
+                {planOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              {errors.servicePlanId && (
+                <span className="text-xs font-medium text-red-600">{errors.servicePlanId}</span>
+              )}
+            </label>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="grid gap-1 text-xs font-semibold text-slate-700">
+                <span>Estado inicial</span>
+                <select
+                  value={formState.status}
+                  onChange={(event) =>
+                    setFormState((prev) => ({ ...prev, status: event.target.value }))
+                  }
+                  className="rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200"
+                  disabled={isProcessing}
+                >
+                  {STATUS_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="grid gap-1 text-xs font-semibold text-slate-700">
+                <span>Día de cobro (1-31)</span>
+                <input
+                  type="number"
+                  min="1"
+                  max="31"
+                  value={formState.billingDay}
+                  onChange={(event) =>
+                    setFormState((prev) => ({ ...prev, billingDay: event.target.value }))
+                  }
+                  className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
+                    errors.billingDay
+                      ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
+                      : 'border-slate-300'
+                  } ${isCourtesy ? 'bg-slate-100 text-slate-500' : ''}`}
+                  disabled={isProcessing || isCourtesy}
+                  placeholder={isCourtesy ? 'No aplica para cortesía' : '15'}
+                />
+                {errors.billingDay && (
+                  <span className="text-xs font-medium text-red-600">{errors.billingDay}</span>
+                )}
+              </label>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="grid gap-1 text-xs font-semibold text-slate-700">
+                <span>Base asignada (opcional)</span>
+                <input
+                  value={formState.baseId}
+                  onChange={(event) =>
+                    setFormState((prev) => ({ ...prev, baseId: event.target.value }))
+                  }
+                  className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
+                    errors.baseId
+                      ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
+                      : 'border-slate-300'
+                  }`}
+                  placeholder="Usar base del cliente"
+                  disabled={isProcessing}
+                />
+                {errors.baseId && (
+                  <span className="text-xs font-medium text-red-600">{errors.baseId}</span>
+                )}
+              </label>
+
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-xs font-semibold text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={formState.isCustomPriceEnabled}
+                    onChange={(event) =>
+                      setFormState((prev) => ({
+                        ...prev,
+                        isCustomPriceEnabled: event.target.checked,
+                        price: event.target.checked ? prev.price : '',
+                      }))
+                    }
+                    disabled={isProcessing}
+                    className="h-4 w-4 rounded border-slate-300 text-blue-600 focus-visible:ring-blue-500"
+                  />
+                  <span>Usar tarifa personalizada</span>
+                </label>
+                <input
+                  value={formState.price}
+                  onChange={(event) =>
+                    setFormState((prev) => ({ ...prev, price: event.target.value }))
+                  }
+                  className={`w-full rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
+                    errors.price
+                      ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
+                      : 'border-slate-300'
+                  } ${
+                    !formState.isCustomPriceEnabled ? 'bg-slate-100 text-slate-500' : ''
+                  }`}
+                  placeholder={selectedPlan ? `Tarifa sugerida: ${formatPlanLabel(selectedPlan)}` : '300'}
+                  disabled={isProcessing || !formState.isCustomPriceEnabled}
+                />
+                {errors.price && (
+                  <span className="text-xs font-medium text-red-600">{errors.price}</span>
+                )}
+              </div>
+            </div>
+
+            <label className="grid gap-1 text-xs font-semibold text-slate-700">
+              <span>Notas internas (opcional)</span>
+              <textarea
+                value={formState.notes}
+                onChange={(event) =>
+                  setFormState((prev) => ({ ...prev, notes: event.target.value }))
+                }
+                className="min-h-[80px] rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200"
+                placeholder="Ejemplo: Asignación tras importación"
+                disabled={isProcessing}
+              />
+            </label>
+          </div>
+
+          <div className="mt-6 flex flex-col gap-3 border-t border-slate-200 pt-4 md:flex-row md:items-center md:justify-end">
+            <Button type="button" variant="ghost" onClick={onClose} disabled={isProcessing}>
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={isProcessing || selectedCount === 0}>
+              {isProcessing ? 'Asignando…' : 'Asignar servicio'}
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}

@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom'
 import Button from '../components/ui/Button.jsx'
 import InfoTooltip from '../components/ui/InfoTooltip.jsx'
 import ImportClientsModal from '../components/clients/ImportClientsModal.jsx'
+import BulkAssignServicesModal from '../components/clients/BulkAssignServicesModal.jsx'
 import { Card, CardContent } from '../components/ui/Card.jsx'
 import { CLIENT_PRICE, useBackofficeStore } from '../store/useBackofficeStore.js'
 import { useClients } from '../hooks/useClients.js'
@@ -11,6 +12,7 @@ import { useToast } from '../hooks/useToast.js'
 import { peso, formatDate, formatPeriodLabel, addMonthsToPeriod } from '../utils/formatters.js'
 import { SERVICE_STATUS_OPTIONS, getServiceTypeLabel, getServiceStatusLabel } from '../constants/serviceTypes.js'
 import { computeServiceFormErrors } from '../utils/serviceFormValidation.js'
+import { isCourtesyPrice, resolveEffectivePriceForFormState } from '../utils/effectivePrice.js'
 import {
   CLIENT_ANTENNA_MODELS,
   CLIENT_IP_FIELDS_BY_TYPE,
@@ -40,6 +42,18 @@ const LOCATION_FILTER_NONE = '__none__'
 const MAIN_TABS = [
   { id: 'clients', label: 'Clientes' },
   { id: 'services', label: 'Servicios mensuales' },
+]
+
+const CLIENTS_SUB_TABS = [
+  { id: 'list', label: 'Listado de clientes' },
+  { id: 'create', label: 'Agregar cliente' },
+]
+
+const CLIENT_DETAIL_TABS = [
+  { id: 'summary', label: 'Resumen' },
+  { id: 'services', label: 'Servicios contratados' },
+  { id: 'payments', label: 'Pagos' },
+  { id: 'history', label: 'Historial / Notas' },
 ]
 
 const CLIENT_TYPE_LABELS = {
@@ -75,6 +89,58 @@ const normalizeId = (value) => {
     return null
   }
   return String(value)
+}
+
+const resolveApiErrorMessage = (error, fallback = 'Intenta nuevamente.') => {
+  if (!error || typeof error !== 'object') {
+    return fallback
+  }
+
+  const detail =
+    error?.response?.data?.detail ??
+    error?.data?.detail ??
+    error?.detail ??
+    error?.response?.data?.message ??
+    error?.data?.message
+
+  if (typeof detail === 'string' && detail.trim()) {
+    return detail.trim()
+  }
+
+  if (Array.isArray(detail)) {
+    const messages = detail
+      .map((item) => {
+        if (typeof item === 'string') {
+          return item.trim()
+        }
+        if (item && typeof item === 'object') {
+          if (typeof item.msg === 'string' && item.msg.trim()) {
+            return item.msg.trim()
+          }
+          if (typeof item.message === 'string' && item.message.trim()) {
+            return item.message.trim()
+          }
+        }
+        return null
+      })
+      .filter(Boolean)
+
+    if (messages.length > 0) {
+      return messages.join(', ')
+    }
+  }
+
+  if (detail && typeof detail === 'object') {
+    if (typeof detail.msg === 'string' && detail.msg.trim()) {
+      return detail.msg.trim()
+    }
+    if (typeof detail.message === 'string' && detail.message.trim()) {
+      return detail.message.trim()
+    }
+  }
+
+  const fallbackMessage = typeof error.message === 'string' ? error.message.trim() : ''
+  return fallbackMessage || fallback
 }
 
 const createInitialServiceState = (baseId) => ({
@@ -120,6 +186,7 @@ export default function ClientsPage() {
     reload: reloadClients,
     createClient,
     createClientService,
+    bulkAssignClientServices,
     updateClientServiceStatus,
     deleteClient,
     importClients,
@@ -135,7 +202,7 @@ export default function ClientsPage() {
   const [locationFilter, setLocationFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
   const [activeMainTab, setActiveMainTab] = useState('clients')
-  const [isClientFormOpen, setIsClientFormOpen] = useState(false)
+  const [activeClientsSubTab, setActiveClientsSubTab] = useState('list')
   const [formState, setFormState] = useState({ ...defaultForm })
   const [formErrors, setFormErrors] = useState({})
   const [isRetrying, setIsRetrying] = useState(false)
@@ -147,6 +214,7 @@ export default function ClientsPage() {
   const [sortField, setSortField] = useState('name')
   const [sortDirection, setSortDirection] = useState('asc')
   const [selectedClientId, setSelectedClientId] = useState(null)
+  const [activeClientDetailTab, setActiveClientDetailTab] = useState('summary')
   const [isAddingService, setIsAddingService] = useState(false)
   const [initialServiceState, setInitialServiceState] = useState(() =>
     createInitialServiceState(defaultForm.base),
@@ -162,6 +230,9 @@ export default function ClientsPage() {
     notes: '',
   })
   const [serviceFormErrors, setServiceFormErrors] = useState({})
+  const [selectedClientIds, setSelectedClientIds] = useState(() => new Set())
+  const [isBulkAssignModalOpen, setIsBulkAssignModalOpen] = useState(false)
+  const [isProcessingBulkAssign, setIsProcessingBulkAssign] = useState(false)
   const activeServicePlans = useMemo(
     () => servicePlans.filter((plan) => plan.isActive),
     [servicePlans],
@@ -197,6 +268,22 @@ export default function ClientsPage() {
       ) ?? null
     )
   }, [serviceFormState.servicePlanId, servicePlans])
+  const initialServiceEffectivePrice = useMemo(
+    () => resolveEffectivePriceForFormState(initialServiceState, selectedInitialPlan),
+    [initialServiceState, selectedInitialPlan],
+  )
+  const isInitialCourtesy = useMemo(
+    () => isCourtesyPrice(initialServiceEffectivePrice),
+    [initialServiceEffectivePrice],
+  )
+  const serviceFormEffectivePrice = useMemo(
+    () => resolveEffectivePriceForFormState(serviceFormState, selectedServicePlan),
+    [serviceFormState, selectedServicePlan],
+  )
+  const isServiceFormCourtesy = useMemo(
+    () => isCourtesyPrice(serviceFormEffectivePrice),
+    [serviceFormEffectivePrice],
+  )
   const planRequiresIp = Boolean(selectedInitialPlan?.requiresIp)
   const planRequiresBase = Boolean(selectedInitialPlan?.requiresBase)
   const planRequiresBillingDay = Boolean(
@@ -211,6 +298,9 @@ export default function ClientsPage() {
       servicePlanRequiresBase ||
       (selectedServicePlan && isInternetLikeService(selectedServicePlan.serviceType)),
   )
+  const shouldRequireInitialBillingDay = planRequiresBillingDay && !isInitialCourtesy
+  const shouldRequireServiceBillingDay =
+    servicePlanRequiresBillingDay && !isServiceFormCourtesy
   const clientDetailsRef = useRef(null)
   const shouldOpenServiceFormRef = useRef(false)
   const isMutatingClients = Boolean(clientsStatus?.isMutating)
@@ -288,33 +378,25 @@ export default function ClientsPage() {
       showToast({
         type: 'error',
         title: 'No se pudieron cargar los clientes',
-        description: error?.message ?? 'Intenta nuevamente.',
+        description: resolveApiErrorMessage(error, 'Intenta nuevamente.'),
       })
     } finally {
       setIsRetrying(false)
     }
   }
 
-  const handleSelectMainTab = useCallback((tabId) => {
-    setActiveMainTab(tabId)
-    if (tabId !== 'clients') {
-      setIsClientFormOpen(false)
-    }
-  }, [])
-
-  const handleToggleClientForm = useCallback(() => {
-    setIsClientFormOpen((previous) => {
-      if (previous) {
-        setFormState({ ...defaultForm })
-        setFormErrors({})
-        setInitialServiceState(createInitialServiceState(defaultForm.base))
-        setInitialServiceErrors({})
-      } else {
-        setFormErrors({})
-        setInitialServiceErrors({})
+  const handleSelectMainTab = useCallback(
+    (tabId) => {
+      setActiveMainTab(tabId)
+      if (tabId !== 'clients') {
+        setActiveClientsSubTab('list')
       }
-      return !previous
-    })
+    },
+    [],
+  )
+
+  const handleSelectClientsSubTab = useCallback((tabId) => {
+    setActiveClientsSubTab(tabId)
   }, [])
 
   const handleOpenImport = () => {
@@ -360,7 +442,7 @@ export default function ClientsPage() {
       showToast({
         type: 'error',
         title: 'No se pudieron importar los clientes',
-        description: error?.message ?? 'Intenta nuevamente.',
+        description: resolveApiErrorMessage(error, 'Intenta nuevamente.'),
       })
     } finally {
       setIsImportingClients(false)
@@ -463,6 +545,64 @@ export default function ClientsPage() {
     }
   }, [clients, showToast])
 
+  const handleOpenBulkAssign = useCallback(() => {
+    if (!hasSelectedClients) {
+      showToast({
+        type: 'info',
+        title: 'Selecciona clientes',
+        description: 'Elige uno o más clientes desde el listado para asignar un servicio.',
+      })
+      return
+    }
+    setIsBulkAssignModalOpen(true)
+  }, [hasSelectedClients, showToast])
+
+  const handleCloseBulkAssign = useCallback(() => {
+    if (isProcessingBulkAssign) {
+      return
+    }
+    setIsBulkAssignModalOpen(false)
+  }, [isProcessingBulkAssign])
+
+  const handleBulkAssignSubmit = useCallback(
+    async (values) => {
+      if (selectedClientsForBulk.length === 0) {
+        showToast({
+          type: 'error',
+          title: 'Sin clientes seleccionados',
+          description: 'Elige al menos un cliente antes de asignar un servicio.',
+        })
+        return
+      }
+
+      try {
+        setIsProcessingBulkAssign(true)
+        await bulkAssignClientServices({
+          ...values,
+          clientIds: selectedClientsForBulk
+            .map((client) => normalizeId(client.id))
+            .filter(Boolean),
+        })
+        showToast({
+          type: 'success',
+          title: 'Servicios asignados',
+          description: 'Se asignaron los servicios seleccionados correctamente.',
+        })
+        setIsBulkAssignModalOpen(false)
+        setSelectedClientIds(new Set())
+      } catch (error) {
+        showToast({
+          type: 'error',
+          title: 'No se pudo asignar el servicio',
+          description: resolveApiErrorMessage(error, 'Intenta nuevamente.'),
+        })
+      } finally {
+        setIsProcessingBulkAssign(false)
+      }
+    },
+    [bulkAssignClientServices, selectedClientsForBulk, showToast],
+  )
+
   const availableLocations = useMemo(() => {
     const unique = new Set(LOCATIONS)
     clients.forEach((client) => {
@@ -541,6 +681,84 @@ export default function ClientsPage() {
     return sorted
   }, [filteredResidentialClients, sortField, sortDirection])
 
+  useEffect(() => {
+    setSelectedClientIds((prev) => {
+      if (prev.size === 0) {
+        return prev
+      }
+      const next = new Set()
+      clients.forEach((client) => {
+        const id = normalizeId(client.id)
+        if (id && prev.has(id)) {
+          next.add(id)
+        }
+      })
+      return next.size === prev.size ? prev : next
+    })
+  }, [clients])
+
+  const selectedClientsForBulk = useMemo(
+    () =>
+      clients.filter((client) => {
+        const id = normalizeId(client.id)
+        return id && selectedClientIds.has(id)
+      }),
+    [clients, selectedClientIds],
+  )
+
+  const hasSelectedClients = selectedClientsForBulk.length > 0
+
+  const allFilteredSelected = useMemo(() => {
+    if (filteredResidentialClients.length === 0) {
+      return false
+    }
+    return filteredResidentialClients.every((client) => {
+      const id = normalizeId(client.id)
+      return id ? selectedClientIds.has(id) : false
+    })
+  }, [filteredResidentialClients, selectedClientIds])
+
+  const handleToggleClientSelection = useCallback((clientId) => {
+    const normalizedId = normalizeId(clientId)
+    if (!normalizedId) {
+      return
+    }
+    setSelectedClientIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(normalizedId)) {
+        next.delete(normalizedId)
+      } else {
+        next.add(normalizedId)
+      }
+      return next
+    })
+  }, [])
+
+  const handleSelectAllFiltered = useCallback(
+    (checked) => {
+      setSelectedClientIds((prev) => {
+        const next = new Set(prev)
+        if (checked) {
+          filteredResidentialClients.forEach((client) => {
+            const id = normalizeId(client.id)
+            if (id) {
+              next.add(id)
+            }
+          })
+        } else {
+          filteredResidentialClients.forEach((client) => {
+            const id = normalizeId(client.id)
+            if (id) {
+              next.delete(id)
+            }
+          })
+        }
+        return next
+      })
+    },
+    [filteredResidentialClients],
+  )
+
   const handleSort = useCallback((field) => {
     setSortField((currentField) => {
       if (currentField === field) {
@@ -586,6 +804,46 @@ export default function ClientsPage() {
   }, [formState.base, planRequiresBase])
 
   useEffect(() => {
+    if (!isInitialCourtesy) {
+      return
+    }
+
+    setFormState((prev) => {
+      if (
+        Number(prev.debtMonths) === 0 &&
+        Number(prev.paidMonthsAhead) === 0
+      ) {
+        return prev
+      }
+      return {
+        ...prev,
+        debtMonths: 0,
+        paidMonthsAhead: 0,
+      }
+    })
+
+    setInitialServiceState((prev) => {
+      if (prev.billingDay === '' || prev.billingDay === null) {
+        return prev
+      }
+      return { ...prev, billingDay: '' }
+    })
+  }, [isInitialCourtesy])
+
+  useEffect(() => {
+    if (!isServiceFormCourtesy) {
+      return
+    }
+
+    setServiceFormState((prev) => {
+      if (prev.billingDay === '' || prev.billingDay === null) {
+        return prev
+      }
+      return { ...prev, billingDay: '' }
+    })
+  }, [isServiceFormCourtesy])
+
+  useEffect(() => {
     setInitialServiceErrors({})
     setInitialServiceState((prev) => {
       const currentName = prev.displayName?.trim() ?? ''
@@ -595,6 +853,16 @@ export default function ClientsPage() {
       return { ...prev, displayName: getServiceTypeLabel(prev.serviceType) }
     })
   }, [])
+
+  useEffect(() => {
+    setActiveClientDetailTab('summary')
+  }, [selectedClientId])
+
+  useEffect(() => {
+    if (activeClientsSubTab === 'create') {
+      setFormErrors({})
+    }
+  }, [activeClientsSubTab])
 
   useEffect(() => {
     if (!servicePlans || servicePlans.length === 0) {
@@ -648,6 +916,7 @@ export default function ClientsPage() {
     },
     [clients, selectedClientId],
   )
+  const isSelectedClientCourtesy = Boolean(selectedClient?.isCourtesyService)
   const buildDefaultServiceFormState = useCallback(
     () => ({
       servicePlanId: '',
@@ -688,7 +957,7 @@ export default function ClientsPage() {
     Boolean(primaryService) && primaryServiceStatusValue === 'active'
   const detailAnchorPeriod = selectedPeriod ?? currentPeriod ?? null
   const selectedClientPaymentStatus = useMemo(() => {
-    if (!selectedClient || !detailAnchorPeriod) {
+    if (!selectedClient || !detailAnchorPeriod || isSelectedClientCourtesy) {
       return null
     }
 
@@ -728,7 +997,7 @@ export default function ClientsPage() {
       debtFraction: debtHasFraction ? debtFraction : 0,
       aheadFraction: aheadHasFraction ? aheadFraction : 0,
     }
-  }, [selectedClient, detailAnchorPeriod])
+  }, [selectedClient, detailAnchorPeriod, isSelectedClientCourtesy])
   const primaryServiceStatusLabel = useMemo(() => {
     if (primaryService) {
       return formatServiceStatus(primaryService.status)
@@ -811,27 +1080,31 @@ export default function ClientsPage() {
     })
 
     if (formState.type === 'residential') {
-      if (!Number.isInteger(Number(formState.debtMonths)) || Number(formState.debtMonths) < 0) {
-        errors.debtMonths = 'Los periodos pendientes no pueden ser negativos.'
-      }
-      if (
-        !Number.isInteger(Number(formState.paidMonthsAhead)) ||
-        Number(formState.paidMonthsAhead) < 0
-      ) {
-        errors.paidMonthsAhead = 'Los periodos adelantados no pueden ser negativos.'
+      if (!isInitialCourtesy) {
+        if (!Number.isInteger(Number(formState.debtMonths)) || Number(formState.debtMonths) < 0) {
+          errors.debtMonths = 'Los periodos pendientes no pueden ser negativos.'
+        }
+        if (
+          !Number.isInteger(Number(formState.paidMonthsAhead)) ||
+          Number(formState.paidMonthsAhead) < 0
+        ) {
+          errors.paidMonthsAhead = 'Los periodos adelantados no pueden ser negativos.'
+        }
       }
     } else {
       if (!formState.modemModel.trim()) {
         errors.modemModel = 'Describe el módem instalado en el cliente.'
       }
     }
-    const debtValue = Number(formState.debtMonths)
-    if (!Number.isFinite(debtValue) || debtValue < 0) {
-      errors.debtMonths = 'Los periodos pendientes no pueden ser negativos.'
-    }
-    const aheadValue = Number(formState.paidMonthsAhead)
-    if (!Number.isFinite(aheadValue) || aheadValue < 0) {
-      errors.paidMonthsAhead = 'Los periodos adelantados no pueden ser negativos.'
+    if (!isInitialCourtesy) {
+      const debtValue = Number(formState.debtMonths)
+      if (!Number.isFinite(debtValue) || debtValue < 0) {
+        errors.debtMonths = 'Los periodos pendientes no pueden ser negativos.'
+      }
+      const aheadValue = Number(formState.paidMonthsAhead)
+      if (!Number.isFinite(aheadValue) || aheadValue < 0) {
+        errors.paidMonthsAhead = 'Los periodos adelantados no pueden ser negativos.'
+      }
     }
     setFormErrors(errors)
     return Object.keys(errors).length === 0
@@ -843,12 +1116,12 @@ export default function ClientsPage() {
         ...serviceFormState,
         price: serviceFormState.isCustomPriceEnabled ? serviceFormState.price : '',
       },
-      { plan: selectedServicePlan },
+      { plan: selectedServicePlan, effectivePrice: serviceFormEffectivePrice },
     )
 
     setServiceFormErrors(errors)
     return Object.keys(errors).length === 0
-  }, [serviceFormState, selectedServicePlan])
+  }, [serviceFormState, selectedServicePlan, serviceFormEffectivePrice])
 
   const validateInitialService = useCallback(() => {
     const computedErrors = computeServiceFormErrors(
@@ -856,12 +1129,16 @@ export default function ClientsPage() {
         ...initialServiceState,
         price: initialServiceState.isCustomPriceEnabled ? initialServiceState.price : '',
       },
-      { requireClientId: false, plan: selectedInitialPlan },
+      {
+        requireClientId: false,
+        plan: selectedInitialPlan,
+        effectivePrice: initialServiceEffectivePrice,
+      },
     )
 
     setInitialServiceErrors(computedErrors)
     return Object.keys(computedErrors).length === 0
-  }, [initialServiceState, selectedInitialPlan])
+  }, [initialServiceState, selectedInitialPlan, initialServiceEffectivePrice])
 
   const handleSelectInitialPlan = useCallback(
     (planId) => {
@@ -1039,6 +1316,9 @@ export default function ClientsPage() {
       })()
 
       const normalizedBillingDay = (() => {
+        if (isServiceFormCourtesy) {
+          return null
+        }
         if (serviceFormState.billingDay === '' || serviceFormState.billingDay === null) {
           return null
         }
@@ -1088,7 +1368,7 @@ export default function ClientsPage() {
         showToast({
           type: 'error',
           title: 'No se pudo agregar el servicio',
-          description: error?.message ?? 'Intenta nuevamente.',
+          description: resolveApiErrorMessage(error, 'Intenta nuevamente.'),
         })
       }
     },
@@ -1100,6 +1380,7 @@ export default function ClientsPage() {
       validateServiceForm,
       buildDefaultServiceFormState,
       selectedServicePlan,
+      isServiceFormCourtesy,
     ],
   )
 
@@ -1109,6 +1390,9 @@ export default function ClientsPage() {
     if (!validateInitialService()) return
 
     const normalizedPlanPrice = (() => {
+      if (Number.isFinite(initialServiceEffectivePrice)) {
+        return Number(initialServiceEffectivePrice)
+      }
       const rawPrice = initialServiceSnapshot.price
       if (rawPrice === '' || rawPrice === null || rawPrice === undefined) {
         const planFee = selectedInitialPlan?.defaultMonthlyFee
@@ -1129,9 +1413,14 @@ export default function ClientsPage() {
       name: formState.name.trim(),
       location: formState.location,
       base: Number(formState.base) || 1,
-      debtMonths: formState.type === 'residential' ? Number(formState.debtMonths) || 0 : 0,
+      debtMonths:
+        formState.type === 'residential' && !isInitialCourtesy
+          ? Number(formState.debtMonths) || 0
+          : 0,
       paidMonthsAhead:
-        formState.type === 'residential' ? Number(formState.paidMonthsAhead) || 0 : 0,
+        formState.type === 'residential' && !isInitialCourtesy
+          ? Number(formState.paidMonthsAhead) || 0
+          : 0,
       monthlyFee:
         formState.type === 'residential'
           ? normalizedPlanPrice ?? 0
@@ -1177,6 +1466,9 @@ export default function ClientsPage() {
               : null
 
           const normalizedBillingDay = (() => {
+            if (isInitialCourtesy) {
+              return null
+            }
             if (initialServiceSnapshot.billingDay === '' || initialServiceSnapshot.billingDay === null) {
               return null
             }
@@ -1220,9 +1512,10 @@ export default function ClientsPage() {
             showToast({
               type: 'warning',
               title: 'Servicio no registrado',
-              description:
-                error?.message ??
+              description: resolveApiErrorMessage(
+                error,
                 'Agrega el servicio manualmente desde la ficha del cliente.',
+              ),
             })
           }
         }
@@ -1235,7 +1528,7 @@ export default function ClientsPage() {
       showToast({
         type: 'error',
         title: 'No se pudo agregar el cliente',
-        description: error?.message ?? 'Intenta nuevamente.',
+        description: resolveApiErrorMessage(error, 'Intenta nuevamente.'),
       })
     }
   }
@@ -1284,7 +1577,7 @@ export default function ClientsPage() {
       showToast({
         type: 'error',
         title: 'No se pudo actualizar el servicio',
-        description: error?.message ?? 'Intenta nuevamente.',
+        description: resolveApiErrorMessage(error, 'Intenta nuevamente.'),
       })
     }
   }
@@ -1327,7 +1620,7 @@ export default function ClientsPage() {
       showToast({
         type: 'error',
         title: 'No se pudo eliminar el cliente',
-        description: error?.message ?? 'Intenta nuevamente.',
+        description: resolveApiErrorMessage(error, 'Intenta nuevamente.'),
       })
     }
   }
@@ -1365,43 +1658,66 @@ export default function ClientsPage() {
 
       {isClientsTabActive ? (
         <>
-          <section aria-labelledby="nuevo" className="space-y-4">
-          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-            <div>
-              <h2 id="nuevo" className="text-lg font-semibold text-slate-900">
-                Agregar nuevo cliente
-              </h2>
-            <p className="text-sm text-slate-500">
-              Completa los campos requeridos. Los datos se guardan automáticamente en tu dispositivo.
-            </p>
-          </div>
-          <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row md:items-center md:justify-end">
-            <Button
-              type="button"
-              onClick={handleOpenImport}
-              className="w-full md:w-auto md:self-center"
-            >
-              Importar clientes
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={handleExportClients}
-              className="w-full border border-slate-200 bg-white text-slate-700 hover:border-blue-200 md:w-auto md:self-center"
-            >
-              Exportar clientes
-            </Button>
-            <Button
-              type="button"
-              className="w-full md:w-auto md:self-center"
-              onClick={handleToggleClientForm}
-            >
-              {isClientFormOpen ? 'Cerrar formulario' : 'Agregar cliente'}
-            </Button>
-          </div>
-        </div>
+          <section aria-labelledby="gestion-clientes" className="space-y-4">
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div>
+                <h2 id="gestion-clientes" className="text-lg font-semibold text-slate-900">
+                  Gestión de clientes
+                </h2>
+                <p className="text-sm text-slate-500">
+                  Administra el alta de nuevos registros, revisa el listado actual y aplica acciones masivas cuando lo necesites.
+                </p>
+              </div>
+              <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row md:items-center md:justify-end">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={handleOpenBulkAssign}
+                  className="w-full md:w-auto md:self-center"
+                  disabled={!hasSelectedClients}
+                >
+                  {hasSelectedClients
+                    ? `Asignar servicio (${selectedClientsForBulk.length})`
+                    : 'Asignar servicio'}
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handleOpenImport}
+                  className="w-full md:w-auto md:self-center"
+                >
+                  Importar clientes
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={handleExportClients}
+                  className="w-full border border-slate-200 bg-white text-slate-700 hover:border-blue-200 md:w-auto md:self-center"
+                >
+                  Exportar clientes
+                </Button>
+              </div>
+            </div>
 
-        {isClientFormOpen ? (
+            <div className="inline-flex w-full flex-wrap items-center gap-2 rounded-full border border-slate-200 bg-slate-100 p-1 md:w-auto">
+              {CLIENTS_SUB_TABS.map((tab) => {
+                const isActive = activeClientsSubTab === tab.id
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => handleSelectClientsSubTab(tab.id)}
+                    className={`rounded-full px-3.5 py-1.5 text-sm font-semibold transition ${
+                      isActive ? 'bg-white text-slate-900 shadow' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                    aria-pressed={isActive}
+                  >
+                    {tab.label}
+                  </button>
+                )
+              })}
+            </div>
+
+        {activeClientsSubTab === 'create' ? (
           <form className="grid gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm" onSubmit={handleSubmit}>
           <div className="grid gap-4 md:grid-cols-2">
             <label className="grid gap-1 text-xs font-semibold text-slate-700">
@@ -1526,7 +1842,8 @@ export default function ClientsPage() {
                     formErrors.debtMonths
                       ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
                       : 'border-slate-300'
-                  }`}
+                  } ${isInitialCourtesy ? 'bg-slate-100 text-slate-500' : ''}`}
+                  disabled={isInitialCourtesy}
                 />
                 {formErrors.debtMonths && (
                   <span className="text-xs font-medium text-red-600">{formErrors.debtMonths}</span>
@@ -1549,7 +1866,8 @@ export default function ClientsPage() {
                     formErrors.paidMonthsAhead
                       ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
                       : 'border-slate-300'
-                  }`}
+                  } ${isInitialCourtesy ? 'bg-slate-100 text-slate-500' : ''}`}
+                  disabled={isInitialCourtesy}
                 />
                 {formErrors.paidMonthsAhead && (
                   <span className="text-xs font-medium text-red-600">{formErrors.paidMonthsAhead}</span>
@@ -1753,7 +2071,8 @@ export default function ClientsPage() {
 
               <label className="grid gap-1 text-xs font-semibold text-slate-700">
                 <span className="flex items-center gap-1">
-                  Día de cobro {planRequiresBillingDay ? <span className="text-red-500">*</span> : null}
+                  Día de cobro
+                  {shouldRequireInitialBillingDay ? <span className="text-red-500">*</span> : null}
                   <InfoTooltip text="Define el día del mes en el que se espera el pago de este servicio." />
                 </span>
                 <input
@@ -1769,13 +2088,22 @@ export default function ClientsPage() {
                     initialServiceErrors.billingDay
                       ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
                       : 'border-slate-300'
-                  }`}
-                  placeholder="Ej. 5"
+                  } ${isInitialCourtesy ? 'bg-slate-100 text-slate-500' : ''}`}
+                  placeholder={
+                    isInitialCourtesy
+                      ? 'Servicio de cortesía: sin cobro mensual'
+                      : shouldRequireInitialBillingDay
+                        ? 'Obligatorio'
+                        : 'Opcional'
+                  }
+                  disabled={isInitialCourtesy}
                 />
                 <span className="text-[11px] text-slate-500">
-                  {planRequiresBillingDay
-                    ? 'Este plan requiere registrar un día de cobro.'
-                    : 'Puedes dejarlo en blanco si no aplica un día fijo.'}
+                  {isInitialCourtesy
+                    ? 'Este servicio es de cortesía, no requiere programar cobros.'
+                    : shouldRequireInitialBillingDay
+                      ? 'Este plan requiere registrar un día de cobro.'
+                      : 'Puedes dejarlo en blanco si no aplica un día fijo.'}
                 </span>
                 {initialServiceErrors.billingDay && (
                   <span className="text-xs font-medium text-red-600">
@@ -2165,6 +2493,7 @@ export default function ClientsPage() {
                           : client.service
                         const primaryServiceStatus = primaryServiceForRow?.status ?? null
                         const isPrimaryActive = primaryServiceStatus === 'active'
+                        const isCourtesyClient = Boolean(client.isCourtesyService)
                         const canActivatePrimaryService =
                           Boolean(primaryServiceForRow) &&
                           primaryServiceStatus !== 'active' &&
@@ -2208,10 +2537,16 @@ export default function ClientsPage() {
                             </span>
                           </td>
                           <td className="px-3 py-2 text-slate-600">
-                            {peso(primaryMonthlyFee)}
+                            {isCourtesyClient ? (
+                              <span className="font-semibold text-emerald-700">
+                                Servicio activo · {peso(0)} (cortesía)
+                              </span>
+                            ) : (
+                              peso(primaryMonthlyFee)
+                            )}
                           </td>
                           <td className="px-3 py-2 text-slate-600">
-                            {client.debtMonths > 0 ? (
+                            {client.debtMonths > 0 && !isCourtesyClient ? (
                               <div className="flex flex-col">
                                 <span>
                                   {client.debtMonths}{' '}
@@ -2222,7 +2557,7 @@ export default function ClientsPage() {
                                 </span>
                               </div>
                             ) : (
-                              'Sin deuda'
+                              isCourtesyClient ? 'Sin deuda (cortesía)' : 'Sin deuda'
                             )}
                           </td>
                           <td className="px-3 py-2 text-right">
@@ -2358,6 +2693,11 @@ export default function ClientsPage() {
                   ) : (
                     <p className="text-xs text-slate-500">Sin servicios registrados.</p>
                   )}
+                  {isSelectedClientCourtesy ? (
+                    <p className="mt-2 text-xs font-medium text-emerald-700">
+                      Servicio de cortesía · $0 MXN
+                    </p>
+                  ) : null}
                   {selectedClientPaymentStatus && (
                     <div className="mt-2 space-y-1 text-xs">
                       <p
@@ -2401,21 +2741,37 @@ export default function ClientsPage() {
                 </div>
                 <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
                   <p className="text-xs font-medium text-slate-500">Tarifa mensual</p>
-                  <p className="text-base font-semibold text-slate-900">{peso(primaryServicePrice)}</p>
-                  <p className="text-xs text-slate-500">Adelantado: {formatPeriods(selectedClient.paidMonthsAhead)} periodo(s)</p>
+                  {isSelectedClientCourtesy ? (
+                    <p className="text-sm font-semibold text-emerald-700">
+                      Servicio activo · {peso(0)} (cortesía)
+                    </p>
+                  ) : (
+                    <>
+                      <p className="text-base font-semibold text-slate-900">{peso(primaryServicePrice)}</p>
+                      <p className="text-xs text-slate-500">
+                        Adelantado: {formatPeriods(selectedClient.paidMonthsAhead)} periodo(s)
+                      </p>
+                    </>
+                  )}
                 </div>
                 <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
                   <p className="text-xs font-medium text-slate-500">Deuda acumulada</p>
-                  <p className="text-base font-semibold text-slate-900">
-                    {selectedClient.debtMonths > 0
-                      ? peso(selectedClient.debtMonths * primaryServicePrice)
-                      : 'Sin deuda'}
-                  </p>
-                  {selectedClient.debtMonths > 0 && (
-                    <p className="text-xs text-slate-500">
-                      {formatPeriods(selectedClient.debtMonths)}{' '}
-                      {isApproximatelyOne(selectedClient.debtMonths) ? 'periodo' : 'periodos'} pendientes
-                    </p>
+                  {isSelectedClientCourtesy ? (
+                    <p className="text-sm font-semibold text-emerald-700">Sin deuda (cortesía)</p>
+                  ) : (
+                    <>
+                      <p className="text-base font-semibold text-slate-900">
+                        {selectedClient.debtMonths > 0
+                          ? peso(selectedClient.debtMonths * primaryServicePrice)
+                          : 'Sin deuda'}
+                      </p>
+                      {selectedClient.debtMonths > 0 && (
+                        <p className="text-xs text-slate-500">
+                          {formatPeriods(selectedClient.debtMonths)}{' '}
+                          {isApproximatelyOne(selectedClient.debtMonths) ? 'periodo' : 'periodos'} pendientes
+                        </p>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
@@ -2579,7 +2935,7 @@ export default function ClientsPage() {
                       <label className="grid gap-1 text-xs font-semibold text-slate-700">
                         <span>
                           Día de cobro (1-31){' '}
-                          {servicePlanRequiresBillingDay ? <span className="text-red-500">*</span> : null}
+                          {shouldRequireServiceBillingDay ? <span className="text-red-500">*</span> : null}
                         </span>
                         <input
                           type="number"
@@ -2596,13 +2952,22 @@ export default function ClientsPage() {
                             serviceFormErrors.billingDay
                               ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
                               : 'border-slate-300'
-                          }`}
-                          placeholder={servicePlanRequiresBillingDay ? 'Obligatorio' : 'Opcional'}
+                          } ${isServiceFormCourtesy ? 'bg-slate-100 text-slate-500' : ''}`}
+                          placeholder={
+                            isServiceFormCourtesy
+                              ? 'Servicio de cortesía: sin cobro mensual'
+                              : shouldRequireServiceBillingDay
+                                ? 'Obligatorio'
+                                : 'Opcional'
+                          }
+                          disabled={isServiceFormCourtesy}
                         />
                         <span className="text-[11px] text-slate-500">
-                          {servicePlanRequiresBillingDay
-                            ? 'Este plan requiere registrar un día de cobro.'
-                            : 'Puedes dejarlo en blanco si no aplica un día fijo.'}
+                          {isServiceFormCourtesy
+                            ? 'Este servicio es de cortesía, no requiere programar cobros.'
+                            : shouldRequireServiceBillingDay
+                              ? 'Este plan requiere registrar un día de cobro.'
+                              : 'Puedes dejarlo en blanco si no aplica un día fijo.'}
                         </span>
                         {serviceFormErrors.billingDay && (
                           <span className="text-xs font-medium text-red-600">
@@ -2686,6 +3051,7 @@ export default function ClientsPage() {
                       const isActive = service.status === 'active'
                       const isCancelled = service.status === 'cancelled'
                       const servicePrice = Number(service.price)
+                      const isServiceCourtesy = Number.isFinite(servicePrice) && servicePrice <= 0
                       const hasPrice = Number.isFinite(servicePrice) && servicePrice > 0
                       const canActivateService = !isCancelled && service.status !== 'active'
                       const canSuspendService = !isCancelled && service.status === 'active'
@@ -2716,12 +3082,16 @@ export default function ClientsPage() {
                               </span>
                             </div>
                             <div className="space-y-1 text-xs text-slate-600">
-                              {hasPrice ? (
+                              {isServiceCourtesy ? (
+                                <p>Tarifa mensual: {peso(0)} (cortesía)</p>
+                              ) : hasPrice ? (
                                 <p>Tarifa mensual: {peso(servicePrice)}</p>
                               ) : (
                                 <p>Tarifa mensual: monto variable</p>
                               )}
-                              {service.nextBillingDate ? (
+                              {isServiceCourtesy ? (
+                                <p>Este servicio no genera cobros mensuales.</p>
+                              ) : service.nextBillingDate ? (
                                 <p>Próximo cobro: {formatDate(service.nextBillingDate)}</p>
                               ) : service.billingDay ? (
                                 <p>Cobro recurrente día {service.billingDay}</p>
@@ -2828,6 +3198,14 @@ export default function ClientsPage() {
       ) : (
         <MonthlyServicesPage variant="embedded" />
       )}
+      <BulkAssignServicesModal
+        isOpen={isBulkAssignModalOpen}
+        onClose={handleCloseBulkAssign}
+        onSubmit={handleBulkAssignSubmit}
+        isProcessing={isProcessingBulkAssign}
+        clients={selectedClientsForBulk}
+        servicePlans={servicePlans}
+      />
     </div>
   )
 }

@@ -65,6 +65,20 @@ def bulk_create_services(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
+@router.post(
+    "/bulk-assign",
+    response_model=List[schemas.ClientServiceRead],
+    status_code=status.HTTP_201_CREATED,
+)
+def bulk_assign_services(
+    payload: schemas.ClientServiceBulkCreate, db: Session = Depends(get_db)
+) -> List[schemas.ClientServiceRead]:
+    try:
+        return ClientContractService.bulk_create_services(db, payload)
+    except (ValueError, ClientContractError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
 @router.get("/{service_id}", response_model=schemas.ClientServiceRead)
 def get_service(service_id: str, db: Session = Depends(get_db)) -> schemas.ClientServiceRead:
     service = ClientContractService.get_service(db, service_id)

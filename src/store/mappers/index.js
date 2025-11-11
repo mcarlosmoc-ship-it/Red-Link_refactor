@@ -86,6 +86,28 @@ export const mapClient = (client) => {
   const services = Array.isArray(client.services) ? client.services.map(mapClientService) : []
   const internetService = services.find((service) => isInternetLikeService(service.type))
   const activeServices = services.filter((service) => service.status === 'active')
+  const paidService = activeServices.find(
+    (service) => normalizeDecimal(service.effectivePrice ?? service.price, 0) > 0,
+  )
+  const courtesyService = activeServices.find(
+    (service) => normalizeDecimal(service.effectivePrice ?? service.price, 0) <= 0,
+  )
+  const referenceService = paidService ?? courtesyService ?? internetService ?? services[0] ?? null
+
+  const fallbackMonthlyFee = normalizeDecimal(client.monthly_fee, CLIENT_PRICE)
+  const referencePrice = referenceService
+    ? normalizeDecimal(referenceService.effectivePrice ?? referenceService.price, 0)
+    : fallbackMonthlyFee
+  const isCourtesy = referenceService
+    ? referencePrice <= 0
+    : fallbackMonthlyFee <= 0
+  const normalizedMonthlyFee = isCourtesy
+    ? 0
+    : referenceService
+      ? referencePrice
+      : fallbackMonthlyFee
+  const normalizedDebtMonths = isCourtesy ? 0 : normalizeDecimal(client.debt_months)
+  const normalizedAheadMonths = isCourtesy ? 0 : normalizeDecimal(client.paid_months_ahead)
   const normalizedServiceStatus = (() => {
     const rawStatus = client.service_status
     if (rawStatus === 'Activo' || rawStatus === 'Suspendido') {
@@ -120,15 +142,13 @@ export const mapClient = (client) => {
     ip: client.ip_address,
     antennaIp: client.antenna_ip,
     modemIp: client.modem_ip,
-    monthlyFee: normalizeDecimal(
-      internetService?.effectivePrice ?? client.monthly_fee,
-      CLIENT_PRICE,
-    ),
-    paidMonthsAhead: normalizeDecimal(client.paid_months_ahead),
-    debtMonths: normalizeDecimal(client.debt_months),
+    monthlyFee: normalizedMonthlyFee,
+    paidMonthsAhead: normalizedAheadMonths,
+    debtMonths: normalizedDebtMonths,
     service: serviceStatus,
     services,
     recentPayments,
+    isCourtesyService: isCourtesy,
   }
 }
 
@@ -293,6 +313,47 @@ export const serializeClientServicePayload = (payload) => {
   const body = {
     client_id: payload.clientId,
     service_plan_id: payload.servicePlanId,
+  }
+
+  if (payload.status) {
+    body.status = payload.status
+  }
+
+  if (payload.billingDay) {
+    body.billing_day = payload.billingDay
+  }
+
+  if (payload.nextBillingDate) {
+    body.next_billing_date = payload.nextBillingDate
+  }
+
+  if (payload.baseId) {
+    body.base_id = payload.baseId
+  }
+
+  if (payload.ipAddress) {
+    body.ip_address = payload.ipAddress
+  }
+
+  if (payload.customPrice !== undefined && payload.customPrice !== null) {
+    body.custom_price = payload.customPrice
+  }
+
+  if (payload.notes) {
+    body.notes = payload.notes
+  }
+
+  if (payload.metadata) {
+    body.metadata = payload.metadata
+  }
+
+  return body
+}
+
+export const serializeClientServiceBulkPayload = (payload) => {
+  const body = {
+    service_plan_id: payload.servicePlanId,
+    client_ids: Array.isArray(payload.clientIds) ? payload.clientIds : [],
   }
 
   if (payload.status) {

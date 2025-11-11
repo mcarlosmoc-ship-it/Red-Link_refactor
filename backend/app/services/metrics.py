@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Dict, Iterable, Tuple
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from .. import models, schemas
 from .clients import ClientService
@@ -32,16 +32,98 @@ class MetricsService:
     """Provides aggregated metrics combining multiple domain entities."""
 
     @staticmethod
-    def overview(db: Session, *, period_key: str | None = None) -> Dict[str, Decimal]:
-        clients = list(db.query(models.Client).all())
-        total_clients = len(clients)
-        paid_clients = sum(1 for client in clients if Decimal(client.debt_months or 0) == 0)
-        pending_clients = total_clients - paid_clients
+    def _service_effective_price(service: models.ClientService) -> Decimal:
+        value = getattr(service, "effective_price", None)
+        if value is None:
+            if service.custom_price is not None:
+                value = service.custom_price
+            elif service.service_plan is not None:
+                value = service.service_plan.monthly_price
+        if value is None:
+            return Decimal("0")
+        return Decimal(str(value))
 
-        total_debt_amount = sum(
-            Decimal(client.debt_months or 0) * Decimal(client.monthly_fee or 0)
-            for client in clients
+    @staticmethod
+    def _resolve_client_billing_context(
+        client: models.Client,
+    ) -> tuple[Decimal, Decimal, Decimal, bool]:
+        services = list(getattr(client, "services", []) or [])
+        active_services = [
+            service
+            for service in services
+            if service.status == models.ClientServiceStatus.ACTIVE
+        ]
+
+        preferred_types = {
+            models.ClientServiceType.INTERNET,
+            models.ClientServiceType.HOTSPOT,
+        }
+
+        def service_priority(service: models.ClientService) -> tuple[int, date]:
+            category = None
+            if service.service_plan is not None:
+                category = service.service_plan.category
+            elif hasattr(service, "category") and service.category is not None:
+                category = service.category
+            priority = 0 if category in preferred_types else 1
+            created_at = getattr(service, "created_at", None)
+            if isinstance(created_at, datetime):
+                return priority, created_at.date()
+            if isinstance(created_at, date):
+                return priority, created_at
+            return priority, date.min
+
+        prioritized_services = sorted(active_services, key=service_priority)
+
+        effective_price = Decimal(str(client.monthly_fee or 0))
+        if effective_price < Decimal("0"):
+            effective_price = Decimal("0")
+        courtesy = effective_price == Decimal("0")
+
+        for service in prioritized_services:
+            price = MetricsService._service_effective_price(service)
+            if price > Decimal("0"):
+                effective_price = price
+                courtesy = False
+                break
+            if price == Decimal("0") and effective_price <= Decimal("0"):
+                effective_price = Decimal("0")
+                courtesy = True
+
+        debt_months = Decimal(str(client.debt_months or 0))
+        ahead_months = Decimal(str(client.paid_months_ahead or 0))
+
+        if courtesy:
+            debt_months = Decimal("0")
+            ahead_months = Decimal("0")
+
+        return effective_price, debt_months, ahead_months, courtesy
+
+    @staticmethod
+    def overview(db: Session, *, period_key: str | None = None) -> Dict[str, Decimal]:
+        clients = list(
+            db.query(models.Client)
+            .options(
+                selectinload(models.Client.services).selectinload(
+                    models.ClientService.service_plan
+                )
+            )
+            .all()
         )
+        total_clients = len(clients)
+        paid_clients = 0
+        pending_clients = 0
+        total_debt_amount = Decimal("0")
+
+        for client in clients:
+            effective_price, debt_months, _ahead_months, _courtesy = (
+                MetricsService._resolve_client_billing_context(client)
+            )
+            if debt_months == Decimal("0"):
+                paid_clients += 1
+            else:
+                pending_clients += 1
+                total_debt_amount += debt_months * effective_price
 
         base_cost_breakdown: Dict[str, Decimal] = {}
 
@@ -88,15 +170,25 @@ class MetricsService:
         breakdown: Dict[str, Dict[str, Decimal]] = defaultdict(
             lambda: {"total_clients": 0, "pending_clients": 0, "debt_amount": Decimal("0"), "payments": Decimal("0")}
         )
-        clients = db.query(models.Client).all()
+        clients = (
+            db.query(models.Client)
+            .options(
+                selectinload(models.Client.services).selectinload(
+                    models.ClientService.service_plan
+                )
+            )
+            .all()
+        )
         for client in clients:
             location = client.location or "Desconocido"
             location_metrics = breakdown[location]
             location_metrics["total_clients"] += 1
-            debt_months = Decimal(client.debt_months or 0)
-            if debt_months > 0:
+            effective_price, debt_months, _ahead_months, _courtesy = (
+                MetricsService._resolve_client_billing_context(client)
+            )
+            if debt_months > Decimal("0"):
                 location_metrics["pending_clients"] += 1
-            location_metrics["debt_amount"] += debt_months * Decimal(client.monthly_fee or 0)
+            location_metrics["debt_amount"] += debt_months * effective_price
 
         if period_key:
             payments, _payments_total = PaymentService.list_payments(db, period_key=period_key, limit=10_000)
@@ -203,8 +295,9 @@ class MetricsService:
 
     @staticmethod
     def _project_client_for_offset(client: models.Client, offset: int) -> _DashboardClient:
-        debt = Decimal(client.debt_months or 0)
-        ahead = Decimal(client.paid_months_ahead or 0)
+        effective_price, debt, ahead, courtesy = MetricsService._resolve_client_billing_context(
+            client
+        )
 
         if offset > 0:
             consumed_ahead = min(ahead, Decimal(offset))
@@ -223,7 +316,9 @@ class MetricsService:
             ahead = MetricsService._normalize_months(ahead)
 
         service_status = (
-            models.ServiceStatus.ACTIVE.value if debt == Decimal("0") else models.ServiceStatus.SUSPENDED.value
+            models.ServiceStatus.ACTIVE.value
+            if debt == Decimal("0")
+            else models.ServiceStatus.SUSPENDED.value
         )
 
         client_type = None
@@ -232,11 +327,16 @@ class MetricsService:
         elif client.client_type is not None:
             client_type = str(client.client_type)
 
+        monthly_fee = effective_price if effective_price > Decimal("0") else Decimal("0")
+        if courtesy:
+            debt = Decimal("0")
+            ahead = Decimal("0")
+
         return _DashboardClient(
             id=client.id,
             full_name=client.full_name,
             location=client.location,
-            monthly_fee=Decimal(client.monthly_fee or 0),
+            monthly_fee=monthly_fee,
             debt_months=debt,
             paid_months_ahead=ahead,
             service_status=service_status,
