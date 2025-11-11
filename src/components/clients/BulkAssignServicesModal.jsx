@@ -90,10 +90,6 @@ export default function BulkAssignServicesModal({
     })
   }, [isCourtesy])
 
-  if (!isOpen) {
-    return null
-  }
-
   const selectedCount = clients.length
   const selectedClientNames = useMemo(
     () =>
@@ -103,6 +99,18 @@ export default function BulkAssignServicesModal({
         .slice(0, 5),
     [clients],
   )
+
+  const planOptions = useMemo(
+    () =>
+      activePlans
+        .map((plan) => ({ value: String(plan.id), label: formatPlanLabel(plan) }))
+        .sort((a, b) => a.label.localeCompare(b.label, 'es', { sensitivity: 'base' })),
+    [activePlans],
+  )
+
+  if (!isOpen) {
+    return null
+  }
 
   const handleSubmit = (event) => {
     event.preventDefault()
@@ -203,14 +211,6 @@ export default function BulkAssignServicesModal({
     })
     setErrors((prev) => ({ ...prev, servicePlanId: undefined, price: undefined }))
   }
-
-  const planOptions = useMemo(
-    () =>
-      activePlans
-        .map((plan) => ({ value: String(plan.id), label: formatPlanLabel(plan) }))
-        .sort((a, b) => a.label.localeCompare(b.label, 'es', { sensitivity: 'base' })),
-    [activePlans],
-  )
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4 py-6">
