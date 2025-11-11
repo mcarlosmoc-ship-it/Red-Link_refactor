@@ -303,6 +303,7 @@ export default function ClientsPage() {
     servicePlanRequiresBillingDay && !isServiceFormCourtesy
   const selectAllCheckboxRef = useRef(null)
   const shouldOpenServiceFormRef = useRef(false)
+  const lastScrolledClientRef = useRef(null)
   const isMutatingClients = Boolean(clientsStatus?.isMutating)
   const isSyncingClients = Boolean(clientsStatus?.isLoading)
   const isLoadingClients = Boolean(clientsStatus?.isLoading && clients.length === 0)
@@ -312,11 +313,13 @@ export default function ClientsPage() {
   useEffect(() => {
     if (!location?.hash) {
       setHighlightedClientId(null)
+      lastScrolledClientRef.current = null
       return
     }
 
     if (!location.hash.startsWith('#client-')) {
       setHighlightedClientId(null)
+      lastScrolledClientRef.current = null
       return
     }
 
@@ -324,20 +327,25 @@ export default function ClientsPage() {
     const normalizedClientId = normalizeId(clientId)
     if (!normalizedClientId) {
       setHighlightedClientId(null)
+      lastScrolledClientRef.current = null
       return
     }
 
     const exists = clients.some((client) => normalizeId(client.id) === normalizedClientId)
     if (!exists) {
       setHighlightedClientId(null)
+      lastScrolledClientRef.current = null
       return
     }
 
     setHighlightedClientId(normalizedClientId)
 
-    const row = document.getElementById(`client-${normalizedClientId}`)
-    if (row) {
-      row.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    if (lastScrolledClientRef.current !== normalizedClientId) {
+      const row = document.getElementById(`client-${normalizedClientId}`)
+      if (row) {
+        row.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        lastScrolledClientRef.current = normalizedClientId
+      }
     }
   }, [location?.hash, clients])
 

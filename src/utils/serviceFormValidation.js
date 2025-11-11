@@ -104,13 +104,19 @@ export const computeServiceFormErrors = (
     errors.billingDay = 'Selecciona un día de cobro entre 1 y 31.'
   }
 
+  const shouldUseClientBase = Boolean(state?.useClientBase ?? state?.shouldUseClientBase)
   const baseIdValue = state?.baseId
-  if (plan?.requiresBase) {
+  if (plan?.requiresBase && !shouldUseClientBase) {
     const parsedBase = Number(baseIdValue)
     if (!Number.isInteger(parsedBase) || parsedBase < 1) {
       errors.baseId = 'Selecciona una base válida.'
     }
-  } else if (baseIdValue !== '' && baseIdValue !== null && baseIdValue !== undefined) {
+  } else if (
+    !shouldUseClientBase &&
+    baseIdValue !== '' &&
+    baseIdValue !== null &&
+    baseIdValue !== undefined
+  ) {
     const parsedBase = Number(baseIdValue)
     if (!Number.isInteger(parsedBase) || parsedBase < 1) {
       errors.baseId = 'Selecciona una base válida.'
