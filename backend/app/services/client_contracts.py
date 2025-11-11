@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
-from typing import Iterable, Optional, Tuple
+from typing import Dict, Iterable, Optional, Tuple
 
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -15,6 +15,10 @@ from .. import models, schemas
 
 class ClientContractError(RuntimeError):
     """Raised when service contract operations cannot be completed."""
+
+    def __init__(self, message: str, *, detail: Optional[object] = None) -> None:
+        super().__init__(message)
+        self.detail = detail if detail is not None else message
 
 
 class ClientContractService:
@@ -232,6 +236,17 @@ class ClientContractService:
         plan = cls._resolve_service_plan(db, data.service_plan_id)
         target_status = data.status or models.ClientServiceStatus.ACTIVE
 
+        clients_cache: Dict[str, models.Client] = {}
+
+        def _get_client(client_id: str) -> models.Client:
+            normalized = str(client_id)
+            cached = clients_cache.get(normalized)
+            if cached is not None:
+                return cached
+            client = cls._resolve_client(db, normalized)
+            clients_cache[normalized] = client
+            return client
+
         active_assignments = (
             len(unique_client_ids)
             if target_status == models.ClientServiceStatus.ACTIVE
@@ -248,11 +263,48 @@ class ClientContractService:
                 .scalar()
                 or 0
             )
-            available = (plan.capacity_limit or 0) - current_active
-            if available < active_assignments:
-                raise ClientContractError(
-                    "No hay cupos suficientes para asignar este servicio a todos los clientes."
+            capacity_limit = plan.capacity_limit or 0
+            available = capacity_limit - current_active
+            if available < 0:
+                available = 0
+
+            if target_status == models.ClientServiceStatus.ACTIVE and available < active_assignments:
+                overflow_ids = (
+                    unique_client_ids if available <= 0 else unique_client_ids[available:]
                 )
+                failed_clients = []
+                for overflow_id in overflow_ids:
+                    try:
+                        client = _get_client(overflow_id)
+                    except ValueError:
+                        continue
+                    failed_clients.append(
+                        {
+                            "id": str(client.id),
+                            "name": client.full_name,
+                        }
+                    )
+
+                slot_label = "cupo" if available == 1 else "cupos"
+                message = (
+                    "No hay cupos disponibles para este servicio."
+                    if available <= 0
+                    else (
+                        f"Solo hay {available} {slot_label} disponible(s) para este plan. "
+                        "No se pudo asignar el servicio a todos los clientes seleccionados."
+                    )
+                )
+
+                detail = {
+                    "code": "capacity_limit_exceeded",
+                    "message": message,
+                    "available_slots": available,
+                    "requested_assignments": active_assignments,
+                    "capacity_limit": capacity_limit,
+                    "failed_clients": failed_clients,
+                }
+
+                raise ClientContractError(message, detail=detail)
 
         created: list[models.ClientService] = []
         base_payload = data.model_dump(
@@ -261,7 +313,7 @@ class ClientContractService:
 
         try:
             for client_id in unique_client_ids:
-                client = cls._resolve_client(db, client_id)
+                client = _get_client(client_id)
 
                 create_payload = schemas.ClientServiceCreate(
                     client_id=client_id,

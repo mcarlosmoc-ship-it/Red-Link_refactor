@@ -302,6 +302,7 @@ export default function ClientsPage() {
   const shouldRequireServiceBillingDay =
     servicePlanRequiresBillingDay && !isServiceFormCourtesy
   const clientDetailsRef = useRef(null)
+  const selectAllCheckboxRef = useRef(null)
   const shouldOpenServiceFormRef = useRef(false)
   const isMutatingClients = Boolean(clientsStatus?.isMutating)
   const isSyncingClients = Boolean(clientsStatus?.isLoading)
@@ -635,6 +636,24 @@ export default function ClientsPage() {
     })
   }, [clients])
 
+  useEffect(() => {
+    const selectedIds = Array.from(selectedClientIds)
+    if (selectedIds.length === 1) {
+      const [onlyId] = selectedIds
+      setSelectedClientId((prev) => (prev === onlyId ? prev : onlyId))
+      return
+    }
+
+    if (selectedIds.length > 1) {
+      setSelectedClientId((prev) => {
+        if (prev && selectedClientIds.has(prev)) {
+          return prev
+        }
+        return null
+      })
+    }
+  }, [selectedClientIds])
+
   const selectedClientsForBulk = useMemo(
     () =>
       clients.filter((client) => {
@@ -644,19 +663,47 @@ export default function ClientsPage() {
     [clients, selectedClientIds],
   )
 
-  const hasSelectedClients = selectedClientsForBulk.length > 0
+  const selectedClientsCount = selectedClientsForBulk.length
+  const hasSelectedClients = selectedClientsCount > 0
+  const isSingleSelection = selectedClientsCount === 1
+  const isMultiSelection = selectedClientsCount > 1
 
   const handleOpenBulkAssign = useCallback(() => {
-    if (!hasSelectedClients) {
+    if (selectedClientsCount === 0) {
       showToast({
         type: 'info',
         title: 'Selecciona clientes',
-        description: 'Elige uno o más clientes desde el listado para asignar un servicio.',
+        description: 'Elige uno o más clientes desde el listado para editar servicios.',
       })
       return
     }
+
+    if (selectedClientsCount === 1) {
+      showToast({
+        type: 'info',
+        title: 'Selecciona más clientes',
+        description: 'Elige al menos dos clientes para aplicar cambios masivos.',
+      })
+      return
+    }
+
     setIsBulkAssignModalOpen(true)
-  }, [hasSelectedClients, showToast])
+  }, [selectedClientsCount, showToast])
+
+  const handleOpenSingleSelectedClient = useCallback(() => {
+    if (!isSingleSelection || selectedClientsForBulk.length === 0) {
+      return
+    }
+    const normalizedId = normalizeId(selectedClientsForBulk[0]?.id)
+    if (!normalizedId) {
+      return
+    }
+    setSelectedClientId((prev) => (prev === normalizedId ? prev : normalizedId))
+  }, [isSingleSelection, selectedClientsForBulk])
+
+  const handleClearSelection = useCallback(() => {
+    setSelectedClientIds(new Set())
+  }, [])
 
   const handleCloseBulkAssign = useCallback(() => {
     if (isProcessingBulkAssign) {
@@ -671,7 +718,7 @@ export default function ClientsPage() {
         showToast({
           type: 'error',
           title: 'Sin clientes seleccionados',
-          description: 'Elige al menos un cliente antes de asignar un servicio.',
+          description: 'Elige al menos un cliente antes de aplicar cambios.',
         })
         return
       }
@@ -686,16 +733,64 @@ export default function ClientsPage() {
         })
         showToast({
           type: 'success',
-          title: 'Servicios asignados',
-          description: 'Se asignaron los servicios seleccionados correctamente.',
+          title: 'Cambios aplicados',
+          description: 'Se actualizaron los servicios seleccionados correctamente.',
         })
         setIsBulkAssignModalOpen(false)
         setSelectedClientIds(new Set())
       } catch (error) {
+        const detail =
+          error?.response?.data?.detail ??
+          error?.data?.detail ??
+          error?.detail ??
+          null
+        const failedClientsRaw = Array.isArray(detail?.failed_clients)
+          ? detail.failed_clients
+          : Array.isArray(detail?.failedClients)
+            ? detail.failedClients
+            : []
+        const failedClientNames = failedClientsRaw
+          .map((item) => {
+            if (!item) return null
+            if (typeof item === 'string') return item
+            if (typeof item.name === 'string' && item.name.trim()) {
+              return item.name.trim()
+            }
+            if (typeof item.full_name === 'string' && item.full_name.trim()) {
+              return item.full_name.trim()
+            }
+            if (typeof item.clientName === 'string' && item.clientName.trim()) {
+              return item.clientName.trim()
+            }
+            if (typeof item.id === 'string' && item.id.trim()) {
+              return `ID ${item.id.trim()}`
+            }
+            return null
+          })
+          .filter(Boolean)
+        const availableSlotsRaw =
+          detail &&
+          (detail.available_slots ?? detail.availableSlots ?? detail.availableCapacity ?? null)
+        let availableSlots = null
+        if (availableSlotsRaw !== null && availableSlotsRaw !== undefined) {
+          const parsedSlots = Number(availableSlotsRaw)
+          if (Number.isFinite(parsedSlots)) {
+            availableSlots = parsedSlots
+          }
+        }
+        const baseMessage = resolveApiErrorMessage(error, 'Intenta nuevamente.')
+        const extraMessages = []
+        if (failedClientNames.length > 0) {
+          extraMessages.push(`Sin cambios para: ${failedClientNames.join(', ')}.`)
+        }
+        if (availableSlots !== null) {
+          const slotLabel = availableSlots === 1 ? 'cupo disponible' : 'cupos disponibles'
+          extraMessages.push(`Quedan ${availableSlots} ${slotLabel}.`)
+        }
         showToast({
           type: 'error',
-          title: 'No se pudo asignar el servicio',
-          description: resolveApiErrorMessage(error, 'Intenta nuevamente.'),
+          title: 'No se pudieron aplicar los cambios',
+          description: [baseMessage, ...extraMessages].filter(Boolean).join(' '),
         })
       } finally {
         setIsProcessingBulkAssign(false)
@@ -713,6 +808,14 @@ export default function ClientsPage() {
       return id ? selectedClientIds.has(id) : false
     })
   }, [filteredResidentialClients, selectedClientIds])
+
+  useEffect(() => {
+    if (!selectAllCheckboxRef.current) {
+      return
+    }
+    const checkbox = selectAllCheckboxRef.current
+    checkbox.indeterminate = selectedClientsCount > 0 && !allFilteredSelected
+  }, [allFilteredSelected, selectedClientsCount])
 
   const handleToggleClientSelection = useCallback((clientId) => {
     const normalizedId = normalizeId(clientId)
@@ -1674,11 +1777,11 @@ export default function ClientsPage() {
                   variant="secondary"
                   onClick={handleOpenBulkAssign}
                   className="w-full md:w-auto md:self-center"
-                  disabled={!hasSelectedClients}
+                  disabled={!isMultiSelection}
                 >
-                  {hasSelectedClients
-                    ? `Asignar servicio (${selectedClientsForBulk.length})`
-                    : 'Asignar servicio'}
+                  {isMultiSelection
+                    ? `Aplicar cambios masivos (${selectedClientsCount})`
+                    : 'Acciones masivas'}
                 </Button>
                 <Button
                   type="button"
@@ -2379,6 +2482,54 @@ export default function ClientsPage() {
               </div>
             </div>
 
+            {hasSelectedClients ? (
+              <div className="flex flex-col gap-3 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 md:flex-row md:items-center md:justify-between">
+                <div className="space-y-1">
+                  <p className="font-semibold">
+                    {selectedClientsCount === 1
+                      ? '1 cliente seleccionado'
+                      : `${selectedClientsCount} clientes seleccionados`}
+                  </p>
+                  <p className="text-xs text-blue-800">
+                    {isSingleSelection
+                      ? 'Abre la ficha del cliente para editar todos sus datos.'
+                      : 'Aplica cambios masivos para servicio, estado, base o notas.'}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {isSingleSelection ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      onClick={handleOpenSingleSelectedClient}
+                    >
+                      Editar cliente
+                    </Button>
+                  ) : null}
+                  {isMultiSelection ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={handleOpenBulkAssign}
+                      disabled={isProcessingBulkAssign}
+                    >
+                      {isProcessingBulkAssign ? 'Preparando…' : 'Aplicar cambios masivos'}
+                    </Button>
+                  ) : null}
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={handleClearSelection}
+                    className="border border-transparent text-blue-800 hover:border-blue-200 hover:bg-blue-100"
+                  >
+                    Limpiar selección
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+
             <div className="space-y-6">
               <section aria-label="Clientes residenciales" className="space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -2396,6 +2547,18 @@ export default function ClientsPage() {
                   <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
                     <thead className="bg-slate-50 text-slate-600">
                       <tr>
+                        <th scope="col" className="w-12 px-3 py-2">
+                          <input
+                            ref={selectAllCheckboxRef}
+                            type="checkbox"
+                            checked={
+                              allFilteredSelected && filteredResidentialClients.length > 0
+                            }
+                            onChange={(event) => handleSelectAllFiltered(event.target.checked)}
+                            className="h-4 w-4 rounded border-slate-300 text-blue-600 focus-visible:ring-blue-500"
+                            aria-label="Seleccionar todos los clientes filtrados"
+                          />
+                        </th>
                         <th
                           scope="col"
                           className="px-3 py-2 font-medium"
@@ -2485,6 +2648,17 @@ export default function ClientsPage() {
                         const isActiveRow =
                           clientRowId !== null &&
                           (highlightedClientId === clientRowId || selectedClientId === clientRowId)
+                        const isSelectedForBulk = Boolean(
+                          clientRowId && selectedClientIds.has(clientRowId),
+                        )
+                        const rowClassName = [
+                          'transition-colors',
+                          isActiveRow ? 'bg-blue-50/70' : '',
+                          isSelectedForBulk && !isActiveRow ? 'bg-blue-50/40' : '',
+                        ]
+                          .filter(Boolean)
+                          .join(' ')
+                        const resolvedRowClass = rowClassName || undefined
                         const rowKey = clientRowId ?? `client-${index}`
                         const rowElementId = `client-${clientRowId ?? client.id ?? index}`
                         const primaryServiceForRow = getPrimaryService(client)
@@ -2513,9 +2687,24 @@ export default function ClientsPage() {
                           <tr
                             key={rowKey}
                             id={rowElementId}
-                            className={isActiveRow ? 'bg-blue-50/70 transition-colors' : undefined}
+                            className={resolvedRowClass}
+                            aria-selected={isSelectedForBulk}
                           >
-                          <td className="px-3 py-2 font-medium text-slate-900">
+                            <td className="px-3 py-2">
+                              <input
+                                type="checkbox"
+                                checked={isSelectedForBulk}
+                                onChange={(event) => {
+                                  event.stopPropagation()
+                                  handleToggleClientSelection(clientRowId)
+                                }}
+                                onClick={(event) => event.stopPropagation()}
+                                className="h-4 w-4 rounded border-slate-300 text-blue-600 focus-visible:ring-blue-500"
+                                aria-label={`Seleccionar cliente ${client.name}`}
+                                disabled={!clientRowId}
+                              />
+                            </td>
+                            <td className="px-3 py-2 font-medium text-slate-900">
                             <div className="flex flex-col">
                               <span>{client.name}</span>
                               {client.ip && (
@@ -2523,9 +2712,9 @@ export default function ClientsPage() {
                               )}
                             </div>
                           </td>
-                          <td className="px-3 py-2 text-slate-600">{client.location || '—'}</td>
-                          <td className="px-3 py-2 text-slate-600">Base {client.base}</td>
-                          <td className="px-3 py-2">
+                            <td className="px-3 py-2 text-slate-600">{client.location || '—'}</td>
+                            <td className="px-3 py-2 text-slate-600">Base {client.base}</td>
+                            <td className="px-3 py-2">
                             <span
                               className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
                                 isPrimaryActive
@@ -2536,7 +2725,7 @@ export default function ClientsPage() {
                               {primaryStatusForRow}
                             </span>
                           </td>
-                          <td className="px-3 py-2 text-slate-600">
+                            <td className="px-3 py-2 text-slate-600">
                             {isCourtesyClient ? (
                               <span className="font-semibold text-emerald-700">
                                 Servicio activo · {peso(0)} (cortesía)
@@ -2545,7 +2734,7 @@ export default function ClientsPage() {
                               peso(primaryMonthlyFee)
                             )}
                           </td>
-                          <td className="px-3 py-2 text-slate-600">
+                            <td className="px-3 py-2 text-slate-600">
                             {client.debtMonths > 0 && !isCourtesyClient ? (
                               <div className="flex flex-col">
                                 <span>
@@ -2614,7 +2803,7 @@ export default function ClientsPage() {
                       })}
                       {filteredResidentialClients.length === 0 && (
                         <tr>
-                          <td colSpan={7} className="px-3 py-6 text-center text-sm text-slate-500">
+                          <td colSpan={8} className="px-3 py-6 text-center text-sm text-slate-500">
                             No se encontraron clientes residenciales.
                           </td>
                         </tr>
