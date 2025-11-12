@@ -7,7 +7,7 @@ from decimal import Decimal
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from .common import PaginatedResponse
 from ..models.client_service import ClientServiceType
@@ -57,7 +57,11 @@ class ClientAccountBase(BaseModel):
     client_id: Optional[str] = None
     client_service_id: Optional[str] = None
     service_type: Optional[ClientServiceType] = None
-    service_plan_id: Optional[int] = Field(default=None, ge=1)
+    service_id: Optional[int] = Field(
+        default=None,
+        ge=1,
+        validation_alias=AliasChoices("service_id", "service_plan_id"),
+    )
     correo_cliente: str = Field(..., min_length=3)
     contrasena_cliente: str = Field(..., min_length=1)
     perfil: str = Field(..., min_length=1)
@@ -80,7 +84,11 @@ class ClientAccountUpdate(BaseModel):
     client_id: Optional[str] = None
     client_service_id: Optional[str] = None
     service_type: Optional[ClientServiceType] = None
-    service_plan_id: Optional[int] = Field(default=None, ge=1)
+    service_id: Optional[int] = Field(
+        default=None,
+        ge=1,
+        validation_alias=AliasChoices("service_id", "service_plan_id"),
+    )
     correo_cliente: Optional[str] = Field(default=None, min_length=3)
     contrasena_cliente: Optional[str] = Field(default=None, min_length=1)
     perfil: Optional[str] = Field(default=None, min_length=1)

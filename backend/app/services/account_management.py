@@ -185,7 +185,7 @@ class AccountService:
             metadata["profile_name"] = profile_name
         service_payload = schemas.ClientServiceCreate(
             client_id=client_id,
-            service_plan_id=service_plan.id,
+            service_id=service_plan.id,
             next_billing_date=next_billing_date,
             metadata=metadata,
             status=ClientServiceStatus.ACTIVE,
@@ -241,7 +241,7 @@ class AccountService:
         payload = data.model_dump()
         service_id = payload.pop("client_service_id", None)
         payload.pop("service_type", None)
-        service_plan_id = payload.pop("service_plan_id", None)
+        service_plan_id = payload.pop("service_id", None)
         fecha_registro: Optional[datetime] = payload.get("fecha_registro")
         if fecha_registro is None:
             fecha_registro = datetime.now(timezone.utc)
@@ -319,7 +319,7 @@ class AccountService:
             )
 
         update_data.pop("service_type", None)
-        plan_id_for_service = update_data.pop("service_plan_id", None)
+        plan_id_for_service = update_data.pop("service_id", None)
         if "client_service_id" in update_data:
             new_service_id = update_data.get("client_service_id")
             client_id_for_service = update_data.get("client_id", account.client_id)

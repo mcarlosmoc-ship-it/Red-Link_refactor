@@ -60,7 +60,7 @@ def test_bulk_assign_services_returns_failed_clients_when_plan_is_full(client, d
     ]
 
     payload = {
-        "service_plan_id": plan.id,
+        "service_id": plan.id,
         "client_ids": [str(client.id) for client in pending_clients],
         "status": models.ClientServiceStatus.ACTIVE.value,
     }
@@ -94,7 +94,7 @@ def test_bulk_assign_services_reports_partial_capacity(client, db_session):
     ]
 
     payload = {
-        "service_plan_id": plan.id,
+        "service_id": plan.id,
         "client_ids": [str(client.id) for client in pending_clients],
         "status": models.ClientServiceStatus.ACTIVE.value,
     }
