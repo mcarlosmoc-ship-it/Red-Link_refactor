@@ -19,7 +19,8 @@ const isInternetLikeService = (serviceType) =>
 export const mapClientService = (service) => ({
   id: service.id,
   clientId: service.client_id ?? service.clientId ?? null,
-  servicePlanId: service.service_plan_id ?? service.servicePlanId ?? null,
+  servicePlanId:
+    service.service_plan_id ?? service.service_id ?? service.servicePlanId ?? null,
   plan: service.service_plan ? mapServicePlan(service.service_plan) : null,
   type:
     service.service_plan?.category ?? service.category ?? service.type ?? null,
@@ -350,14 +351,22 @@ export const serializeClientServicePayload = (payload) => {
   return body
 }
 
-export const serializeClientServiceBulkPayload = (payload) => {
+export const serializeClientServiceBulkPayload = (payload = {}) => {
+  const serviceId = payload.serviceId ?? payload.servicePlanId
+  const useClientZone = payload.useClientZone ?? payload.useClientBase ?? true
+
   const body = {
-    service_plan_id: payload.servicePlanId,
+    service_id: serviceId,
     client_ids: Array.isArray(payload.clientIds) ? payload.clientIds : [],
+    initial_state: payload.initialState ?? payload.status ?? undefined,
+    use_client_zone: Boolean(useClientZone),
+    base_id: Object.prototype.hasOwnProperty.call(payload, 'baseId')
+      ? payload.baseId ?? null
+      : null,
   }
 
-  if (payload.status) {
-    body.status = payload.status
+  if (body.initial_state === undefined) {
+    delete body.initial_state
   }
 
   if (payload.billingDay) {
