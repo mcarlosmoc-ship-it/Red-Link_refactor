@@ -9,6 +9,7 @@ export const useClientServices = ({ autoLoad = true, ttl = DEFAULT_TTL } = {}) =
     status,
     loadClientServices,
     createClientService,
+    bulkAssignClientServices,
     updateClientService,
     deleteClientService,
     clearError,
@@ -17,6 +18,7 @@ export const useClientServices = ({ autoLoad = true, ttl = DEFAULT_TTL } = {}) =
     status: state.status.clientServices,
     loadClientServices: state.loadClientServices,
     createClientService: state.createClientService,
+    bulkAssignClientServices: state.bulkAssignClientServices,
     updateClientService: state.updateClientService,
     deleteClientService: state.deleteClientService,
     clearError: () => state.clearResourceError('clientServices'),
@@ -55,6 +57,7 @@ export const useClientServices = ({ autoLoad = true, ttl = DEFAULT_TTL } = {}) =
     loadClientServices,
     reload,
     createClientService,
+    bulkAssignClientServices,
     updateClientService,
     deleteClientService,
   }

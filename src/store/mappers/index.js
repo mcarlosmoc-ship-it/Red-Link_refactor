@@ -140,6 +140,7 @@ export const mapClient = (client) => {
     name: client.full_name,
     location: client.location,
     base: client.base_id,
+    zoneId: client.zone_id ?? client.base_id ?? null,
     ip: client.ip_address,
     antennaIp: client.antenna_ip,
     modemIp: client.modem_ip,
@@ -150,6 +151,7 @@ export const mapClient = (client) => {
     services,
     recentPayments,
     isCourtesyService: isCourtesy,
+    notes: client.notes ?? '',
   }
 }
 
@@ -298,7 +300,8 @@ export const serializeClientPayload = (payload) => ({
   client_type: payload.type,
   full_name: payload.name,
   location: payload.location,
-  base_id: payload.base,
+  zone_id: payload.zoneId ?? payload.base ?? null,
+  base_id: payload.base ?? payload.zoneId ?? null,
   ip_address: payload.ip || null,
   antenna_ip: payload.antennaIp || null,
   modem_ip: payload.modemIp || null,
@@ -308,6 +311,7 @@ export const serializeClientPayload = (payload) => ({
   paid_months_ahead: payload.paidMonthsAhead ?? 0,
   debt_months: payload.debtMonths ?? 0,
   service_status: payload.service ?? 'Activo',
+  notes: payload.notes ?? null,
 })
 
 export const serializeClientServicePayload = (payload) => {
