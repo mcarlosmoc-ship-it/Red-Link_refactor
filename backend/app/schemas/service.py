@@ -63,6 +63,11 @@ class ClientServiceCreate(ClientServiceBase):
 class ClientServiceInlineCreate(ClientServiceBase):
     """Service payload used when assigning services during client creation."""
 
+    service_id: Optional[int] = Field(
+        default=None,
+        ge=1,
+        validation_alias=AliasChoices("service_id", "service_plan_id"),
+    )
 
 class ClientServiceUpdate(BaseModel):
     """Payload to update an existing client service."""
