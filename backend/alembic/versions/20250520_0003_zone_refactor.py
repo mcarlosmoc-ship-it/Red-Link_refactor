@@ -71,11 +71,18 @@ def upgrade() -> None:
                 nullable=True,
             )
 
-            if "clients_zone_idx" not in client_indexes:
-                batch_op.create_index("clients_zone_idx", ["zone_id"])
-            if "clients_zone_status_idx" not in client_indexes:
-                batch_op.create_index(
-                    "clients_zone_status_idx", ["zone_id", "service_status"]
+        inspector = sa.inspect(bind)
+        if inspector.has_table("clients"):
+            client_indexes_after = {
+                idx["name"] for idx in inspector.get_indexes("clients")
+            }
+            if "clients_zone_idx" not in client_indexes_after:
+                op.create_index("clients_zone_idx", "clients", ["zone_id"])
+            if "clients_zone_status_idx" not in client_indexes_after:
+                op.create_index(
+                    "clients_zone_status_idx",
+                    "clients",
+                    ["zone_id", "service_status"],
                 )
 
     inspector = sa.inspect(bind)
