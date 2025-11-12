@@ -101,8 +101,9 @@ class ClientContractService:
             client = client or existing.client
 
         plan: Optional[models.ServicePlan] = None
-        if "service_plan_id" in payload and payload["service_plan_id"] is not None:
-            plan = cls._resolve_service_plan(db, int(payload["service_plan_id"]))
+        service_identifier = payload.pop("service_id", None)
+        if service_identifier is not None:
+            plan = cls._resolve_service_plan(db, int(service_identifier))
             payload["service_plan_id"] = plan.id
         elif existing and existing.service_plan is not None:
             plan = existing.service_plan
@@ -233,7 +234,7 @@ class ClientContractService:
             seen.add(normalized)
             unique_client_ids.append(normalized)
 
-        plan = cls._resolve_service_plan(db, data.service_plan_id)
+        plan = cls._resolve_service_plan(db, data.service_id)
         target_status = data.status or models.ClientServiceStatus.ACTIVE
 
         clients_cache: Dict[str, models.Client] = {}

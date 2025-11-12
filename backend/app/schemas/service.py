@@ -28,7 +28,11 @@ class ServicePlanSummary(BaseModel):
 class ClientServiceBase(BaseModel):
     """Shared fields for service creation and updates."""
 
-    service_plan_id: int = Field(..., ge=1)
+    service_id: int = Field(
+        ...,
+        ge=1,
+        validation_alias=AliasChoices("service_id", "service_plan_id"),
+    )
     status: ClientServiceStatus = ClientServiceStatus.ACTIVE
     billing_day: Optional[int] = Field(default=None, ge=1, le=31)
     next_billing_date: Optional[date] = None
@@ -54,7 +58,11 @@ class ClientServiceCreate(ClientServiceBase):
 class ClientServiceUpdate(BaseModel):
     """Payload to update an existing client service."""
 
-    service_plan_id: Optional[int] = Field(default=None, ge=1)
+    service_id: Optional[int] = Field(
+        default=None,
+        ge=1,
+        validation_alias=AliasChoices("service_id", "service_plan_id"),
+    )
     status: Optional[ClientServiceStatus] = None
     billing_day: Optional[int] = Field(default=None, ge=1, le=31)
     next_billing_date: Optional[date] = None
@@ -76,7 +84,7 @@ class ClientServiceRead(BaseModel):
 
     id: str
     client_id: str
-    service_plan_id: int
+    service_id: int = Field(validation_alias=AliasChoices("service_id", "service_plan_id"))
     status: ClientServiceStatus
     billing_day: Optional[int] = None
     next_billing_date: Optional[date] = None
@@ -107,7 +115,11 @@ class ClientServiceListResponse(PaginatedResponse[ClientServiceRead]):
 class ClientServiceBulkCreate(BaseModel):
     """Payload to assign the same service plan to multiple clients."""
 
-    service_plan_id: int = Field(..., ge=1)
+    service_id: int = Field(
+        ...,
+        ge=1,
+        validation_alias=AliasChoices("service_id", "service_plan_id"),
+    )
     client_ids: list[str] = Field(..., min_length=1)
     status: ClientServiceStatus = ClientServiceStatus.ACTIVE
     billing_day: Optional[int] = Field(default=None, ge=1, le=31)
