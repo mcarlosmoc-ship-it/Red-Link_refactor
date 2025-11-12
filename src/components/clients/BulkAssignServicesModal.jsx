@@ -144,10 +144,14 @@ export default function BulkAssignServicesModal({
 
     const isCourtesySelection = formState.status === 'courtesy'
 
+    const shouldUseClientZone = formState.useClientBase !== false
+
     const payload = {
-      servicePlanId: normalizedPlanId,
+      serviceId: normalizedPlanId,
       clientIds,
-      status: isCourtesySelection ? 'active' : formState.status || 'active',
+      initialState: isCourtesySelection ? 'active' : formState.status || 'active',
+      useClientZone: shouldUseClientZone,
+      baseId: shouldUseClientZone ? null : undefined,
     }
 
     if (isCourtesySelection) {
