@@ -71,9 +71,13 @@ class ClientService:
         zone_id: Optional[int] = None,
         status: Optional[models.ServiceStatus] = None,
     ) -> Tuple[Iterable[models.Client], int]:
-        query = db.query(models.Client).options(
-            selectinload(models.Client.services).selectinload(
-                models.ClientService.service_plan
+        query = (
+            db.query(models.Client)
+            .options(
+                selectinload(models.Client.services).selectinload(
+                    models.ClientService.service_plan
+                ),
+                selectinload(models.Client.zone),
             )
         )
 
@@ -105,6 +109,7 @@ class ClientService:
                 .selectinload(models.ClientService.payments)
                 .selectinload(models.ClientService.service_plan),
                 selectinload(models.Client.payments),
+                selectinload(models.Client.zone),
             )
             .filter(models.Client.id == client_id)
             .first()
@@ -115,12 +120,70 @@ class ClientService:
 
     @staticmethod
     def create_client(db: Session, data: schemas.ClientCreate) -> models.Client:
-        client = models.Client(**data.model_dump())
+        client_payload = data.model_dump(exclude={"services"})
+        services_payload = list(data.services)
+
+        client = models.Client(**client_payload)
         db.add(client)
-        db.commit()
-        db.refresh(client)
-        client.recent_payments = ClientService._recent_payments(db, client.id)
-        return client
+
+        try:
+            db.flush()
+
+            effective_prices: list[Decimal] = []
+
+            for service_in in services_payload:
+                plan_id = service_in.service_id
+                plan = db.get(models.ServicePlan, plan_id)
+                if plan is None:
+                    raise ValueError(f"Service plan {plan_id} does not exist")
+
+                custom_price = service_in.custom_price
+                status = service_in.status or models.ClientServiceStatus.ACTIVE
+                zone_id = (
+                    service_in.zone_id
+                    if service_in.zone_id is not None
+                    else client.zone_id
+                )
+
+                assignment = models.ClientService(
+                    client=client,
+                    service_plan=plan,
+                    status=status,
+                    billing_day=service_in.billing_day,
+                    next_billing_date=service_in.next_billing_date,
+                    zone_id=zone_id,
+                    ip_address=service_in.ip_address,
+                    custom_price=custom_price,
+                    notes=service_in.notes,
+                    service_metadata=service_in.service_metadata,
+                )
+                db.add(assignment)
+
+                price_reference = custom_price
+                if price_reference is None and plan.monthly_price is not None:
+                    price_reference = plan.monthly_price
+                if price_reference is not None:
+                    effective_prices.append(
+                        price_reference
+                        if isinstance(price_reference, Decimal)
+                        else Decimal(str(price_reference))
+                    )
+
+            if effective_prices:
+                client.monthly_fee = effective_prices[0]
+            elif client.monthly_fee is None:
+                client.monthly_fee = Decimal("0")
+
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+
+        created_client = ClientService.get_client(db, client.id)
+        if created_client is None:
+            client.recent_payments = ClientService._recent_payments(db, client.id)
+            return client
+        return created_client
 
     @staticmethod
     def update_client(db: Session, client: models.Client, data: schemas.ClientUpdate) -> models.Client:

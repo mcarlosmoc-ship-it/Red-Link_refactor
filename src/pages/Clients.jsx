@@ -243,6 +243,7 @@ export default function ClientsPage() {
     client: null,
     selectedPlanIds: [],
     clientName: '',
+    excludedPlanIds: [],
   })
   const [isProcessingExtraServices, setIsProcessingExtraServices] = useState(false)
   const activeServicePlans = useMemo(
@@ -276,6 +277,13 @@ export default function ClientsPage() {
       ) ?? null
     )
   }, [initialServiceState.servicePlanId, servicePlans])
+  const primaryPlanId = useMemo(
+    () =>
+      initialServiceState?.servicePlanId
+        ? String(initialServiceState.servicePlanId)
+        : null,
+    [initialServiceState?.servicePlanId],
+  )
   const selectedServicePlan = useMemo(() => {
     if (!serviceFormState.servicePlanId) {
       return null
@@ -295,6 +303,87 @@ export default function ClientsPage() {
         .filter(Boolean),
     [pendingExtraServicePlans, servicePlans],
   )
+  const pendingExtraServicePlanIdsSet = useMemo(
+    () => new Set(pendingExtraServicePlans.map((value) => String(value))),
+    [pendingExtraServicePlans],
+  )
+  const additionalServicePlans = useMemo(
+    () => activeServicePlans.filter((plan) => String(plan.id) !== primaryPlanId),
+    [activeServicePlans, primaryPlanId],
+  )
+  const quickServicePlans = useMemo(
+    () => additionalServicePlans.slice(0, 6),
+    [additionalServicePlans],
+  )
+  const hasMoreServicePlans = useMemo(
+    () => additionalServicePlans.length > quickServicePlans.length,
+    [additionalServicePlans, quickServicePlans],
+  )
+  const handleToggleQuickExtraPlan = useCallback(
+    (planId) => {
+      const normalizedId = String(planId)
+      if (primaryPlanId && normalizedId === primaryPlanId) {
+        return
+      }
+      setPendingExtraServicePlans((prev) => {
+        const next = new Set(prev.map((value) => String(value)))
+        if (next.has(normalizedId)) {
+          next.delete(normalizedId)
+        } else {
+          next.add(normalizedId)
+        }
+        return Array.from(next)
+      })
+    },
+    [primaryPlanId],
+  )
+  const handleRemoveExtraPlan = useCallback((planId) => {
+    const normalizedId = String(planId)
+    setPendingExtraServicePlans((prev) =>
+      prev.filter((value) => String(value) !== normalizedId),
+    )
+  }, [])
+  const selectedServicesSummary = useMemo(() => {
+    const summary = []
+    const seen = new Set()
+
+    if (selectedInitialPlan) {
+      const planId = primaryPlanId ?? String(selectedInitialPlan.id)
+      if (!seen.has(planId)) {
+        seen.add(planId)
+        const categorySource =
+          selectedInitialPlan.serviceType ??
+          selectedInitialPlan.service_type ??
+          selectedInitialPlan.category
+        summary.push({
+          id: planId,
+          name: selectedInitialPlan.name,
+          category: getServiceTypeLabel(categorySource ?? 'internet'),
+          isPrimary: true,
+        })
+      }
+    }
+
+    extraServicesSelected.forEach((plan) => {
+      if (!plan) {
+        return
+      }
+      const planId = String(plan.id)
+      if (seen.has(planId)) {
+        return
+      }
+      seen.add(planId)
+      const categorySource = plan.serviceType ?? plan.service_type ?? plan.category
+      summary.push({
+        id: planId,
+        name: plan.name,
+        category: getServiceTypeLabel(categorySource ?? 'other'),
+        isPrimary: false,
+      })
+    })
+
+    return summary
+  }, [extraServicesSelected, primaryPlanId, selectedInitialPlan])
   const initialServiceEffectivePrice = useMemo(
     () => resolveEffectivePriceForFormState(initialServiceState, selectedInitialPlan),
     [initialServiceState, selectedInitialPlan],
@@ -855,14 +944,16 @@ export default function ClientsPage() {
   )
 
   const handleOpenExtraServicesForCreate = useCallback(() => {
+    const excludedPlanIds = primaryPlanId ? [primaryPlanId] : []
     setExtraServicesModalState({
       isOpen: true,
       mode: 'create',
       client: null,
       selectedPlanIds: pendingExtraServicePlans.map((value) => String(value)),
       clientName: formState.name?.trim() ? formState.name.trim() : 'Nuevo cliente',
+      excludedPlanIds,
     })
-  }, [formState.name, pendingExtraServicePlans])
+  }, [formState.name, pendingExtraServicePlans, primaryPlanId])
 
   const handleOpenExtraServicesForClient = useCallback((client) => {
     if (!client || !client.id) {
@@ -884,6 +975,7 @@ export default function ClientsPage() {
       client,
       selectedPlanIds,
       clientName: client.name ?? 'Cliente',
+      excludedPlanIds: [],
     })
   }, [])
 
@@ -940,6 +1032,7 @@ export default function ClientsPage() {
           client: null,
           selectedPlanIds: [],
           clientName: '',
+          excludedPlanIds: [],
         })
         return
       }
@@ -1014,6 +1107,7 @@ export default function ClientsPage() {
           client: null,
           selectedPlanIds: [],
           clientName: '',
+          excludedPlanIds: [],
         })
       }
     },
@@ -1227,6 +1321,16 @@ export default function ClientsPage() {
       }
     })
   }, [servicePlans])
+
+  useEffect(() => {
+    if (!primaryPlanId) {
+      return
+    }
+
+    setPendingExtraServicePlans((prev) =>
+      prev.filter((planId) => String(planId) !== primaryPlanId),
+    )
+  }, [primaryPlanId])
 
   const selectedClient = useMemo(
     () => {
@@ -1625,53 +1729,148 @@ export default function ClientsPage() {
     if (!validateForm()) return
     if (!validateInitialService()) return
 
-    const normalizedPlanPrice = (() => {
-      if (Number.isFinite(initialServiceEffectivePrice)) {
-        return Number(initialServiceEffectivePrice)
-      }
-      const rawPrice = initialServiceSnapshot.price
-      if (rawPrice === '' || rawPrice === null || rawPrice === undefined) {
-        const planFee = selectedInitialPlan?.defaultMonthlyFee
-        const numericPlanFee = Number(planFee)
-        return Number.isFinite(numericPlanFee) ? numericPlanFee : null
-      }
-      const parsed = Number(rawPrice)
-      if (Number.isFinite(parsed)) {
-        return parsed
-      }
-      const planFee = selectedInitialPlan?.defaultMonthlyFee
-      const numericPlanFee = Number(planFee)
-      return Number.isFinite(numericPlanFee) ? numericPlanFee : null
-    })()
-
     const zoneValue = Number(formState.zoneId)
     const normalizedZoneId =
       Number.isInteger(zoneValue) && zoneValue > 0 ? zoneValue : null
 
+    const clientName = formState.name.trim()
+    const initialServiceSnapshot = { ...initialServiceState }
+    const serviceAssignments = []
+
+    const resolveBillingDay = (billingDayValue, isCourtesy) => {
+      if (isCourtesy) {
+        return null
+      }
+      if (billingDayValue === '' || billingDayValue === null || billingDayValue === undefined) {
+        return null
+      }
+      const parsed = Number(billingDayValue)
+      return Number.isInteger(parsed) && parsed >= 1 && parsed <= 31 ? parsed : null
+    }
+
+    const resolveBaseId = (baseValue) => {
+      if (baseValue === '' || baseValue === null || baseValue === undefined) {
+        return null
+      }
+      const parsed = Number(baseValue)
+      return Number.isInteger(parsed) && parsed > 0 ? parsed : null
+    }
+
+    const parsedInitialPlanId = Number(initialServiceSnapshot.servicePlanId)
+    const initialNotes = initialServiceSnapshot.notes?.trim()
+    const initialBillingDay = resolveBillingDay(
+      initialServiceSnapshot.billingDay,
+      isInitialCourtesy,
+    )
+    const initialBaseId = resolveBaseId(initialServiceSnapshot.baseId)
+    const initialCustomPrice = initialServiceSnapshot.isCustomPriceEnabled
+      ? Number(initialServiceEffectivePrice)
+      : null
+
+    if (Number.isFinite(parsedInitialPlanId) && parsedInitialPlanId > 0) {
+      const assignment = {
+        servicePlanId: parsedInitialPlanId,
+        status: initialServiceSnapshot.status || 'active',
+      }
+
+      if (initialBillingDay !== null) {
+        assignment.billingDay = initialBillingDay
+      }
+      if (initialBaseId !== null) {
+        assignment.baseId = initialBaseId
+      } else if (normalizedZoneId !== null) {
+        assignment.baseId = normalizedZoneId
+      }
+      if (initialCustomPrice !== null && Number.isFinite(initialCustomPrice)) {
+        assignment.customPrice = initialCustomPrice
+      }
+      if (initialNotes) {
+        assignment.notes = initialNotes
+      }
+
+      serviceAssignments.push(assignment)
+    }
+
+    const extraPlanIds = Array.from(pendingExtraServicePlanIdsSet).filter(
+      (planId) => planId && planId !== (primaryPlanId ?? ''),
+    )
+
+    extraPlanIds.forEach((planId) => {
+      const numericPlanId = Number(planId)
+      if (!Number.isFinite(numericPlanId) || numericPlanId <= 0) {
+        return
+      }
+      serviceAssignments.push({
+        servicePlanId: numericPlanId,
+        status: 'active',
+      })
+    })
+
+    const resolvePlanPrice = (planId) => {
+      const plan = servicePlans.find((item) => String(item.id) === String(planId))
+      if (!plan) {
+        return null
+      }
+      const priceCandidate =
+        plan.defaultMonthlyFee ?? plan.monthlyPrice ?? plan.monthly_price
+      const numericPrice = Number(priceCandidate)
+      return Number.isFinite(numericPrice) ? numericPrice : null
+    }
+
+    let normalizedMonthlyFee = null
+    if (serviceAssignments.length > 0) {
+      if (Number.isFinite(initialServiceEffectivePrice)) {
+        normalizedMonthlyFee = Number(initialServiceEffectivePrice)
+      } else {
+        normalizedMonthlyFee = resolvePlanPrice(serviceAssignments[0].servicePlanId)
+      }
+    }
+
+    if (!Number.isFinite(normalizedMonthlyFee)) {
+      normalizedMonthlyFee = null
+    }
+
     const payload = {
       type: formState.type,
-      name: formState.name.trim(),
+      name: clientName,
       location: formState.location,
       zoneId: normalizedZoneId,
       base: normalizedZoneId,
       notes: formState.notes?.trim() ? formState.notes.trim() : null,
       debtMonths: 0,
       paidMonthsAhead: 0,
-      monthlyFee:
-        formState.type === 'residential' && normalizedPlanPrice !== null
-          ? normalizedPlanPrice
-          : null,
+      monthlyFee: normalizedMonthlyFee,
+      services: serviceAssignments,
+      ip: formState.ip?.trim() ? formState.ip.trim() : null,
+      antennaIp: formState.antennaIp?.trim() ? formState.antennaIp.trim() : null,
+      modemIp: formState.modemIp?.trim() ? formState.modemIp.trim() : null,
+      antennaModel: formState.antennaModel || null,
+      modemModel: formState.modemModel?.trim() ? formState.modemModel.trim() : null,
+      service: serviceAssignments.length > 0 ? 'Activo' : 'Suspendido',
     }
 
-    const clientName = formState.name.trim()
-    const initialServiceSnapshot = { ...initialServiceState }
+    const selectedServiceNames = selectedServicesSummary.map((service) => service.name)
 
     try {
       const newClient = await createClient(payload)
+      const hasServicesAssigned = serviceAssignments.length > 0
+      const successDescription = (() => {
+        if (!clientName) {
+          return 'El cliente se registró correctamente.'
+        }
+        if (hasServicesAssigned && selectedServiceNames.length > 0) {
+          return `Se agregó a ${clientName} con ${selectedServiceNames.join(', ')}.`
+        }
+        if (hasServicesAssigned) {
+          return `Se agregó a ${clientName} con servicios activos.`
+        }
+        return `Se agregó a ${clientName} sin servicios asignados.`
+      })()
+
       showToast({
         type: 'success',
         title: 'Cliente agregado',
-        description: `Se agregó a ${clientName} correctamente.`,
+        description: successDescription,
       })
       setFormState({ ...defaultForm })
       setFormErrors({})
@@ -1681,131 +1880,7 @@ export default function ClientsPage() {
 
       const normalizedNewClientId = normalizeId(newClient?.id)
       if (normalizedNewClientId) {
-        let shouldOpenServiceForm = true
-        const trimmedServiceName =
-          initialServiceSnapshot.displayName?.trim() ?? selectedInitialPlan?.name ?? ''
-
-        const parsedInitialPlanId = Number(initialServiceSnapshot.servicePlanId)
-
-        if (Number.isFinite(parsedInitialPlanId) && parsedInitialPlanId > 0) {
-          const normalizedPrice =
-            initialServiceSnapshot.isCustomPriceEnabled &&
-            normalizedPlanPrice !== null &&
-            normalizedPlanPrice !== undefined
-              ? normalizedPlanPrice
-              : null
-
-          const normalizedBillingDay = (() => {
-            if (isInitialCourtesy) {
-              return null
-            }
-            if (initialServiceSnapshot.billingDay === '' || initialServiceSnapshot.billingDay === null) {
-              return null
-            }
-            const parsed = Number(initialServiceSnapshot.billingDay)
-            return Number.isInteger(parsed) ? parsed : null
-          })()
-
-          const normalizedBaseId = (() => {
-            if (initialServiceSnapshot.baseId === '' || initialServiceSnapshot.baseId === null) {
-              return null
-            }
-            const parsed = Number(initialServiceSnapshot.baseId)
-            return Number.isInteger(parsed) ? parsed : null
-          })()
-
-          const servicePayload = {
-            clientId: normalizedNewClientId,
-            servicePlanId: parsedInitialPlanId,
-            billingDay: normalizedBillingDay,
-            baseId: normalizedBaseId,
-            status: initialServiceSnapshot.status,
-            notes:
-              initialServiceSnapshot.notes?.trim()
-                ? initialServiceSnapshot.notes.trim()
-                : null,
-          }
-
-          if (normalizedPrice !== null) {
-            servicePayload.customPrice = normalizedPrice
-          }
-
-          try {
-            await createClientService(servicePayload)
-            showToast({
-              type: 'success',
-              title: 'Servicio asignado',
-              description: `${trimmedServiceName || 'Servicio seleccionado'} se registró para ${clientName}.`,
-            })
-            shouldOpenServiceForm = false
-          } catch (error) {
-            showToast({
-              type: 'warning',
-              title: 'Servicio no registrado',
-              description: resolveApiErrorMessage(
-                error,
-                'Agrega el servicio manualmente desde la ficha del cliente.',
-              ),
-            })
-          }
-        }
-
-        const extraPlanIds = Array.from(
-          new Set(
-            pendingExtraServicePlans
-              .map((planId) => String(planId))
-              .filter(
-                (planId) =>
-                  planId &&
-                  planId !== String(initialServiceSnapshot.servicePlanId ?? ''),
-              ),
-          ),
-        )
-
-        if (extraPlanIds.length > 0) {
-          const assignedNames = []
-          for (const planId of extraPlanIds) {
-            const numericPlanId = Number(planId)
-            if (!Number.isFinite(numericPlanId) || numericPlanId <= 0) {
-              continue
-            }
-
-            try {
-              await bulkAssignServicesForClient({
-                serviceId: numericPlanId,
-                clientIds: [normalizedNewClientId],
-                initialState: 'active',
-                useClientZone: true,
-              })
-
-              const matchedPlan = servicePlans.find(
-                (plan) => String(plan.id) === String(planId),
-              )
-              if (matchedPlan?.name) {
-                assignedNames.push(matchedPlan.name)
-              }
-            } catch (error) {
-              showToast({
-                type: 'warning',
-                title: 'Servicio adicional no asignado',
-                description: resolveApiErrorMessage(
-                  error,
-                  'Asigna los servicios adicionales desde la ficha del cliente.',
-                ),
-              })
-            }
-          }
-
-          if (assignedNames.length > 0) {
-            showToast({
-              type: 'success',
-              title: 'Servicios adicionales asignados',
-              description: `${assignedNames.join(', ')} se agregaron a ${clientName}.`,
-            })
-          }
-        }
-
-        shouldOpenServiceFormRef.current = shouldOpenServiceForm
+        shouldOpenServiceFormRef.current = false
         setActiveClientDetailTab('summary')
         setSelectedClientId(normalizedNewClientId)
         setHighlightedClientId(normalizedNewClientId)
@@ -2252,22 +2327,90 @@ export default function ClientsPage() {
                   )}
                 </label>
 
-                <div className="md:col-span-2 flex flex-wrap items-center justify-between gap-3">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="border border-slate-200 bg-white text-slate-700 hover:border-blue-200"
-                    onClick={handleOpenExtraServicesForCreate}
-                  >
-                    + Agregar servicios adicionales
-                  </Button>
-                  {extraServicesSelected.length > 0 ? (
-                    <span className="text-[11px] text-slate-600">
-                      {extraServicesSelected.map((plan) => plan.name).join(', ')}
-                    </span>
-                  ) : (
-                    <span className="text-[11px] text-slate-500">Sin servicios adicionales seleccionados.</span>
-                  )}
+                <div className="md:col-span-2 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="border border-slate-200 bg-white text-slate-700 hover:border-blue-200"
+                      onClick={handleOpenExtraServicesForCreate}
+                    >
+                      {hasMoreServicePlans ? 'Agregar más servicios' : 'Gestionar servicios'}
+                    </Button>
+                    {selectedServicesSummary.length > 0 ? (
+                      <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
+                        {selectedServicesSummary.map((service) => (
+                          <span
+                            key={service.id}
+                            className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1"
+                          >
+                            <span className="font-semibold text-slate-800">{service.name}</span>
+                            <span className="uppercase tracking-wide text-[10px] text-slate-500">
+                              {service.category}
+                            </span>
+                            {service.isPrimary ? (
+                              <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
+                                Principal
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveExtraPlan(service.id)}
+                                className="inline-flex items-center rounded-full border border-transparent px-2 py-0.5 text-[10px] font-semibold text-slate-500 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+                              >
+                                Quitar
+                              </button>
+                            )}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-[11px] text-slate-500">
+                        Sin servicios adicionales seleccionados.
+                      </span>
+                    )}
+                  </div>
+
+                  {quickServicePlans.length > 0 ? (
+                    <div className="grid gap-2 md:grid-cols-2">
+                      {quickServicePlans.map((plan) => {
+                        const planId = String(plan.id)
+                        const isChecked = pendingExtraServicePlanIdsSet.has(planId)
+                        const planCategory =
+                          plan.serviceType ?? plan.service_type ?? plan.category
+                        const planPrice =
+                          plan.defaultMonthlyFee ?? plan.monthlyPrice ?? plan.monthly_price
+                        return (
+                          <label
+                            key={planId}
+                            className={`flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2 transition ${
+                              isChecked
+                                ? 'border-blue-300 bg-blue-50/60'
+                                : 'border-slate-200 bg-white hover:border-blue-200'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => handleToggleQuickExtraPlan(planId)}
+                              className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600 focus-visible:ring-blue-500"
+                            />
+                            <div className="space-y-1">
+                              <p className="text-sm font-semibold text-slate-900">{plan.name}</p>
+                              <p className="text-xs text-slate-500">
+                                {getServiceTypeLabel(planCategory ?? 'other')}
+                              </p>
+                              <p className="text-xs text-slate-500">
+                                {planPrice === null || planPrice === undefined
+                                  ? 'Monto variable'
+                                  : peso(planPrice)}
+                              </p>
+                            </div>
+                          </label>
+                        )
+                      })}
+                    </div>
+                  ) : null}
                 </div>
 
                 {selectedInitialPlan ? (
@@ -2666,6 +2809,9 @@ export default function ClientsPage() {
                             </span>
                           </button>
                         </th>
+                        <th scope="col" className="px-3 py-2 font-medium">
+                          Tipo
+                        </th>
                         <th
                           scope="col"
                           className="px-3 py-2 font-medium"
@@ -2703,7 +2849,7 @@ export default function ClientsPage() {
                           Zona
                         </th>
                         <th scope="col" className="px-3 py-2 font-medium">
-                          Servicio(s)
+                          Servicios activos
                         </th>
                         <th scope="col" className="px-3 py-2 font-medium">
                           Pago mensual
@@ -2749,20 +2895,45 @@ export default function ClientsPage() {
                         const canSuspendPrimaryService =
                           Boolean(primaryServiceForRow) && primaryServiceStatus === 'active'
                         const primaryMonthlyFee = (() => {
-                          const parsed = Number(primaryServiceForRow?.price)
-                          if (Number.isFinite(parsed) && parsed > 0) {
-                            return parsed
+                          const effective = Number(
+                            primaryServiceForRow?.effectivePrice ?? primaryServiceForRow?.price,
+                          )
+                          if (Number.isFinite(effective) && effective > 0) {
+                            return effective
                           }
                           const mappedFee = Number(client.monthlyFee)
-                          return Number.isFinite(mappedFee) ? mappedFee : CLIENT_PRICE
+                          if (Number.isFinite(mappedFee) && mappedFee > 0) {
+                            return mappedFee
+                          }
+                          return 0
                         })()
                         const clientServices = Array.isArray(client.services) ? client.services : []
+                        const activeServiceNames = clientServices
+                          .filter((service) => service?.status === 'active')
+                          .map((service) => service?.name ?? service?.plan?.name ?? 'Servicio')
+                        const inactiveServiceNames = clientServices
+                          .filter((service) => service?.status && service.status !== 'active')
+                          .map((service) => service?.name ?? service?.plan?.name ?? 'Servicio')
                         const serviceSummary =
-                          clientServices.length === 0
-                            ? 'Sin servicio asignado'
-                            : clientServices
-                                .map((service) => service?.name ?? service?.plan?.name ?? 'Servicio')
-                                .join(', ')
+                          activeServiceNames.length > 0
+                            ? activeServiceNames.join(', ')
+                            : 'Sin servicios activos'
+                        const zoneLabel = (() => {
+                          if (client.zoneName) {
+                            return client.zoneName
+                          }
+                          if (client.zoneCode) {
+                            return client.zoneCode
+                          }
+                          if (client.zoneId) {
+                            return `Zona ${client.zoneId}`
+                          }
+                          if (client.base) {
+                            return `Zona ${client.base}`
+                          }
+                          return '—'
+                        })()
+                        const clientTypeLabel = CLIENT_TYPE_LABELS[client.type] ?? 'Cliente'
 
                         return (
                           <tr
@@ -2790,8 +2961,9 @@ export default function ClientsPage() {
                                 <span>{client.name}</span>
                               </div>
                             </td>
+                            <td className="px-3 py-2 text-slate-600">{clientTypeLabel}</td>
                             <td className="px-3 py-2 text-slate-600">{client.location || '—'}</td>
-                            <td className="px-3 py-2 text-slate-600">{client.zoneId ?? client.base ?? '—'}</td>
+                            <td className="px-3 py-2 text-slate-600">{zoneLabel}</td>
                             <td className="px-3 py-2 text-slate-600">
                               <div className="flex flex-col gap-1 text-sm">
                                 <span>{serviceSummary}</span>
@@ -2804,6 +2976,11 @@ export default function ClientsPage() {
                                     }`}
                                   >
                                     {primaryStatusForRow}
+                                  </span>
+                                ) : null}
+                                {inactiveServiceNames.length > 0 ? (
+                                  <span className="text-[11px] text-slate-500">
+                                    Inactivos: {inactiveServiceNames.join(', ')}
                                   </span>
                                 ) : null}
                               </div>
@@ -2840,7 +3017,7 @@ export default function ClientsPage() {
                                 className={ACTION_BUTTON_CLASSES}
                                 onClick={() => handleOpenExtraServicesForClient(client)}
                               >
-                                {clientServices.length === 0 ? '➕ Asignar servicio' : '✏️ Editar servicios'}
+                                Gestionar servicios
                               </Button>
                               <Button
                                 size="sm"
@@ -2887,7 +3064,7 @@ export default function ClientsPage() {
                       })}
                       {filteredResidentialClients.length === 0 && (
                         <tr>
-                          <td colSpan={8} className="px-3 py-6 text-center text-sm text-slate-500">
+                          <td colSpan={9} className="px-3 py-6 text-center text-sm text-slate-500">
                             No se encontraron clientes residenciales.
                           </td>
                         </tr>
@@ -3501,6 +3678,7 @@ export default function ClientsPage() {
         servicePlans={servicePlans}
         initialSelection={extraServicesModalState.selectedPlanIds}
         clientName={extraServicesModalState.clientName || 'cliente'}
+        excludedPlanIds={extraServicesModalState.excludedPlanIds}
       />
     </div>
   )

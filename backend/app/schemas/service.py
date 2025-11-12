@@ -60,6 +60,10 @@ class ClientServiceCreate(ClientServiceBase):
     client_id: str
 
 
+class ClientServiceInlineCreate(ClientServiceBase):
+    """Service payload used when assigning services during client creation."""
+
+
 class ClientServiceUpdate(BaseModel):
     """Payload to update an existing client service."""
 

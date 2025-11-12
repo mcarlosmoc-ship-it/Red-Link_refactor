@@ -33,6 +33,7 @@ export default function AssignExtraServicesModal({
   initialSelection = [],
   clientName = 'cliente',
   isProcessing = false,
+  excludedPlanIds = [],
 }) {
   const [searchTerm, setSearchTerm] = useState('')
   const [activeCategory, setActiveCategory] = useState('all')
@@ -55,9 +56,40 @@ export default function AssignExtraServicesModal({
     [servicePlans],
   )
 
+  const planLookup = useMemo(() => {
+    const map = new Map()
+    activePlans.forEach((plan) => {
+      map.set(String(plan.id), plan)
+    })
+    return map
+  }, [activePlans])
+
+  const excludedIdsSet = useMemo(() => {
+    if (!excludedPlanIds || excludedPlanIds.length === 0) {
+      return new Set()
+    }
+    return new Set(excludedPlanIds.map((value) => String(value)))
+  }, [excludedPlanIds])
+
+  const selectedPlans = useMemo(() => {
+    return Array.from(selectedPlanIds).map((planId) => {
+      const plan = planLookup.get(planId)
+      return {
+        id: planId,
+        name: plan?.name ?? `Plan ${planId}`,
+        category: plan ? resolveCategory(plan) : 'other',
+        description: plan?.description ?? '',
+      }
+    })
+  }, [planLookup, selectedPlanIds])
+
   const filteredPlans = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase()
     return activePlans.filter((plan) => {
+      const planId = String(plan.id)
+      if (selectedPlanIds.has(planId) || excludedIdsSet.has(planId)) {
+        return false
+      }
       const category = resolveCategory(plan)
       if (activeCategory !== 'all' && category !== activeCategory) {
         return false
@@ -68,20 +100,24 @@ export default function AssignExtraServicesModal({
       const name = String(plan?.name ?? '').toLowerCase()
       return name.includes(normalizedSearch)
     })
-  }, [activePlans, activeCategory, searchTerm])
+  }, [activePlans, activeCategory, excludedIdsSet, searchTerm, selectedPlanIds])
+
+  const handleRemovePlan = (planId) => {
+    setSelectedPlanIds((prev) => {
+      const next = new Set(prev)
+      next.delete(planId)
+      return next
+    })
+  }
 
   if (!isOpen) {
     return null
   }
 
-  const handleTogglePlan = (planId) => {
+  const handleAddPlan = (planId) => {
     setSelectedPlanIds((prev) => {
       const next = new Set(prev)
-      if (next.has(planId)) {
-        next.delete(planId)
-      } else {
-        next.add(planId)
-      }
+      next.add(planId)
       return next
     })
   }
@@ -119,6 +155,36 @@ export default function AssignExtraServicesModal({
 
         <form onSubmit={handleApply} className="flex h-full flex-col">
           <div className="space-y-4 border-b border-slate-200 px-4 py-4">
+            <div className="space-y-2">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Servicios seleccionados
+              </h3>
+              {selectedPlans.length === 0 ? (
+                <p className="text-xs text-slate-500">
+                  Aún no seleccionas servicios para este cliente.
+                </p>
+              ) : (
+                <ul className="flex flex-wrap gap-2">
+                  {selectedPlans.map((plan) => (
+                    <li key={plan.id} className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs">
+                      <span className="font-semibold text-slate-700">{plan.name}</span>
+                      <span className="text-[10px] uppercase tracking-wide text-slate-500">
+                        {plan.category}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleRemovePlan(plan.id)}
+                        className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+                        aria-label={`Quitar ${plan.name}`}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
@@ -157,20 +223,22 @@ export default function AssignExtraServicesModal({
               <ul className="divide-y divide-slate-100">
                 {filteredPlans.map((plan) => {
                   const planId = String(plan.id)
-                  const isChecked = selectedPlanIds.has(planId)
                   const category = resolveCategory(plan)
                   return (
                     <li key={planId} className="py-3">
                       <label className="flex cursor-pointer items-start gap-3">
                         <input
                           type="checkbox"
-                          checked={isChecked}
-                          onChange={() => handleTogglePlan(planId)}
+                          checked={false}
+                          onChange={() => handleAddPlan(planId)}
                           className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                         />
                         <div className="space-y-1">
                           <p className="text-sm font-semibold text-slate-900">{plan.name}</p>
                           <p className="text-xs text-slate-500 capitalize">{category}</p>
+                          {plan.description ? (
+                            <p className="text-xs text-slate-400">{plan.description}</p>
+                          ) : null}
                         </div>
                       </label>
                     </li>
