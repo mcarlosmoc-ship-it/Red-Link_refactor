@@ -62,7 +62,12 @@ def create_client(
     db: Session = Depends(get_db),
 ) -> schemas.ClientRead:
     """Create a new client record."""
-    return ClientService.create_client(db, client_in)
+    try:
+        return ClientService.create_client(db, client_in)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
 
 
 @router.delete("/{client_id}", status_code=status.HTTP_204_NO_CONTENT)

@@ -23,6 +23,7 @@ from .client import (
     ClientListResponse,
     ClientRead,
     ClientUpdate,
+    ZoneSummary,
 )
 from .expense import ExpenseBase, ExpenseCreate, ExpenseListResponse, ExpenseRead
 from .inventory import (
@@ -110,9 +111,11 @@ __all__ = [
     "ClientImportError",
     "ClientImportRequest",
     "ClientImportSummary",
+    "ZoneSummary",
     "ClientServiceBase",
     "ClientServiceBulkCreate",
     "ClientServiceCreate",
+    "ClientServiceInlineCreate",
     "ClientServiceRead",
     "ClientServiceUpdate",
     "ClientServiceListResponse",
@@ -178,6 +181,7 @@ from .service import (
     ClientServiceBase,
     ClientServiceBulkCreate,
     ClientServiceCreate,
+    ClientServiceInlineCreate,
     ClientServiceListResponse,
     ClientServiceRead,
     ClientServiceUpdate,
