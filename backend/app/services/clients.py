@@ -121,7 +121,9 @@ class ClientService:
     @staticmethod
     def create_client(db: Session, data: schemas.ClientCreate) -> models.Client:
         client_payload = data.model_dump(exclude={"services"})
-        services_payload = list(data.services)
+        services_payload = [
+            service_in for service_in in data.services if service_in.service_id is not None
+        ]
 
         client = models.Client(**client_payload)
         db.add(client)
@@ -145,11 +147,15 @@ class ClientService:
                     else client.zone_id
                 )
 
+                billing_day = service_in.billing_day
+                if billing_day is None:
+                    billing_day = 1
+
                 assignment = models.ClientService(
                     client=client,
                     service_plan=plan,
                     status=status,
-                    billing_day=service_in.billing_day,
+                    billing_day=billing_day,
                     next_billing_date=service_in.next_billing_date,
                     zone_id=zone_id,
                     ip_address=service_in.ip_address,
