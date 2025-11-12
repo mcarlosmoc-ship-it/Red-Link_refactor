@@ -117,11 +117,11 @@ class ClientContractService:
         if payload.get("status") is None and existing is None:
             payload["status"] = models.ClientServiceStatus.ACTIVE
 
-        if client and payload.get("base_id") is None and plan.requires_base:
-            payload["base_id"] = client.base_id
+        if client and payload.get("zone_id") is None and plan.requires_base:
+            payload["zone_id"] = client.zone_id
 
-        if plan.requires_base and payload.get("base_id") is None:
-            raise ClientContractError("Este servicio requiere asignar una base.")
+        if plan.requires_base and payload.get("zone_id") is None:
+            raise ClientContractError("Este servicio requiere asignar una zona.")
 
         if plan.requires_ip:
             if not payload.get("ip_address"):

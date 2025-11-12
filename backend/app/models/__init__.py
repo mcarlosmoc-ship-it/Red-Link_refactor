@@ -8,7 +8,7 @@ from .audit import (
     PaymentAuditLog,
 )
 from .base_operating_cost import BaseOperatingCost
-from .base_station import BaseStation
+from .zone import BaseStation, Zone
 from .billing_period import BillingPeriod
 from .client import Client, ClientType, ServiceStatus
 from .client_account import ClientAccount, ClientAccountPayment, PrincipalAccount
@@ -47,6 +47,7 @@ from .voucher import Voucher, VoucherPrice, VoucherStatus, VoucherType
 
 __all__ = [
     "BaseStation",
+    "Zone",
     "BillingPeriod",
     "Client",
     "ClientAccount",

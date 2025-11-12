@@ -19,7 +19,7 @@ from .. import models, schemas
 class ClientService:
     """Encapsulates CRUD operations for clients."""
 
-    IMPORT_REQUIRED_COLUMNS = {"client_type", "full_name", "location", "base_id"}
+    IMPORT_REQUIRED_COLUMNS = {"client_type", "full_name", "location", "zone_id"}
     IMPORT_OPTIONAL_COLUMNS = {
         "external_code",
         "ip_address",
@@ -38,7 +38,7 @@ class ClientService:
             "client_type": "residential",
             "full_name": "Juan Pérez",
             "location": "Centro",
-            "base_id": 1,
+            "zone_id": 1,
             "ip_address": "192.168.10.15",
             "monthly_fee": "350",
             "paid_months_ahead": "0",
@@ -49,7 +49,7 @@ class ClientService:
             "client_type": "token",
             "full_name": "Plaza Principal",
             "location": "Centro",
-            "base_id": 1,
+            "zone_id": 1,
             "antenna_ip": "10.0.0.45",
             "modem_ip": "10.0.0.46",
             "antenna_model": "LiteBeam M5",
@@ -68,7 +68,7 @@ class ClientService:
         skip: int = 0,
         limit: int = 100,
         search: Optional[str] = None,
-        base_id: Optional[int] = None,
+        zone_id: Optional[int] = None,
         status: Optional[models.ServiceStatus] = None,
     ) -> Tuple[Iterable[models.Client], int]:
         query = db.query(models.Client).options(
@@ -81,8 +81,8 @@ class ClientService:
             normalized = f"%{search.lower()}%"
             query = query.filter(func.lower(models.Client.full_name).like(normalized))
 
-        if base_id is not None:
-            query = query.filter(models.Client.base_id == base_id)
+        if zone_id is not None:
+            query = query.filter(models.Client.zone_id == zone_id)
 
         if status is not None:
             query = query.filter(models.Client.service_status == status)
@@ -115,7 +115,7 @@ class ClientService:
 
     @staticmethod
     def create_client(db: Session, data: schemas.ClientCreate) -> models.Client:
-        client = models.Client(**data.dict())
+        client = models.Client(**data.model_dump())
         db.add(client)
         db.commit()
         db.refresh(client)
@@ -181,7 +181,7 @@ class ClientService:
             "client_type",
             "full_name",
             "location",
-            "base_id",
+            "zone_id",
             "external_code",
             "ip_address",
             "antenna_ip",
@@ -211,15 +211,16 @@ class ClientService:
         normalized_headers = {
             (header or "").strip().lower() for header in reader.fieldnames if header
         }
-        missing = ClientService.IMPORT_REQUIRED_COLUMNS - normalized_headers
+        header_aliases = set(normalized_headers)
+        if "base_id" in normalized_headers:
+            header_aliases.add("zone_id")
+        missing = ClientService.IMPORT_REQUIRED_COLUMNS - header_aliases
         if missing:
             raise ValueError(
                 "Faltan columnas obligatorias: " + ", ".join(sorted(missing))
             )
 
-        base_ids = {
-            base_id for (base_id,) in db.query(models.BaseStation.id).all()
-        }
+        zone_ids = {zone_id for (zone_id,) in db.query(models.Zone.id).all()}
 
         summary = _ImportAccumulator()
 
@@ -235,9 +236,9 @@ class ClientService:
 
             try:
                 payload = ClientService._map_import_row(normalized_row)
-                base_id = payload["base_id"]
-                if base_id not in base_ids:
-                    raise _RowProcessingError(f"La base con ID {base_id} no existe.")
+                zone_id = payload["zone_id"]
+                if zone_id not in zone_ids:
+                    raise _RowProcessingError(f"La zona con ID {zone_id} no existe.")
                 client_in = schemas.ClientCreate.model_validate(payload)
                 ClientService.create_client(db, client_in)
                 summary.increment_created()
@@ -263,16 +264,20 @@ class ClientService:
         payload: dict[str, object] = {}
 
         for column in ClientService.IMPORT_REQUIRED_COLUMNS:
-            raw_value = _normalize_string(row.get(column))
+            if column == "zone_id":
+                raw_value = _normalize_string(row.get("zone_id") or row.get("base_id"))
+            else:
+                raw_value = _normalize_string(row.get(column))
+
             if raw_value is None:
                 raise _RowProcessingError(
                     f"La columna '{column}' es obligatoria y no puede quedar vacía."
                 )
-            if column == "base_id":
+            if column == "zone_id":
                 try:
                     payload[column] = int(raw_value)
                 except ValueError as exc:  # pragma: no cover - validated below
-                    raise _RowProcessingError("El ID de la base debe ser un número entero.") from exc
+                    raise _RowProcessingError("El ID de la zona debe ser un número entero.") from exc
             else:
                 payload[column] = raw_value
 

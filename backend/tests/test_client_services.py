@@ -4,17 +4,17 @@ from backend.app import models
 
 
 def _create_base(session, code="BASE-01"):
-    base = models.BaseStation(code=code, name=f"{code} Name", location="Centro")
-    session.add(base)
+    zone = models.Zone(code=code, name=f"{code} Name", location="Centro")
+    session.add(zone)
     session.flush()
-    return base
+    return zone
 
 
-def _create_client(session, base, name):
+def _create_client(session, zone, name):
     client = models.Client(
         full_name=name,
         location="Centro",
-        base=base,
+        zone=zone,
         client_type=models.ClientType.RESIDENTIAL,
         monthly_fee=Decimal("300"),
     )
@@ -41,10 +41,10 @@ def _create_limited_plan(session, *, capacity_limit, name="Plan Limitado"):
 
 
 def test_bulk_assign_services_returns_failed_clients_when_plan_is_full(client, db_session):
-    base = _create_base(db_session, code="BASE-FULL")
+    zone = _create_base(db_session, code="BASE-FULL")
     plan = _create_limited_plan(db_session, capacity_limit=1, name="Plan Saturado")
 
-    existing_client = _create_client(db_session, base, "Cliente Existente")
+    existing_client = _create_client(db_session, zone, "Cliente Existente")
     db_session.add(
         models.ClientService(
             client=existing_client,
@@ -55,8 +55,8 @@ def test_bulk_assign_services_returns_failed_clients_when_plan_is_full(client, d
     db_session.flush()
 
     pending_clients = [
-        _create_client(db_session, base, "Cliente Uno"),
-        _create_client(db_session, base, "Cliente Dos"),
+        _create_client(db_session, zone, "Cliente Uno"),
+        _create_client(db_session, zone, "Cliente Dos"),
     ]
 
     payload = {
@@ -75,10 +75,10 @@ def test_bulk_assign_services_returns_failed_clients_when_plan_is_full(client, d
 
 
 def test_bulk_assign_services_reports_partial_capacity(client, db_session):
-    base = _create_base(db_session, code="BASE-PARTIAL")
+    zone = _create_base(db_session, code="BASE-PARTIAL")
     plan = _create_limited_plan(db_session, capacity_limit=3, name="Plan Parcial")
 
-    existing_client = _create_client(db_session, base, "Cliente Activo")
+    existing_client = _create_client(db_session, zone, "Cliente Activo")
     db_session.add(
         models.ClientService(
             client=existing_client,
@@ -89,7 +89,7 @@ def test_bulk_assign_services_reports_partial_capacity(client, db_session):
     db_session.flush()
 
     pending_clients = [
-        _create_client(db_session, base, f"Cliente Nuevo {index}")
+        _create_client(db_session, zone, f"Cliente Nuevo {index}")
         for index in range(1, 4)
     ]
 

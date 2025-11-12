@@ -249,8 +249,8 @@ def test_payment_creates_missing_period(client, db_session, seed_basic_data):
 def test_payment_reuses_period_with_mismatched_key(client, db_session):
     """Existing periods with non-normalized keys should be reused."""
 
-    base = models.BaseStation(code="B2", name="Base Dos", location="Norte")
-    db_session.add(base)
+    zone = models.Zone(code="Z2", name="Zona Dos", location="Norte")
+    db_session.add(zone)
 
     legacy_period = models.BillingPeriod(
         period_key="2025-1",
@@ -262,7 +262,7 @@ def test_payment_reuses_period_with_mismatched_key(client, db_session):
     client_model = models.Client(
         full_name="Cliente Antiguo",
         location="Norte",
-        base=base,
+        zone=zone,
         client_type=models.ClientType.RESIDENTIAL,
         monthly_fee=Decimal("300"),
         debt_months=Decimal("1"),
@@ -347,8 +347,8 @@ def test_preloaded_sqlite_database_allows_creating_payments(tmp_path, monkeypatc
     TestingSession = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 
     with TestingSession() as session:
-        base_station = models.BaseStation(code="B1", name="Base Uno", location="Centro")
-        session.add(base_station)
+        zone = models.Zone(code="Z1", name="Zona Uno", location="Centro")
+        session.add(zone)
 
         billing_period = models.BillingPeriod(
             period_key="2025-01",
@@ -360,7 +360,7 @@ def test_preloaded_sqlite_database_allows_creating_payments(tmp_path, monkeypatc
         client_model = models.Client(
             full_name="Cliente Demo",
             location="Centro",
-            base=base_station,
+            zone=zone,
             client_type=models.ClientType.RESIDENTIAL,
             monthly_fee=Decimal("300"),
             debt_months=Decimal("1"),

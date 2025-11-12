@@ -20,11 +20,11 @@ class Reseller(Base):
     full_name = Column(String, nullable=False)
     base_id = Column(
         Integer,
-        ForeignKey("base_stations.base_id", onupdate="CASCADE"),
+        ForeignKey("zones.zone_id", onupdate="CASCADE"),
         nullable=False,
     )
     location = Column(String, nullable=False)
-    base = relationship("BaseStation", back_populates="resellers")
+    base = relationship("Zone", back_populates="resellers")
     deliveries = relationship(
         "ResellerDelivery",
         back_populates="reseller",

@@ -21,7 +21,7 @@ from sqlalchemy import (
     JSON,
 )
 from sqlalchemy.dialects.sqlite import JSON as SQLiteJSON
-from sqlalchemy.orm import foreign, relationship
+from sqlalchemy.orm import foreign, relationship, synonym
 
 from ..database import Base
 from ..db_types import GUID, INET
@@ -87,11 +87,12 @@ class ClientService(Base):
     billing_day = Column(Integer, nullable=True)
     next_billing_date = Column(Date, nullable=True)
     custom_price = Column(Numeric(12, 2), nullable=True)
-    base_id = Column(
+    zone_id = Column(
         Integer,
-        ForeignKey("base_stations.base_id", ondelete="SET NULL"),
+        ForeignKey("zones.zone_id", ondelete="SET NULL"),
         nullable=True,
     )
+    base_id = synonym("zone_id")
     ip_address = Column(INET(), nullable=True)
     notes = Column(Text, nullable=True)
     service_metadata = Column(

@@ -52,8 +52,8 @@ class InventoryMovement(Base):
         nullable=False,
     )
     movement_type = Column(MOVEMENT_TYPE_ENUM, nullable=False)
-    from_base_id = Column(Integer, ForeignKey("base_stations.base_id", ondelete="SET NULL"), nullable=True)
-    to_base_id = Column(Integer, ForeignKey("base_stations.base_id", ondelete="SET NULL"), nullable=True)
+    from_base_id = Column(Integer, ForeignKey("zones.zone_id", ondelete="SET NULL"), nullable=True)
+    to_base_id = Column(Integer, ForeignKey("zones.zone_id", ondelete="SET NULL"), nullable=True)
     from_client_id = Column(
         GUID(),
         ForeignKey("clients.client_id", ondelete="SET NULL"),
@@ -70,12 +70,12 @@ class InventoryMovement(Base):
 
     inventory_item = relationship("InventoryItem", back_populates="movements")
     from_base = relationship(
-        "BaseStation",
+        "Zone",
         foreign_keys=[from_base_id],
         back_populates="inventory_movements_from",
     )
     to_base = relationship(
-        "BaseStation",
+        "Zone",
         foreign_keys=[to_base_id],
         back_populates="inventory_movements_to",
     )

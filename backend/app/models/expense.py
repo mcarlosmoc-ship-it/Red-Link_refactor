@@ -46,7 +46,7 @@ class Expense(Base):
     id = Column("expense_id", GUID(), primary_key=True, default=uuid.uuid4)
     base_id = Column(
         Integer,
-        ForeignKey("base_stations.base_id", onupdate="CASCADE"),
+        ForeignKey("zones.zone_id", onupdate="CASCADE"),
         nullable=False,
     )
     expense_date = Column(Date, nullable=False)
@@ -64,7 +64,7 @@ class Expense(Base):
     attachment_url = Column(String, nullable=True)
     created_by = Column(String(100), nullable=True)
 
-    base = relationship("BaseStation", back_populates="expenses")
+    base = relationship("Zone", back_populates="expenses")
     category_ref = relationship("ExpenseCategory", back_populates="expenses")
 
 
