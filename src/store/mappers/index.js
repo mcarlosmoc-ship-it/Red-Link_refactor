@@ -1,4 +1,4 @@
-import { CLIENT_PRICE, DEFAULT_VOUCHER_PRICES } from '../constants.js'
+import { DEFAULT_VOUCHER_PRICES } from '../constants.js'
 import {
   normalizeDecimal,
   normalizeTextOrNull,
@@ -95,7 +95,7 @@ export const mapClient = (client) => {
   )
   const referenceService = paidService ?? courtesyService ?? internetService ?? services[0] ?? null
 
-  const fallbackMonthlyFee = normalizeDecimal(client.monthly_fee, CLIENT_PRICE)
+  const fallbackMonthlyFee = normalizeDecimal(client.monthly_fee, 0)
   const referencePrice = referenceService
     ? normalizeDecimal(referenceService.effectivePrice ?? referenceService.price, 0)
     : fallbackMonthlyFee
@@ -134,6 +134,8 @@ export const mapClient = (client) => {
     ? client.recent_payments.map(mapRecentPayment)
     : []
 
+  const zoneInfo = client.zone ?? null
+
   return {
     id: client.id,
     type: client.client_type,
@@ -141,6 +143,17 @@ export const mapClient = (client) => {
     location: client.location,
     base: client.base_id,
     zoneId: client.zone_id ?? client.base_id ?? null,
+    zoneName: zoneInfo?.name ?? null,
+    zoneCode: zoneInfo?.code ?? null,
+    zoneLocation: zoneInfo?.location ?? null,
+    zone: zoneInfo
+      ? {
+          id: zoneInfo.id ?? client.zone_id ?? null,
+          name: zoneInfo.name ?? null,
+          code: zoneInfo.code ?? null,
+          location: zoneInfo.location ?? null,
+        }
+      : null,
     ip: client.ip_address,
     antennaIp: client.antenna_ip,
     modemIp: client.modem_ip,
@@ -296,23 +309,90 @@ export const mapClientAccount = (account) => ({
   nextPayment: account.fecha_proximo_pago,
 })
 
-export const serializeClientPayload = (payload) => ({
-  client_type: payload.type,
-  full_name: payload.name,
-  location: payload.location,
-  zone_id: payload.zoneId ?? payload.base ?? null,
-  base_id: payload.base ?? payload.zoneId ?? null,
-  ip_address: payload.ip || null,
-  antenna_ip: payload.antennaIp || null,
-  modem_ip: payload.modemIp || null,
-  antenna_model: payload.antennaModel || null,
-  modem_model: payload.modemModel || null,
-  monthly_fee: payload.monthlyFee ?? CLIENT_PRICE,
-  paid_months_ahead: payload.paidMonthsAhead ?? 0,
-  debt_months: payload.debtMonths ?? 0,
-  service_status: payload.service ?? 'Activo',
-  notes: payload.notes ?? null,
-})
+export const serializeClientPayload = (payload) => {
+  const body = {
+    client_type: payload.type,
+    full_name: payload.name,
+    location: payload.location,
+    zone_id: payload.zoneId ?? payload.base ?? null,
+    base_id: payload.base ?? payload.zoneId ?? null,
+    ip_address: payload.ip || null,
+    antenna_ip: payload.antennaIp || null,
+    modem_ip: payload.modemIp || null,
+    antenna_model: payload.antennaModel || null,
+    modem_model: payload.modemModel || null,
+    monthly_fee: payload.monthlyFee ?? null,
+    paid_months_ahead: payload.paidMonthsAhead ?? 0,
+    debt_months: payload.debtMonths ?? 0,
+    service_status: payload.service ?? 'Activo',
+    notes: payload.notes ?? null,
+  }
+
+  const services = Array.isArray(payload.services)
+    ? payload.services
+        .map((service) => {
+          const rawPlanId =
+            service?.servicePlanId ?? service?.service_plan_id ?? service?.service_id
+          const numericPlanId = Number(rawPlanId)
+          if (!Number.isFinite(numericPlanId) || numericPlanId <= 0) {
+            return null
+          }
+
+          const serviceBody = {
+            service_plan_id: numericPlanId,
+          }
+
+          if (service?.status) {
+            serviceBody.status = service.status
+          }
+
+          const rawBillingDay = service?.billingDay ?? service?.billing_day
+          const numericBillingDay = Number(rawBillingDay)
+          if (Number.isInteger(numericBillingDay) && numericBillingDay >= 1 && numericBillingDay <= 31) {
+            serviceBody.billing_day = numericBillingDay
+          }
+
+          if (service?.nextBillingDate || service?.next_billing_date) {
+            serviceBody.next_billing_date = service.nextBillingDate ?? service.next_billing_date
+          }
+
+          const rawBaseId = service?.baseId ?? service?.base_id
+          const numericBaseId = Number(rawBaseId)
+          if (Number.isInteger(numericBaseId) && numericBaseId > 0) {
+            serviceBody.base_id = numericBaseId
+          }
+
+          if (service?.ipAddress || service?.ip_address) {
+            serviceBody.ip_address = service.ipAddress ?? service.ip_address
+          }
+
+          if (service?.customPrice !== undefined && service?.customPrice !== null && service.customPrice !== '') {
+            const numericPrice = Number(service.customPrice)
+            if (Number.isFinite(numericPrice)) {
+              serviceBody.custom_price = numericPrice
+            }
+          }
+
+          if (service?.notes) {
+            serviceBody.notes = service.notes
+          }
+
+          const metadata = service?.metadata ?? service?.serviceMetadata
+          if (metadata && typeof metadata === 'object') {
+            serviceBody.metadata = metadata
+          }
+
+          return serviceBody
+        })
+        .filter(Boolean)
+    : []
+
+  if (services.length > 0) {
+    body.services = services
+  }
+
+  return body
+}
 
 export const serializeClientServicePayload = (payload) => {
   const body = {

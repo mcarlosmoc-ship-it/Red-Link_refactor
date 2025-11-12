@@ -11,7 +11,19 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 from ..models.client import ClientType, ServiceStatus
 from .common import PaginatedResponse
 from .payment import ServicePaymentRead
-from .service import ClientServiceRead
+from .service import ClientServiceInlineCreate, ClientServiceRead
+
+
+class ZoneSummary(BaseModel):
+    """Minimal representation of a coverage zone linked to a client."""
+
+    id: int
+    name: str
+    code: str
+    location: str
+    notes: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ClientBase(BaseModel):
@@ -40,7 +52,7 @@ class ClientBase(BaseModel):
 class ClientCreate(ClientBase):
     """Schema used when creating a client."""
 
-    pass
+    services: list[ClientServiceInlineCreate] = Field(default_factory=list)
 
 
 class ClientUpdate(BaseModel):
@@ -74,6 +86,7 @@ class ClientRead(ClientBase):
     updated_at: datetime
     services: list[ClientServiceRead] = Field(default_factory=list)
     recent_payments: list[ServicePaymentRead] = Field(default_factory=list)
+    zone: Optional[ZoneSummary] = None
 
     model_config = ConfigDict(from_attributes=True)
 
