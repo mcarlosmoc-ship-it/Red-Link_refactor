@@ -17,20 +17,15 @@ from ..services import ClientService
 router = APIRouter(dependencies=[Depends(require_admin)])
 
 
-@router.get("/", response_model=schemas.ClientListResponse)
-def list_clients(
-    skip: int = Query(0, ge=0, description="Number of clients to skip"),
-    limit: int = Query(50, ge=1, le=200, description="Maximum number of clients to return"),
-    search: Optional[str] = Query(None, description="Case-insensitive search by client name"),
-    zone_id: Optional[int] = Query(None, ge=1, description="Filter by coverage zone"),
-    base_id: Optional[int] = Query(
-        None,
-        ge=1,
-        description="Deprecated: use zone_id instead",
-        include_in_schema=False,
-    ),
-    status: Optional[ServiceStatus] = Query(None, description="Filter by service status"),
-    db: Session = Depends(get_db),
+def _list_clients(
+    *,
+    skip: int,
+    limit: int,
+    search: Optional[str],
+    zone_id: Optional[int],
+    base_id: Optional[int],
+    status: Optional[ServiceStatus],
+    db: Session,
 ) -> schemas.ClientListResponse:
     """Return clients with pagination and optional filters."""
     normalized_search = search.strip() if search else None
@@ -47,6 +42,66 @@ def list_clients(
     return schemas.ClientListResponse(items=items, total=total, limit=limit, skip=skip)
 
 
+@router.get("", response_model=schemas.ClientListResponse)
+def list_clients(
+    skip: int = Query(0, ge=0, description="Number of clients to skip"),
+    limit: int = Query(50, ge=1, le=200, description="Maximum number of clients to return"),
+    search: Optional[str] = Query(None, description="Case-insensitive search by client name"),
+    zone_id: Optional[int] = Query(None, ge=1, description="Filter by coverage zone"),
+    base_id: Optional[int] = Query(
+        None,
+        ge=1,
+        description="Deprecated: use zone_id instead",
+        include_in_schema=False,
+    ),
+    status: Optional[ServiceStatus] = Query(None, description="Filter by service status"),
+    db: Session = Depends(get_db),
+) -> schemas.ClientListResponse:
+    """Return clients with pagination and optional filters."""
+
+    return _list_clients(
+        skip=skip,
+        limit=limit,
+        search=search,
+        zone_id=zone_id,
+        base_id=base_id,
+        status=status,
+        db=db,
+    )
+
+
+@router.get(
+    "/",
+    response_model=schemas.ClientListResponse,
+    include_in_schema=False,
+)
+def list_clients_trailing_slash(
+    skip: int = Query(0, ge=0, description="Number of clients to skip"),
+    limit: int = Query(50, ge=1, le=200, description="Maximum number of clients to return"),
+    search: Optional[str] = Query(None, description="Case-insensitive search by client name"),
+    zone_id: Optional[int] = Query(None, ge=1, description="Filter by coverage zone"),
+    base_id: Optional[int] = Query(
+        None,
+        ge=1,
+        description="Deprecated: use zone_id instead",
+        include_in_schema=False,
+    ),
+    status: Optional[ServiceStatus] = Query(None, description="Filter by service status"),
+    db: Session = Depends(get_db),
+) -> schemas.ClientListResponse:
+    """Compatibility wrapper for clients fetched with a trailing slash."""
+
+    return _list_clients(
+        skip=skip,
+        limit=limit,
+        search=search,
+        zone_id=zone_id,
+        base_id=base_id,
+        status=status,
+        db=db,
+    )
+
+
 @router.get("/{client_id}", response_model=schemas.ClientRead)
 def get_client(client_id: str, db: Session = Depends(get_db)) -> schemas.ClientRead:
     """Retrieve a single client by its identifier."""
@@ -56,7 +111,20 @@ def get_client(client_id: str, db: Session = Depends(get_db)) -> schemas.ClientR
     return client
 
 
-@router.post("/", response_model=schemas.ClientRead, status_code=status.HTTP_201_CREATED)
+def _create_client(
+    client_in: schemas.ClientCreate,
+    db: Session = Depends(get_db),
+) -> schemas.ClientRead:
+    """Create a new client record."""
+    try:
+        return ClientService.create_client(db, client_in)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
+
+
+@router.post("", response_model=schemas.ClientRead, status_code=status.HTTP_201_CREATED)
 def create_client(
     client_in: schemas.ClientCreate,
     db: Session = Depends(get_db),
