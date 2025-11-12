@@ -4,22 +4,18 @@ import Button from '../components/ui/Button.jsx'
 import InfoTooltip from '../components/ui/InfoTooltip.jsx'
 import ImportClientsModal from '../components/clients/ImportClientsModal.jsx'
 import BulkAssignServicesModal from '../components/clients/BulkAssignServicesModal.jsx'
+import AssignExtraServicesModal from '../components/clients/AssignExtraServicesModal.jsx'
 import { Card, CardContent } from '../components/ui/Card.jsx'
 import { CLIENT_PRICE, useBackofficeStore } from '../store/useBackofficeStore.js'
 import { useClients } from '../hooks/useClients.js'
 import { useServicePlans } from '../hooks/useServicePlans.js'
+import { useClientServices } from '../hooks/useClientServices.js'
 import { useToast } from '../hooks/useToast.js'
 import { peso, formatDate, formatPeriodLabel, addMonthsToPeriod } from '../utils/formatters.js'
 import { SERVICE_STATUS_OPTIONS, getServiceTypeLabel, getServiceStatusLabel } from '../constants/serviceTypes.js'
 import { computeServiceFormErrors } from '../utils/serviceFormValidation.js'
 import { isCourtesyPrice, resolveEffectivePriceForFormState } from '../utils/effectivePrice.js'
-import {
-  CLIENT_ANTENNA_MODELS,
-  CLIENT_IP_FIELDS_BY_TYPE,
-  CLIENT_IP_RANGES,
-  createAssignedIpIndex,
-  getAvailableIpsByRange,
-} from '../utils/clientIpConfig.js'
+import { CLIENT_ANTENNA_MODELS } from '../utils/clientIpConfig.js'
 import { useBackofficeRefresh } from '../contexts/BackofficeRefreshContext.jsx'
 import ClientsSkeleton from './ClientsSkeleton.jsx'
 import MonthlyServicesPage from './MonthlyServices.jsx'
@@ -73,8 +69,10 @@ const formatServicePlanOptionLabel = (plan) => {
   return `${plan.name} · Monto variable`
 }
 
-const isInternetLikeService = (serviceType) =>
-  serviceType === 'internet' || serviceType === 'hotspot'
+const isInternetLikeService = (serviceType) => {
+  const normalized = String(serviceType ?? '').toLowerCase()
+  return normalized === 'internet' || normalized === 'hotspot'
+}
 
 const getPrimaryService = (client) => {
   const services = Array.isArray(client?.services) ? client.services : []
@@ -143,13 +141,13 @@ const resolveApiErrorMessage = (error, fallback = 'Intenta nuevamente.') => {
   return fallbackMessage || fallback
 }
 
-const createInitialServiceState = (baseId) => ({
+const createInitialServiceState = (zoneId) => ({
   servicePlanId: '',
   displayName: '',
   serviceType: 'internet',
   price: '',
   billingDay: '',
-  baseId: baseId ? String(baseId) : '',
+  baseId: zoneId ? String(zoneId) : '',
   status: 'active',
   notes: '',
   isCustomPriceEnabled: false,
@@ -159,7 +157,8 @@ const defaultForm = {
   type: 'residential',
   name: '',
   location: '',
-  base: 1,
+  zoneId: '',
+  notes: '',
   ip: '',
   antennaIp: '',
   modemIp: '',
@@ -186,11 +185,15 @@ export default function ClientsPage() {
     reload: reloadClients,
     createClient,
     createClientService,
-    bulkAssignClientServices,
+    bulkAssignClientServices: bulkAssignClientServicesToMultiple,
     updateClientServiceStatus,
     deleteClient,
     importClients,
   } = useClients()
+  const {
+    bulkAssignClientServices: bulkAssignServicesForClient,
+    deleteClientService,
+  } = useClientServices({ autoLoad: false })
   const {
     servicePlans,
     status: servicePlansStatus,
@@ -217,7 +220,7 @@ export default function ClientsPage() {
   const [activeClientDetailTab, setActiveClientDetailTab] = useState('summary')
   const [isAddingService, setIsAddingService] = useState(false)
   const [initialServiceState, setInitialServiceState] = useState(() =>
-    createInitialServiceState(defaultForm.base),
+    createInitialServiceState(defaultForm.zoneId),
   )
   const [initialServiceErrors, setInitialServiceErrors] = useState({})
   const [serviceFormState, setServiceFormState] = useState({
@@ -233,13 +236,28 @@ export default function ClientsPage() {
   const [selectedClientIds, setSelectedClientIds] = useState(() => new Set())
   const [isBulkAssignModalOpen, setIsBulkAssignModalOpen] = useState(false)
   const [isProcessingBulkAssign, setIsProcessingBulkAssign] = useState(false)
+  const [pendingExtraServicePlans, setPendingExtraServicePlans] = useState([])
+  const [extraServicesModalState, setExtraServicesModalState] = useState({
+    isOpen: false,
+    mode: 'create',
+    client: null,
+    selectedPlanIds: [],
+    clientName: '',
+  })
+  const [isProcessingExtraServices, setIsProcessingExtraServices] = useState(false)
   const activeServicePlans = useMemo(
-    () => servicePlans.filter((plan) => plan.isActive),
+    () =>
+      servicePlans.filter(
+        (plan) => plan && plan.isActive !== false && plan.is_active !== false,
+      ),
     [servicePlans],
   )
   const servicePlanOptions = useMemo(
     () =>
       activeServicePlans
+        .filter((plan) =>
+          isInternetLikeService(plan?.serviceType ?? plan?.service_type),
+        )
         .map((plan) => ({
           value: String(plan.id),
           label: formatServicePlanOptionLabel(plan),
@@ -268,6 +286,15 @@ export default function ClientsPage() {
       ) ?? null
     )
   }, [serviceFormState.servicePlanId, servicePlans])
+  const extraServicesSelected = useMemo(
+    () =>
+      pendingExtraServicePlans
+        .map((planId) =>
+          servicePlans.find((plan) => String(plan.id) === String(planId)),
+        )
+        .filter(Boolean),
+    [pendingExtraServicePlans, servicePlans],
+  )
   const initialServiceEffectivePrice = useMemo(
     () => resolveEffectivePriceForFormState(initialServiceState, selectedInitialPlan),
     [initialServiceState, selectedInitialPlan],
@@ -284,19 +311,33 @@ export default function ClientsPage() {
     () => isCourtesyPrice(serviceFormEffectivePrice),
     [serviceFormEffectivePrice],
   )
-  const planRequiresIp = Boolean(selectedInitialPlan?.requiresIp)
-  const planRequiresBase = Boolean(selectedInitialPlan?.requiresBase)
+  const planRequiresIp = Boolean(
+    selectedInitialPlan?.requiresIp ?? selectedInitialPlan?.requires_ip,
+  )
+  const planRequiresBase = Boolean(
+    selectedInitialPlan?.requiresBase ?? selectedInitialPlan?.requires_base,
+  )
   const planRequiresBillingDay = Boolean(
     planRequiresIp ||
       planRequiresBase ||
-      (selectedInitialPlan && isInternetLikeService(selectedInitialPlan.serviceType)),
+      (selectedInitialPlan &&
+        isInternetLikeService(
+          selectedInitialPlan.serviceType ?? selectedInitialPlan.service_type,
+        )),
   )
-  const servicePlanRequiresIp = Boolean(selectedServicePlan?.requiresIp)
-  const servicePlanRequiresBase = Boolean(selectedServicePlan?.requiresBase)
+  const servicePlanRequiresIp = Boolean(
+    selectedServicePlan?.requiresIp ?? selectedServicePlan?.requires_ip,
+  )
+  const servicePlanRequiresBase = Boolean(
+    selectedServicePlan?.requiresBase ?? selectedServicePlan?.requires_base,
+  )
   const servicePlanRequiresBillingDay = Boolean(
     servicePlanRequiresIp ||
       servicePlanRequiresBase ||
-      (selectedServicePlan && isInternetLikeService(selectedServicePlan.serviceType)),
+      (selectedServicePlan &&
+        isInternetLikeService(
+          selectedServicePlan.serviceType ?? selectedServicePlan.service_type,
+        )),
   )
   const shouldRequireInitialBillingDay = planRequiresBillingDay && !isInitialCourtesy
   const shouldRequireServiceBillingDay =
@@ -564,18 +605,6 @@ export default function ClientsPage() {
     [clients],
   )
 
-  const assignedIpsByRange = useMemo(() => createAssignedIpIndex(clients), [clients])
-
-  const availableIpsByRange = useMemo(
-    () => getAvailableIpsByRange(assignedIpsByRange),
-    [assignedIpsByRange],
-  )
-
-  const currentIpFields = CLIENT_IP_FIELDS_BY_TYPE[formState.type] ?? []
-
-  const getAvailableIps = (rangeKey, base) =>
-    availableIpsByRange[rangeKey]?.[String(base)] ?? []
-
   const normalizedSearchTerm = searchTerm.trim().toLowerCase()
   const matchesTerm = useCallback(
     (values) =>
@@ -593,11 +622,10 @@ export default function ClientsPage() {
   )
   const filteredResidentialClients = useMemo(() => {
     return residentialClients.filter((client) => {
-      const searchValues = [
-        client.name,
-        client.location,
-        ...(CLIENT_IP_FIELDS_BY_TYPE.residential ?? []).map(({ name }) => client[name]),
-      ]
+      const serviceNames = Array.isArray(client.services)
+        ? client.services.map((service) => service?.name ?? service?.plan?.name ?? '')
+        : []
+      const searchValues = [client.name, client.location, client.zoneId, ...serviceNames]
       if (!matchesTerm(searchValues)) return false
 
       if (locationFilter === LOCATION_FILTER_NONE) {
@@ -752,7 +780,7 @@ export default function ClientsPage() {
 
       try {
         setIsProcessingBulkAssign(true)
-        await bulkAssignClientServices({
+        await bulkAssignClientServicesToMultiple({
           ...values,
           clientIds: selectedClientsForBulk
             .map((client) => normalizeId(client.id))
@@ -823,7 +851,180 @@ export default function ClientsPage() {
         setIsProcessingBulkAssign(false)
       }
     },
-    [bulkAssignClientServices, selectedClientsForBulk, showToast],
+    [bulkAssignClientServicesToMultiple, selectedClientsForBulk, showToast],
+  )
+
+  const handleOpenExtraServicesForCreate = useCallback(() => {
+    setExtraServicesModalState({
+      isOpen: true,
+      mode: 'create',
+      client: null,
+      selectedPlanIds: pendingExtraServicePlans.map((value) => String(value)),
+      clientName: formState.name?.trim() ? formState.name.trim() : 'Nuevo cliente',
+    })
+  }, [formState.name, pendingExtraServicePlans])
+
+  const handleOpenExtraServicesForClient = useCallback((client) => {
+    if (!client || !client.id) {
+      return
+    }
+
+    const services = Array.isArray(client.services) ? client.services : []
+    const selectedPlanIds = services
+      .map((service) => {
+        const planId =
+          service?.servicePlanId ?? service?.plan?.id ?? service?.service_plan_id ?? null
+        return planId ? String(planId) : null
+      })
+      .filter(Boolean)
+
+    setExtraServicesModalState({
+      isOpen: true,
+      mode: 'edit',
+      client,
+      selectedPlanIds,
+      clientName: client.name ?? 'Cliente',
+    })
+  }, [])
+
+  const handleCloseExtraServicesModal = useCallback(() => {
+    if (isProcessingExtraServices) {
+      return
+    }
+    setExtraServicesModalState((prev) => ({ ...prev, isOpen: false }))
+  }, [isProcessingExtraServices])
+
+  const handleApplyExtraServices = useCallback(
+    async (selectedPlanIds = []) => {
+      if (extraServicesModalState.mode === 'create') {
+        const normalizedSelection = Array.from(
+          new Set((selectedPlanIds ?? []).map((value) => String(value)).filter(Boolean)),
+        )
+        setPendingExtraServicePlans(normalizedSelection)
+        setExtraServicesModalState((prev) => ({
+          ...prev,
+          isOpen: false,
+          selectedPlanIds: normalizedSelection,
+        }))
+
+        if (normalizedSelection.length > 0) {
+          const labels = normalizedSelection
+            .map((planId) =>
+              servicePlans.find((plan) => String(plan.id) === planId)?.name ?? null,
+            )
+            .filter(Boolean)
+          showToast({
+            type: 'success',
+            title: 'Servicios preparados',
+            description:
+              labels.length > 0
+                ? `Se agregarán ${labels.join(', ')} al guardar el cliente.`
+                : 'Se agregarán servicios adicionales al guardar el cliente.',
+          })
+        } else {
+          showToast({
+            type: 'info',
+            title: 'Sin servicios adicionales',
+            description: 'Puedes agregar servicios extra en cualquier momento.',
+          })
+        }
+        return
+      }
+
+      const targetClient = extraServicesModalState.client
+      const normalizedClientId = normalizeId(targetClient?.id)
+      if (!normalizedClientId) {
+        setExtraServicesModalState({
+          isOpen: false,
+          mode: 'create',
+          client: null,
+          selectedPlanIds: [],
+          clientName: '',
+        })
+        return
+      }
+
+      const normalizedSelection = Array.from(
+        new Set((selectedPlanIds ?? []).map((value) => String(value)).filter(Boolean)),
+      )
+
+      const existingServices = Array.isArray(targetClient?.services)
+        ? targetClient.services
+        : []
+
+      const existingByPlan = new Map()
+      existingServices.forEach((service) => {
+        const planId = String(service?.servicePlanId ?? service?.plan?.id ?? '')
+        if (!planId) {
+          return
+        }
+        if (!existingByPlan.has(planId)) {
+          existingByPlan.set(planId, [])
+        }
+        existingByPlan.get(planId).push(service)
+      })
+
+      const existingSet = new Set(existingByPlan.keys())
+      const selectedSet = new Set(normalizedSelection)
+
+      const toAssign = [...selectedSet].filter((planId) => !existingSet.has(planId))
+      const toRemove = [...existingSet].filter((planId) => !selectedSet.has(planId))
+
+      setIsProcessingExtraServices(true)
+      try {
+        for (const planId of toAssign) {
+          const numericPlanId = Number(planId)
+          if (!Number.isFinite(numericPlanId) || numericPlanId <= 0) {
+            continue
+          }
+          await bulkAssignServicesForClient({
+            serviceId: numericPlanId,
+            clientIds: [normalizedClientId],
+            initialState: 'active',
+            useClientZone: true,
+          })
+        }
+
+        for (const planId of toRemove) {
+          const servicesForPlan = existingByPlan.get(planId) ?? []
+          for (const service of servicesForPlan) {
+            if (service?.id) {
+              await deleteClientService(service.id)
+            }
+          }
+        }
+
+        showToast({
+          type: 'success',
+          title: 'Servicios actualizados',
+          description: 'Se aplicaron los cambios a los servicios del cliente.',
+        })
+        await reloadClients()
+      } catch (error) {
+        showToast({
+          type: 'error',
+          title: 'No se pudieron actualizar los servicios',
+          description: resolveApiErrorMessage(error, 'Intenta nuevamente.'),
+        })
+      } finally {
+        setIsProcessingExtraServices(false)
+        setExtraServicesModalState({
+          isOpen: false,
+          mode: 'create',
+          client: null,
+          selectedPlanIds: [],
+          clientName: '',
+        })
+      }
+    },
+    [
+      bulkAssignServicesForClient,
+      deleteClientService,
+      extraServicesModalState,
+      reloadClients,
+      servicePlans,
+      showToast,
+    ],
   )
 
   const allFilteredSelected = useMemo(() => {
@@ -928,15 +1129,15 @@ export default function ClientsPage() {
       return
     }
 
-    const baseValue = Number(formState.base)
-    const nextBaseId = Number.isFinite(baseValue) ? String(baseValue) : ''
+    const zoneValue = Number(formState.zoneId)
+    const nextZoneId = Number.isFinite(zoneValue) ? String(zoneValue) : ''
     setInitialServiceState((prev) => {
-      if (prev.baseId === nextBaseId) {
+      if (prev.baseId === nextZoneId) {
         return prev
       }
-      return { ...prev, baseId: nextBaseId }
+      return { ...prev, baseId: nextZoneId }
     })
-  }, [formState.base, planRequiresBase])
+  }, [formState.zoneId, planRequiresBase])
 
   useEffect(() => {
     if (!isInitialCourtesy) {
@@ -1005,40 +1206,25 @@ export default function ClientsPage() {
     }
 
     setInitialServiceState((prev) => {
-      if (prev.servicePlanId) {
+      if (!prev.servicePlanId) {
         return prev
       }
 
-      const firstActivePlan = servicePlans.find((plan) => plan.isActive)
-      if (!firstActivePlan) {
+      const activeMatch = servicePlans.find(
+        (plan) => String(plan.id) === String(prev.servicePlanId),
+      )
+      if (activeMatch) {
         return prev
       }
 
-      const defaultName = getServiceTypeLabel(prev.serviceType)
-      const trimmedName = prev.displayName?.trim() ?? ''
-      const hasCustomName = trimmedName && trimmedName !== defaultName
-      const hasCustomPrice = Boolean(prev.isCustomPriceEnabled)
-
-      const nextState = {
+      return {
         ...prev,
-        servicePlanId: String(firstActivePlan.id),
-        serviceType: firstActivePlan.serviceType ?? prev.serviceType,
-        isCustomPriceEnabled: hasCustomPrice,
+        servicePlanId: '',
+        serviceType: 'internet',
+        displayName: '',
+        price: '',
+        isCustomPriceEnabled: false,
       }
-
-      if (!hasCustomName) {
-        nextState.displayName = firstActivePlan.name ?? defaultName
-      }
-
-      if (!hasCustomPrice) {
-        nextState.price =
-          firstActivePlan.defaultMonthlyFee === null || firstActivePlan.defaultMonthlyFee === undefined
-            ? ''
-            : String(firstActivePlan.defaultMonthlyFee)
-        setFormState((current) => ({ ...current, monthlyFee: nextState.price }))
-      }
-
-      return nextState
     })
   }, [servicePlans])
 
@@ -1153,77 +1339,26 @@ export default function ClientsPage() {
 
   const validateForm = () => {
     const errors = {}
-    if (!formState.name.trim()) errors.name = 'El nombre es obligatorio.'
-    const requiresLocation = Boolean(
-      planRequiresBase ||
-        planRequiresIp ||
-        (selectedInitialPlan && isInternetLikeService(selectedInitialPlan.serviceType)),
-    )
-    if (requiresLocation) {
-      const locationValue =
-        typeof formState.location === 'string' ? formState.location.trim() : ''
-      if (!locationValue) {
-        errors.location = 'Selecciona la localidad del cliente.'
+
+    if (!formState.name.trim()) {
+      errors.name = 'El nombre es obligatorio.'
+    }
+
+    const locationValue =
+      typeof formState.location === 'string' ? formState.location.trim() : ''
+    if (!locationValue) {
+      errors.location = 'Selecciona la comunidad del cliente.'
+    }
+
+    const zoneValue =
+      typeof formState.zoneId === 'string' ? formState.zoneId.trim() : ''
+    if (zoneValue) {
+      const parsedZone = Number(zoneValue)
+      if (!Number.isInteger(parsedZone) || parsedZone <= 0) {
+        errors.zoneId = 'Ingresa una zona válida.'
       }
     }
-    const ipFields = planRequiresIp ? CLIENT_IP_FIELDS_BY_TYPE[formState.type] ?? [] : []
-    ipFields.forEach(({ name, rangeKey, label }) => {
-      const rawValue = formState[name]
-      const value = typeof rawValue === 'string' ? rawValue.trim() : ''
-      if (!value) {
-        errors[name] = `Ingresa ${label.toLowerCase()}.`
-        return
-      }
 
-      const baseRange = CLIENT_IP_RANGES[rangeKey]?.[formState.base]
-      if (!baseRange) return
-
-      if (!value.startsWith(baseRange.prefix)) {
-        errors[name] = `La IP debe iniciar con ${baseRange.prefix}`
-        return
-      }
-
-      const suffix = Number(value.split('.').pop())
-      const isValidSuffix =
-        Number.isInteger(suffix) && suffix >= baseRange.start && suffix <= baseRange.end
-      if (!isValidSuffix) {
-        errors[name] = `La IP debe estar entre ${baseRange.prefix}${baseRange.start} y ${baseRange.prefix}${baseRange.end}.`
-        return
-      }
-
-      const used = assignedIpsByRange[rangeKey]?.[String(formState.base)] ?? new Set()
-      if (used.has(value)) {
-        errors[name] = 'La IP seleccionada ya está en uso.'
-      }
-    })
-
-    if (formState.type === 'residential') {
-      if (!isInitialCourtesy) {
-        if (!Number.isInteger(Number(formState.debtMonths)) || Number(formState.debtMonths) < 0) {
-          errors.debtMonths = 'Los periodos pendientes no pueden ser negativos.'
-        }
-        if (
-          !Number.isInteger(Number(formState.paidMonthsAhead)) ||
-          Number(formState.paidMonthsAhead) < 0
-        ) {
-          errors.paidMonthsAhead = 'Los periodos adelantados no pueden ser negativos.'
-        }
-      }
-    } else {
-      if (!formState.modemModel.trim()) {
-        errors.modemModel = 'Describe el módem instalado en el cliente.'
-      }
-    }
-    if (!isInitialCourtesy) {
-      const debtValue = Number(formState.debtMonths)
-      if (!Number.isFinite(debtValue) || debtValue < 0) {
-        errors.debtMonths = 'Los periodos pendientes no pueden ser negativos.'
-      }
-      const aheadValue = Number(formState.paidMonthsAhead)
-      if (!Number.isFinite(aheadValue) || aheadValue < 0) {
-        errors.paidMonthsAhead = 'Los periodos adelantados no pueden ser negativos.'
-      }
-    }
     setFormErrors(errors)
     return Object.keys(errors).length === 0
   }
@@ -1242,6 +1377,11 @@ export default function ClientsPage() {
   }, [serviceFormState, selectedServicePlan, serviceFormEffectivePrice])
 
   const validateInitialService = useCallback(() => {
+    if (!initialServiceState.servicePlanId) {
+      setInitialServiceErrors({})
+      return true
+    }
+
     const computedErrors = computeServiceFormErrors(
       {
         ...initialServiceState,
@@ -1264,9 +1404,25 @@ export default function ClientsPage() {
         setInitialServiceState((prev) => ({
           ...prev,
           servicePlanId: '',
+          serviceType: 'internet',
+          displayName: '',
+          price: '',
           isCustomPriceEnabled: false,
+          billingDay: '',
+          notes: '',
         }))
-        setInitialServiceErrors((prev) => ({ ...prev, servicePlanId: 'Selecciona un servicio mensual.' }))
+        setInitialServiceErrors((prev) => {
+          if (!prev || typeof prev !== 'object') {
+            return {}
+          }
+          const next = { ...prev }
+          delete next.servicePlanId
+          delete next.price
+          delete next.baseId
+          delete next.billingDay
+          delete next.status
+          return next
+        })
         return
       }
 
@@ -1281,60 +1437,22 @@ export default function ClientsPage() {
         return
       }
 
+      const resolvedServiceType = foundPlan.serviceType ?? foundPlan.service_type
+
       const defaultPrice =
         foundPlan.defaultMonthlyFee === null || foundPlan.defaultMonthlyFee === undefined
           ? ''
           : String(foundPlan.defaultMonthlyFee)
 
-      const clearedIpFields = new Set()
-      const planRequiresLocation = Boolean(
-        foundPlan.requiresIp ||
-          foundPlan.requiresBase ||
-          isInternetLikeService(foundPlan.serviceType),
-      )
-
       setInitialServiceState((prev) => ({
         ...prev,
         servicePlanId: String(foundPlan.id),
-        serviceType: foundPlan.serviceType ?? prev.serviceType,
-        displayName: foundPlan.name ?? getServiceTypeLabel(foundPlan.serviceType ?? prev.serviceType),
+        serviceType: resolvedServiceType ?? prev.serviceType,
+        displayName:
+          foundPlan.name ?? getServiceTypeLabel(resolvedServiceType ?? prev.serviceType),
         price: defaultPrice,
         isCustomPriceEnabled: false,
       }))
-
-      setFormState((prev) => ({
-        ...prev,
-        monthlyFee: defaultPrice,
-        ...(foundPlan.requiresIp
-          ? {}
-          : (() => {
-              const clientIpFields = CLIENT_IP_FIELDS_BY_TYPE[prev.type] ?? []
-              const cleared = {}
-              clientIpFields.forEach(({ name }) => {
-                cleared[name] = ''
-                clearedIpFields.add(name)
-              })
-              return cleared
-            })()),
-      }))
-
-      const fieldsToClear = new Set(clearedIpFields)
-      if (!planRequiresLocation) {
-        fieldsToClear.add('location')
-      }
-
-      if (fieldsToClear.size > 0) {
-        setFormErrors((prev) => {
-          if (!prev || typeof prev !== 'object') {
-            return prev
-          }
-          const next = { ...prev }
-          fieldsToClear.forEach((field) => {
-            delete next[field]
-          })
-          return next
-        })
-      }
 
       setInitialServiceErrors({})
     },
@@ -1526,32 +1644,23 @@ export default function ClientsPage() {
       return Number.isFinite(numericPlanFee) ? numericPlanFee : null
     })()
 
+    const zoneValue = Number(formState.zoneId)
+    const normalizedZoneId =
+      Number.isInteger(zoneValue) && zoneValue > 0 ? zoneValue : null
+
     const payload = {
       type: formState.type,
       name: formState.name.trim(),
       location: formState.location,
-      base: Number(formState.base) || 1,
-      debtMonths:
-        formState.type === 'residential' && !isInitialCourtesy
-          ? Number(formState.debtMonths) || 0
-          : 0,
-      paidMonthsAhead:
-        formState.type === 'residential' && !isInitialCourtesy
-          ? Number(formState.paidMonthsAhead) || 0
-          : 0,
+      zoneId: normalizedZoneId,
+      base: normalizedZoneId,
+      notes: formState.notes?.trim() ? formState.notes.trim() : null,
+      debtMonths: 0,
+      paidMonthsAhead: 0,
       monthlyFee:
-        formState.type === 'residential'
-          ? normalizedPlanPrice ?? 0
-          : 0,
-    }
-
-    if (formState.type === 'residential') {
-      payload.ip = formState.ip.trim()
-    } else {
-      payload.antennaIp = formState.antennaIp.trim()
-      payload.modemIp = formState.modemIp.trim()
-      payload.antennaModel = formState.antennaModel
-      payload.modemModel = formState.modemModel.trim()
+        formState.type === 'residential' && normalizedPlanPrice !== null
+          ? normalizedPlanPrice
+          : null,
     }
 
     const clientName = formState.name.trim()
@@ -1566,6 +1675,9 @@ export default function ClientsPage() {
       })
       setFormState({ ...defaultForm })
       setFormErrors({})
+      setInitialServiceState(createInitialServiceState(defaultForm.zoneId))
+      setInitialServiceErrors({})
+      setPendingExtraServicePlans([])
 
       const normalizedNewClientId = normalizeId(newClient?.id)
       if (normalizedNewClientId) {
@@ -1634,6 +1746,61 @@ export default function ClientsPage() {
                 error,
                 'Agrega el servicio manualmente desde la ficha del cliente.',
               ),
+            })
+          }
+        }
+
+        const extraPlanIds = Array.from(
+          new Set(
+            pendingExtraServicePlans
+              .map((planId) => String(planId))
+              .filter(
+                (planId) =>
+                  planId &&
+                  planId !== String(initialServiceSnapshot.servicePlanId ?? ''),
+              ),
+          ),
+        )
+
+        if (extraPlanIds.length > 0) {
+          const assignedNames = []
+          for (const planId of extraPlanIds) {
+            const numericPlanId = Number(planId)
+            if (!Number.isFinite(numericPlanId) || numericPlanId <= 0) {
+              continue
+            }
+
+            try {
+              await bulkAssignServicesForClient({
+                serviceId: numericPlanId,
+                clientIds: [normalizedNewClientId],
+                initialState: 'active',
+                useClientZone: true,
+              })
+
+              const matchedPlan = servicePlans.find(
+                (plan) => String(plan.id) === String(planId),
+              )
+              if (matchedPlan?.name) {
+                assignedNames.push(matchedPlan.name)
+              }
+            } catch (error) {
+              showToast({
+                type: 'warning',
+                title: 'Servicio adicional no asignado',
+                description: resolveApiErrorMessage(
+                  error,
+                  'Asigna los servicios adicionales desde la ficha del cliente.',
+                ),
+              })
+            }
+          }
+
+          if (assignedNames.length > 0) {
+            showToast({
+              type: 'success',
+              title: 'Servicios adicionales asignados',
+              description: `${assignedNames.join(', ')} se agregaron a ${clientName}.`,
             })
           }
         }
@@ -1936,541 +2103,382 @@ export default function ClientsPage() {
 
         {activeClientsSubTab === 'create' ? (
           <form className="grid gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm" onSubmit={handleSubmit}>
-          <div className="grid gap-4 md:grid-cols-2">
-            <label className="grid gap-1 text-xs font-semibold text-slate-700">
-              <span className="flex items-center gap-1">
-                Tipo de cliente
-                <InfoTooltip text="Elige si es un cliente residencial o un punto con antena pública para mostrar los campos correspondientes." />
-              </span>
-              <select
-                value={formState.type}
-                onChange={(event) => {
-                  const newType = event.target.value
-                  setFormState((prev) => {
-                    const updated = {
-                      ...prev,
-                      type: newType,
-                    }
-
-                    const previousFields = CLIENT_IP_FIELDS_BY_TYPE[prev.type] ?? []
-                    const nextFields = CLIENT_IP_FIELDS_BY_TYPE[newType] ?? []
-
-                    previousFields.forEach(({ name }) => {
-                      if (!nextFields.some((field) => field.name === name)) {
-                        updated[name] = ''
-                      }
-                    })
-
-                    nextFields.forEach(({ name }) => {
-                      if (typeof updated[name] === 'undefined') {
-                        updated[name] = ''
-                      }
-                    })
-
-                    if (newType === 'token') {
-                      updated.monthlyFee = 0
-                      updated.debtMonths = 0
-                      updated.paidMonthsAhead = 0
-                      updated.modemModel = ''
-                      updated.antennaModel = CLIENT_ANTENNA_MODELS[0]
-                    } else if (prev.type === 'token') {
-                      updated.monthlyFee = CLIENT_PRICE
-                    }
-
-                    return updated
-                  })
-                  setFormErrors({})
-                }}
-                className="rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200"
-              >
-                {Object.entries(CLIENT_TYPE_LABELS).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="grid gap-1 text-xs font-semibold text-slate-700">
-              <span className="flex items-center gap-1">
-                Nombre completo
-                <InfoTooltip text="Utiliza el nombre con el que aparece en los contratos o facturación para evitar confusiones." />
-              </span>
-              <input
-                value={formState.name}
-                onChange={(event) => setFormState((prev) => ({ ...prev, name: event.target.value }))}
-                className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
-                  formErrors.name
-                    ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
-                    : 'border-slate-300'
-                }`}
-                placeholder="Juan Pérez"
-                autoComplete="off"
-              />
-              {formErrors.name && (
-                <span className="text-xs font-medium text-red-600">{formErrors.name}</span>
-              )}
-            </label>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <label className="grid gap-1 text-xs font-semibold text-slate-700">
-              <span className="flex items-center gap-1">
-                Localidad
-                <InfoTooltip text="Selecciona la localidad para segmentar reportes y facilitar visitas técnicas." />
-              </span>
-              <select
-                value={formState.location}
-                onChange={(event) => setFormState((prev) => ({ ...prev, location: event.target.value }))}
-                className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
-                  formErrors.location
-                    ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
-                    : 'border-slate-300'
-                }`}
-              >
-                <option value="">Selecciona una localidad</option>
-                {availableLocations
-                  .filter((location) => Boolean(location))
-                  .map((location) => (
-                    <option key={location} value={location}>
-                      {location}
-                    </option>
-                  ))}
-              </select>
-              {formErrors.location && (
-                <span className="text-xs font-medium text-red-600">{formErrors.location}</span>
-              )}
-            </label>
-          </div>
-
-          {formState.type === 'residential' ? (
             <div className="grid gap-4 md:grid-cols-2">
               <label className="grid gap-1 text-xs font-semibold text-slate-700">
                 <span className="flex items-center gap-1">
-                  Periodos pendientes
-                  <InfoTooltip text="Introduce los periodos adeudados para llevar un control preciso del saldo." />
-                </span>
-                <input
-                  value={formState.debtMonths}
-                  onChange={(event) => setFormState((prev) => ({ ...prev, debtMonths: event.target.value }))}
-                  type="number"
-                  inputMode="numeric"
-                  min="0"
-                  className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
-                    formErrors.debtMonths
-                      ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
-                      : 'border-slate-300'
-                  } ${isInitialCourtesy ? 'bg-slate-100 text-slate-500' : ''}`}
-                  disabled={isInitialCourtesy}
-                />
-                {formErrors.debtMonths && (
-                  <span className="text-xs font-medium text-red-600">{formErrors.debtMonths}</span>
-                )}
-              </label>
-              <label className="grid gap-1 text-xs font-semibold text-slate-700">
-                <span className="flex items-center gap-1">
-                  Periodos adelantados
-                  <InfoTooltip text="Registra periodos pagados por adelantado para evitar duplicar cargos posteriores." />
-                </span>
-                <input
-                  value={formState.paidMonthsAhead}
-                  onChange={(event) =>
-                    setFormState((prev) => ({ ...prev, paidMonthsAhead: event.target.value }))
-                  }
-                  type="number"
-                  inputMode="numeric"
-                  min="0"
-                  className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
-                    formErrors.paidMonthsAhead
-                      ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
-                      : 'border-slate-300'
-                  } ${isInitialCourtesy ? 'bg-slate-100 text-slate-500' : ''}`}
-                  disabled={isInitialCourtesy}
-                />
-                {formErrors.paidMonthsAhead && (
-                  <span className="text-xs font-medium text-red-600">{formErrors.paidMonthsAhead}</span>
-                )}
-              </label>
-            </div>
-          ) : (
-            <div className="grid gap-4 md:grid-cols-3">
-              <label className="grid gap-1 text-xs font-semibold text-slate-700">
-                <span className="flex items-center gap-1">
-                  Modelo de antena
-                  <InfoTooltip text="Selecciona el equipo instalado para facilitar mantenimientos y reposiciones." />
+                  Tipo de cliente
+                  <InfoTooltip text="Elige si es un cliente residencial o un punto con antena pública." />
                 </span>
                 <select
-                  value={formState.antennaModel}
-                  onChange={(event) =>
-                    setFormState((prev) => ({ ...prev, antennaModel: event.target.value }))
-                  }
+                  value={formState.type}
+                  onChange={(event) => {
+                    const newType = event.target.value
+                    setFormState((prev) => ({ ...prev, type: newType }))
+                    setFormErrors((prev) => ({ ...prev, type: undefined }))
+                  }}
                   className="rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200"
                 >
-                  {CLIENT_ANTENNA_MODELS.map((model) => (
-                    <option key={model} value={model}>
-                      {model}
+                  {Object.entries(CLIENT_TYPE_LABELS).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
                     </option>
                   ))}
                 </select>
               </label>
               <label className="grid gap-1 text-xs font-semibold text-slate-700">
                 <span className="flex items-center gap-1">
-                  Modelo de módem
-                  <InfoTooltip text="Describe el módem instalado en el cliente para identificar compatibilidad y garantías." />
+                  Nombre completo
+                  <InfoTooltip text="Utiliza el nombre con el que aparece en contratos o facturación." />
                 </span>
                 <input
-                  value={formState.modemModel}
-                  onChange={(event) => setFormState((prev) => ({ ...prev, modemModel: event.target.value }))}
+                  value={formState.name}
+                  onChange={(event) => setFormState((prev) => ({ ...prev, name: event.target.value }))}
                   className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
-                    formErrors.modemModel
+                    formErrors.name
                       ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
                       : 'border-slate-300'
                   }`}
-                  placeholder="Ej. TP-Link WR840N"
+                  placeholder="Juan Pérez"
+                  autoComplete="off"
                 />
-                {formErrors.modemModel && (
-                  <span className="text-xs font-medium text-red-600">{formErrors.modemModel}</span>
+                {formErrors.name && (
+                  <span className="text-xs font-medium text-red-600">{formErrors.name}</span>
                 )}
               </label>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
               <label className="grid gap-1 text-xs font-semibold text-slate-700">
                 <span className="flex items-center gap-1">
-                  Periodos adelantados
-                  <InfoTooltip text="Registra si el punto con antena pública tiene pagos adelantados para ajustar los siguientes cobros." />
-                </span>
-                <input
-                  value={formState.paidMonthsAhead}
-                  onChange={(event) =>
-                    setFormState((prev) => ({ ...prev, paidMonthsAhead: event.target.value }))
-                  }
-                  type="number"
-                  inputMode="numeric"
-                  min="0"
-                  className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
-                    formErrors.paidMonthsAhead
-                      ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
-                      : 'border-slate-300'
-                  }`}
-                />
-                {formErrors.paidMonthsAhead && (
-                  <span className="text-xs font-medium text-red-600">{formErrors.paidMonthsAhead}</span>
-                )}
-              </label>
-            </div>
-          )}
-
-          <div className="space-y-4 rounded-lg border border-slate-200 bg-slate-50/60 p-4">
-            <div className="space-y-1">
-              <h3 className="text-sm font-semibold text-slate-900">Servicio mensual inicial</h3>
-              <p className="text-xs text-slate-600">
-                Selecciona el servicio que tendrá el cliente desde su registro. Puedes ajustar los datos más adelante.
-              </p>
-            </div>
-            <div className="grid gap-4 md:grid-cols-2">
-              <label className="grid gap-1 text-xs font-semibold text-slate-700 md:col-span-2">
-                <span className="flex items-center gap-1">
-                  Servicio mensual disponible
-                  <InfoTooltip text="Selecciona un servicio mensual existente para reutilizar sus datos definidos en el catálogo." />
+                  Comunidad
+                  <InfoTooltip text="Selecciona la comunidad donde se ubica el cliente." />
                 </span>
                 <select
-                  value={initialServiceState.servicePlanId || ''}
-                  onChange={(event) => handleSelectInitialPlan(event.target.value)}
+                  value={formState.location}
+                  onChange={(event) => setFormState((prev) => ({ ...prev, location: event.target.value }))}
                   className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
-                    initialServiceErrors.servicePlanId
+                    formErrors.location
                       ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
                       : 'border-slate-300'
                   }`}
-                  disabled={isLoadingServicePlans && servicePlanOptions.length === 0}
                 >
-                  <option value="">
-                    {isLoadingServicePlans ? 'Cargando servicios…' : 'Selecciona un servicio mensual'}
-                  </option>
-                  {servicePlanOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
+                  <option value="">Selecciona una comunidad</option>
+                  {availableLocations
+                    .filter((location) => Boolean(location))
+                    .map((location) => (
+                      <option key={location} value={location}>
+                        {location}
+                      </option>
+                    ))}
                 </select>
-                <span className="text-[11px] text-slate-500">
-                  Los servicios se administran desde la pestaña "Servicios mensuales".
-                </span>
-                {servicePlansStatus?.error && (
-                  <span className="text-xs font-medium text-red-600">
-                    {servicePlansStatus.error}
-                  </span>
+                {formErrors.location && (
+                  <span className="text-xs font-medium text-red-600">{formErrors.location}</span>
                 )}
               </label>
-
-              {selectedInitialPlan ? (
-                <div className="md:col-span-2 space-y-1 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
-                  <p>
-                    <span className="font-semibold text-slate-700">Plan seleccionado:</span> {selectedInitialPlan.name}
-                  </p>
-                  <p>
-                    <span className="font-semibold text-slate-700">Tipo de servicio:</span>{' '}
-                    {getServiceTypeLabel(selectedInitialPlan.serviceType ?? 'internet')}
-                  </p>
-                  <p>
-                    <span className="font-semibold text-slate-700">Tarifa mensual:</span>{' '}
-                    {selectedInitialPlan.defaultMonthlyFee === null || selectedInitialPlan.defaultMonthlyFee === undefined
-                      ? 'Monto variable'
-                      : peso(selectedInitialPlan.defaultMonthlyFee)}
-                  </p>
-                  {selectedInitialPlan.description ? (
-                    <p className="text-slate-500">{selectedInitialPlan.description}</p>
-                  ) : null}
-                </div>
-              ) : null}
-
-              <label className="flex items-start gap-2 text-xs font-semibold text-slate-700 md:col-span-2">
-                <input
-                  type="checkbox"
-                  className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                  checked={Boolean(initialServiceState.isCustomPriceEnabled)}
-                  onChange={(event) => {
-                    const isEnabled = event.target.checked
-                    setInitialServiceState((prev) => {
-                      const nextState = {
-                        ...prev,
-                        isCustomPriceEnabled: isEnabled,
-                      }
-
-                      const defaultPrice = selectedInitialPlan?.defaultMonthlyFee
-                      const defaultPriceValue =
-                        defaultPrice === null || defaultPrice === undefined
-                          ? ''
-                          : String(defaultPrice)
-
-                      if (!isEnabled) {
-                        nextState.price = defaultPriceValue
-                      } else if (prev.price === '' || prev.price === null || prev.price === undefined) {
-                        nextState.price = defaultPriceValue
-                      }
-
-                      return nextState
-                    })
-                    if (!isEnabled) {
-                      setInitialServiceErrors((prev) => ({ ...prev, price: undefined }))
-                    }
-                  }}
-                />
-                <span>
-                  Personalizar tarifa para este cliente
-                  <span className="block text-[11px] font-normal text-slate-500">
-                    Si no marcas esta opción, se aplicará la tarifa del plan sin cambios.
-                  </span>
-                </span>
-              </label>
-
               <label className="grid gap-1 text-xs font-semibold text-slate-700">
                 <span className="flex items-center gap-1">
-                  Tarifa mensual (MXN)
-                  <InfoTooltip text="Puedes aplicar una tarifa distinta a la del catálogo solo para este cliente." />
+                  Zona (opcional)
+                  <InfoTooltip text="Asocia al cliente con una zona de cobertura para segmentar reportes y métricas." />
                 </span>
                 <input
-                  value={initialServiceState.price ?? ''}
-                  onChange={(event) =>
-                    setInitialServiceState((prev) => ({ ...prev, price: event.target.value }))
-                  }
-                  type="number"
-                  inputMode="decimal"
-                  step="0.01"
-                  min="0"
-                  disabled={!initialServiceState.isCustomPriceEnabled}
-                  className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 disabled:cursor-not-allowed disabled:bg-slate-100 ${
-                    initialServiceErrors.price
-                      ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
-                      : 'border-slate-300'
-                  }`}
-                />
-                {initialServiceErrors.price && (
-                  <span className="text-xs font-medium text-red-600">{initialServiceErrors.price}</span>
-                )}
-              </label>
-
-              <label className="grid gap-1 text-xs font-semibold text-slate-700">
-                <span className="flex items-center gap-1">
-                  Día de cobro
-                  {shouldRequireInitialBillingDay ? <span className="text-red-500">*</span> : null}
-                  <InfoTooltip text="Define el día del mes en el que se espera el pago de este servicio." />
-                </span>
-                <input
-                  value={initialServiceState.billingDay}
-                  onChange={(event) =>
-                    setInitialServiceState((prev) => ({ ...prev, billingDay: event.target.value }))
-                  }
+                  value={formState.zoneId}
+                  onChange={(event) => setFormState((prev) => ({ ...prev, zoneId: event.target.value }))}
                   type="number"
                   inputMode="numeric"
                   min="1"
-                  max="31"
                   className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
-                    initialServiceErrors.billingDay
-                      ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
-                      : 'border-slate-300'
-                  } ${isInitialCourtesy ? 'bg-slate-100 text-slate-500' : ''}`}
-                  placeholder={
-                    isInitialCourtesy
-                      ? 'Servicio de cortesía: sin cobro mensual'
-                      : shouldRequireInitialBillingDay
-                        ? 'Obligatorio'
-                        : 'Opcional'
-                  }
-                  disabled={isInitialCourtesy}
-                />
-                <span className="text-[11px] text-slate-500">
-                  {isInitialCourtesy
-                    ? 'Este servicio es de cortesía, no requiere programar cobros.'
-                    : shouldRequireInitialBillingDay
-                      ? 'Este plan requiere registrar un día de cobro.'
-                      : 'Puedes dejarlo en blanco si no aplica un día fijo.'}
-                </span>
-                {initialServiceErrors.billingDay && (
-                  <span className="text-xs font-medium text-red-600">
-                    {initialServiceErrors.billingDay}
-                  </span>
-                )}
-              </label>
-
-              {planRequiresBase ? (
-                <label className="grid gap-1 text-xs font-semibold text-slate-700">
-                  <span className="flex items-center gap-1">
-                    Base asignada
-                    <InfoTooltip text="Selecciona la base o nodo donde se instalará este servicio." />
-                  </span>
-                  <select
-                    value={String(formState.base)}
-                    onChange={(event) => {
-                      const nextBase = Number(event.target.value)
-                      setFormState((prev) => ({ ...prev, base: nextBase }))
-                      setInitialServiceState((prev) => ({ ...prev, baseId: event.target.value }))
-                    }}
-                    className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
-                      initialServiceErrors.baseId
-                        ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
-                        : 'border-slate-300'
-                    }`}
-                  >
-                    <option value={1}>Base 1</option>
-                    <option value={2}>Base 2</option>
-                  </select>
-                  {initialServiceErrors.baseId && (
-                    <span className="text-xs font-medium text-red-600">
-                      {initialServiceErrors.baseId}
-                    </span>
-                  )}
-                </label>
-              ) : null}
-
-              {planRequiresIp
-                ? currentIpFields.map(({ name, label, rangeKey }) => (
-                    <label key={name} className="grid gap-1 text-xs font-semibold text-slate-700">
-                      <span className="flex items-center gap-1">
-                        {label}
-                        <InfoTooltip text={`Selecciona una IP libre para ${label.toLowerCase()}.`} />
-                      </span>
-                      <select
-                        value={formState[name] ?? ''}
-                        onChange={(event) => setFormState((prev) => ({ ...prev, [name]: event.target.value }))}
-                        className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
-                          formErrors[name]
-                            ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
-                            : 'border-slate-300'
-                        }`}
-                      >
-                        <option value="">Selecciona una IP disponible</option>
-                        {getAvailableIps(rangeKey, formState.base).map((ip) => (
-                          <option key={ip} value={ip}>
-                            {ip}
-                          </option>
-                        ))}
-                      </select>
-                      <span className="text-[11px] text-slate-500">
-                        Las opciones se filtran según la base seleccionada y evitan duplicar direcciones en uso.
-                      </span>
-                      {formErrors[name] && (
-                        <span className="text-xs font-medium text-red-600">{formErrors[name]}</span>
-                      )}
-                    </label>
-                  ))
-                : null}
-
-              <label className="grid gap-1 text-xs font-semibold text-slate-700">
-                <span className="flex items-center gap-1">
-                  Estado
-                  <InfoTooltip text="Controla si el servicio inicia activo o suspendido." />
-                </span>
-                <select
-                  value={initialServiceState.status}
-                  onChange={(event) =>
-                    setInitialServiceState((prev) => ({ ...prev, status: event.target.value }))
-                  }
-                  className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
-                    initialServiceErrors.status
+                    formErrors.zoneId
                       ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
                       : 'border-slate-300'
                   }`}
-                >
-                  {SERVICE_STATUS_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-                {initialServiceErrors.status && (
-                  <span className="text-xs font-medium text-red-600">
-                    {initialServiceErrors.status}
-                  </span>
+                  placeholder="Ej. 3"
+                />
+                {formErrors.zoneId && (
+                  <span className="text-xs font-medium text-red-600">{formErrors.zoneId}</span>
                 )}
               </label>
-
-              <label className="md:col-span-2">
-                <span className="flex items-center gap-1 text-xs font-semibold text-slate-700">
-                  Notas del servicio
-                  <InfoTooltip text="Agrega detalles relevantes como velocidad, equipo instalado o particularidades de cobro." />
-                </span>
-                <textarea
-                  value={initialServiceState.notes}
-                  onChange={(event) =>
-                    setInitialServiceState((prev) => ({ ...prev, notes: event.target.value }))
-                  }
-                  rows={2}
-                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200"
-                  placeholder="Ej. Plan de 20 Mbps con renta de router incluida"
-                />
-              </label>
             </div>
-            <p className="text-[11px] text-slate-500">
-              ¿Necesitas crear o modificar servicios mensuales?{' '}
-              <button
+
+            <label className="grid gap-1 text-xs font-semibold text-slate-700">
+              <span className="flex items-center gap-1">
+                Notas
+                <InfoTooltip text="Agrega comentarios internos, referencias o necesidades especiales." />
+              </span>
+              <textarea
+                value={formState.notes}
+                onChange={(event) => setFormState((prev) => ({ ...prev, notes: event.target.value }))}
+                rows={3}
+                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200"
+                placeholder="Ej. Referencia de domicilio o instrucciones de instalación"
+              />
+            </label>
+
+            <div className="space-y-4 rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+              <div className="space-y-1">
+                <h3 className="text-sm font-semibold text-slate-900">Servicio principal (opcional)</h3>
+                <p className="text-xs text-slate-600">
+                  Selecciona un plan de internet para iniciar el servicio del cliente o déjalo vacío para asignarlo después.
+                </p>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="grid gap-1 text-xs font-semibold text-slate-700 md:col-span-2">
+                  <span className="flex items-center gap-1">
+                    Servicio mensual disponible
+                    <InfoTooltip text="Solo se muestran planes de internet activos." />
+                  </span>
+                  <select
+                    value={initialServiceState.servicePlanId || ''}
+                    onChange={(event) => handleSelectInitialPlan(event.target.value)}
+                    className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
+                      initialServiceErrors.servicePlanId
+                        ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
+                        : 'border-slate-300'
+                    }`}
+                    disabled={isLoadingServicePlans && servicePlanOptions.length === 0}
+                  >
+                    <option value="">
+                      {isLoadingServicePlans ? 'Cargando servicios…' : 'Sin servicio principal'}
+                    </option>
+                    {servicePlanOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  {servicePlansStatus?.error && (
+                    <span className="text-xs font-medium text-red-600">
+                      {servicePlansStatus.error}
+                    </span>
+                  )}
+                </label>
+
+                <div className="md:col-span-2 flex flex-wrap items-center justify-between gap-3">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="border border-slate-200 bg-white text-slate-700 hover:border-blue-200"
+                    onClick={handleOpenExtraServicesForCreate}
+                  >
+                    + Agregar servicios adicionales
+                  </Button>
+                  {extraServicesSelected.length > 0 ? (
+                    <span className="text-[11px] text-slate-600">
+                      {extraServicesSelected.map((plan) => plan.name).join(', ')}
+                    </span>
+                  ) : (
+                    <span className="text-[11px] text-slate-500">Sin servicios adicionales seleccionados.</span>
+                  )}
+                </div>
+
+                {selectedInitialPlan ? (
+                  <div className="md:col-span-2 space-y-1 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
+                    <p>
+                      <span className="font-semibold text-slate-700">Plan seleccionado:</span> {selectedInitialPlan.name}
+                    </p>
+                    <p>
+                      <span className="font-semibold text-slate-700">Tipo de servicio:</span>{' '}
+                      {getServiceTypeLabel(
+                        selectedInitialPlan.serviceType ??
+                          selectedInitialPlan.service_type ??
+                          'internet',
+                      )}
+                    </p>
+                    <p>
+                      <span className="font-semibold text-slate-700">Tarifa mensual:</span>{' '}
+                      {selectedInitialPlan.defaultMonthlyFee === null || selectedInitialPlan.defaultMonthlyFee === undefined
+                        ? 'Monto variable'
+                        : peso(selectedInitialPlan.defaultMonthlyFee)}
+                    </p>
+                    {selectedInitialPlan.description ? (
+                      <p className="text-slate-500">{selectedInitialPlan.description}</p>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                <label className="flex items-start gap-2 text-xs font-semibold text-slate-700 md:col-span-2">
+                  <input
+                    type="checkbox"
+                    className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    checked={Boolean(initialServiceState.isCustomPriceEnabled)}
+                    onChange={(event) => {
+                      const isEnabled = event.target.checked
+                      setInitialServiceState((prev) => {
+                        const nextState = {
+                          ...prev,
+                          isCustomPriceEnabled: isEnabled,
+                        }
+
+                        const defaultPrice = selectedInitialPlan?.defaultMonthlyFee
+                        const defaultPriceValue =
+                          defaultPrice === null || defaultPrice === undefined
+                            ? ''
+                            : String(defaultPrice)
+
+                        if (!isEnabled) {
+                          nextState.price = defaultPriceValue
+                        } else if (prev.price === '' || prev.price === null || prev.price === undefined) {
+                          nextState.price = defaultPriceValue
+                        }
+
+                        return nextState
+                      })
+                      if (!isEnabled) {
+                        setInitialServiceErrors((prev) => ({ ...prev, price: undefined }))
+                      }
+                    }}
+                  />
+                  <span>
+                    Personalizar tarifa para este cliente
+                    <span className="block text-[11px] font-normal text-slate-500">
+                      Si no marcas esta opción, se aplicará la tarifa del plan sin cambios.
+                    </span>
+                  </span>
+                </label>
+
+                <label className="grid gap-1 text-xs font-semibold text-slate-700">
+                  <span className="flex items-center gap-1">
+                    Tarifa mensual (MXN)
+                    <InfoTooltip text="Define una tarifa distinta a la del catálogo solo para este cliente." />
+                  </span>
+                  <input
+                    value={initialServiceState.price ?? ''}
+                    onChange={(event) =>
+                      setInitialServiceState((prev) => ({ ...prev, price: event.target.value }))
+                    }
+                    type="number"
+                    inputMode="decimal"
+                    step="0.01"
+                    min="0"
+                    disabled={!initialServiceState.isCustomPriceEnabled}
+                    className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 disabled:cursor-not-allowed disabled:bg-slate-100 ${
+                      initialServiceErrors.price
+                        ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
+                        : 'border-slate-300'
+                    }`}
+                  />
+                  {initialServiceErrors.price && (
+                    <span className="text-xs font-medium text-red-600">{initialServiceErrors.price}</span>
+                  )}
+                </label>
+
+                <label className="grid gap-1 text-xs font-semibold text-slate-700">
+                  <span className="flex items-center gap-1">
+                    Día de cobro
+                    {shouldRequireInitialBillingDay ? <span className="text-red-500">*</span> : null}
+                    <InfoTooltip text="Define el día del mes en el que se espera el pago de este servicio." />
+                  </span>
+                  <input
+                    value={initialServiceState.billingDay}
+                    onChange={(event) =>
+                      setInitialServiceState((prev) => ({ ...prev, billingDay: event.target.value }))
+                    }
+                    type="number"
+                    inputMode="numeric"
+                    min="1"
+                    max="31"
+                    className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
+                      initialServiceErrors.billingDay
+                        ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
+                        : 'border-slate-300'
+                    } ${isInitialCourtesy ? 'bg-slate-100 text-slate-500' : ''}`}
+                    placeholder={
+                      isInitialCourtesy
+                        ? 'Servicio de cortesía: sin cobro mensual'
+                        : shouldRequireInitialBillingDay
+                          ? 'Obligatorio'
+                          : 'Opcional'
+                    }
+                    disabled={isInitialCourtesy}
+                  />
+                  <span className="text-[11px] text-slate-500">
+                    {isInitialCourtesy
+                      ? 'Este servicio se registrará como cortesía. No se programará un día de cobro.'
+                      : 'Puedes cambiar el día de cobro en la ficha del cliente si lo necesitas.'}
+                  </span>
+                  {initialServiceErrors.billingDay && (
+                    <span className="text-xs font-medium text-red-600">{initialServiceErrors.billingDay}</span>
+                  )}
+                </label>
+
+                <label className="grid gap-1 text-xs font-semibold text-slate-700">
+                  <span className="flex items-center gap-1">
+                    Estado
+                    <InfoTooltip text="Controla si el servicio inicia activo o suspendido." />
+                  </span>
+                  <select
+                    value={initialServiceState.status}
+                    onChange={(event) =>
+                      setInitialServiceState((prev) => ({ ...prev, status: event.target.value }))
+                    }
+                    className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
+                      initialServiceErrors.status
+                        ? 'border-red-400 focus-visible-border-red-400 focus-visible:ring-red-200'
+                        : 'border-slate-300'
+                    }`}
+                  >
+                    {SERVICE_STATUS_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  {initialServiceErrors.status && (
+                    <span className="text-xs font-medium text-red-600">{initialServiceErrors.status}</span>
+                  )}
+                </label>
+
+                <label className="md:col-span-2">
+                  <span className="flex items-center gap-1 text-xs font-semibold text-slate-700">
+                    Notas del servicio
+                    <InfoTooltip text="Agrega detalles como velocidad, equipo instalado o particularidades de cobro." />
+                  </span>
+                  <textarea
+                    value={initialServiceState.notes}
+                    onChange={(event) =>
+                      setInitialServiceState((prev) => ({ ...prev, notes: event.target.value }))
+                    }
+                    rows={2}
+                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200"
+                    placeholder="Ej. Plan de 20 Mbps con renta de router incluida"
+                  />
+                </label>
+              </div>
+              <p className="text-[11px] text-slate-500">
+                ¿Necesitas crear o modificar planes?{' '}
+                <button
+                  type="button"
+                  onClick={() => handleSelectMainTab('services')}
+                  className="font-semibold text-blue-600 hover:underline"
+                >
+                  Abre la pestaña de servicios mensuales
+                </button>
+                .
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-end gap-3">
+              <Button
                 type="button"
-                onClick={() => handleSelectMainTab('services')}
-                className="font-semibold text-blue-600 hover:underline"
+                variant="ghost"
+                className="border border-slate-200 bg-white text-slate-700 hover:border-blue-200"
+                onClick={() => {
+                  setFormState({ ...defaultForm })
+                  setFormErrors({})
+                  setInitialServiceState(createInitialServiceState(defaultForm.zoneId))
+                  setInitialServiceErrors({})
+                  setPendingExtraServicePlans([])
+                }}
               >
-                Abre la pestaña de servicios mensuales
-              </button>
-              .
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center justify-end gap-3">
-            <Button
-              type="button"
-              variant="ghost"
-              className="border border-slate-200 bg-white text-slate-700 hover:border-blue-200"
-              onClick={() => {
-                setFormState({ ...defaultForm })
-                setFormErrors({})
-                setInitialServiceState(createInitialServiceState(defaultForm.base))
-                setInitialServiceErrors({})
-              }}
-            >
-              Limpiar
-            </Button>
-            <Button
-              type="submit"
-              className="bg-blue-600 text-white hover:bg-blue-700 focus-visible:ring-blue-500/40"
-              disabled={isMutatingClients}
-            >
-              Guardar cliente
-            </Button>
-          </div>
+                Limpiar
+              </Button>
+              <Button
+                type="submit"
+                className="bg-blue-600 text-white hover:bg-blue-700 focus-visible:ring-blue-500/40"
+                disabled={isMutatingClients}
+              >
+                Guardar cliente
+              </Button>
+            </div>
           </form>
           ) : (
             <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50/80 p-4 text-sm text-slate-600">
@@ -2692,10 +2700,10 @@ export default function ClientsPage() {
                           </button>
                         </th>
                         <th scope="col" className="px-3 py-2 font-medium">
-                          Base
+                          Zona
                         </th>
                         <th scope="col" className="px-3 py-2 font-medium">
-                          Servicio
+                          Servicio(s)
                         </th>
                         <th scope="col" className="px-3 py-2 font-medium">
                           Pago mensual
@@ -2748,6 +2756,13 @@ export default function ClientsPage() {
                           const mappedFee = Number(client.monthlyFee)
                           return Number.isFinite(mappedFee) ? mappedFee : CLIENT_PRICE
                         })()
+                        const clientServices = Array.isArray(client.services) ? client.services : []
+                        const serviceSummary =
+                          clientServices.length === 0
+                            ? 'Sin servicio asignado'
+                            : clientServices
+                                .map((service) => service?.name ?? service?.plan?.name ?? 'Servicio')
+                                .join(', ')
 
                         return (
                           <tr
@@ -2771,26 +2786,28 @@ export default function ClientsPage() {
                               />
                             </td>
                             <td className="px-3 py-2 font-medium text-slate-900">
-                            <div className="flex flex-col">
-                              <span>{client.name}</span>
-                              {client.ip && (
-                                <span className="text-xs text-slate-500">IP: {client.ip}</span>
-                              )}
-                            </div>
-                          </td>
+                              <div className="flex flex-col">
+                                <span>{client.name}</span>
+                              </div>
+                            </td>
                             <td className="px-3 py-2 text-slate-600">{client.location || '—'}</td>
-                            <td className="px-3 py-2 text-slate-600">Base {client.base}</td>
-                            <td className="px-3 py-2">
-                            <span
-                              className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
-                                isPrimaryActive
-                                  ? 'bg-emerald-50 text-emerald-700'
-                                  : 'bg-amber-50 text-amber-700'
-                              }`}
-                            >
-                              {primaryStatusForRow}
-                            </span>
-                          </td>
+                            <td className="px-3 py-2 text-slate-600">{client.zoneId ?? client.base ?? '—'}</td>
+                            <td className="px-3 py-2 text-slate-600">
+                              <div className="flex flex-col gap-1 text-sm">
+                                <span>{serviceSummary}</span>
+                                {primaryServiceForRow ? (
+                                  <span
+                                    className={`inline-flex w-fit rounded-full px-2.5 py-1 text-xs font-semibold ${
+                                      isPrimaryActive
+                                        ? 'bg-emerald-50 text-emerald-700'
+                                        : 'bg-amber-50 text-amber-700'
+                                    }`}
+                                  >
+                                    {primaryStatusForRow}
+                                  </span>
+                                ) : null}
+                              </div>
+                            </td>
                             <td className="px-3 py-2 text-slate-600">
                             {isCourtesyClient ? (
                               <span className="font-semibold text-emerald-700">
@@ -2817,6 +2834,14 @@ export default function ClientsPage() {
                           </td>
                           <td className="px-3 py-2 text-right">
                             <div className="flex flex-wrap justify-end gap-2">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className={ACTION_BUTTON_CLASSES}
+                                onClick={() => handleOpenExtraServicesForClient(client)}
+                              >
+                                {clientServices.length === 0 ? '➕ Asignar servicio' : '✏️ Editar servicios'}
+                              </Button>
                               <Button
                                 size="sm"
                                 variant="ghost"
@@ -3100,7 +3125,11 @@ export default function ClientsPage() {
                           </p>
                           <p>
                             <span className="font-semibold text-slate-700">Tipo de servicio:</span>{' '}
-                            {getServiceTypeLabel(selectedServicePlan.serviceType ?? 'internet')}
+                            {getServiceTypeLabel(
+                              selectedServicePlan.serviceType ??
+                                selectedServicePlan.service_type ??
+                                'internet',
+                            )}
                           </p>
                           <p>
                             <span className="font-semibold text-slate-700">Tarifa mensual:</span>{' '}
@@ -3463,6 +3492,15 @@ export default function ClientsPage() {
         isProcessing={isProcessingBulkAssign}
         clients={selectedClientsForBulk}
         servicePlans={servicePlans}
+      />
+      <AssignExtraServicesModal
+        isOpen={extraServicesModalState.isOpen}
+        onClose={handleCloseExtraServicesModal}
+        onApply={handleApplyExtraServices}
+        isProcessing={isProcessingExtraServices}
+        servicePlans={servicePlans}
+        initialSelection={extraServicesModalState.selectedPlanIds}
+        clientName={extraServicesModalState.clientName || 'cliente'}
       />
     </div>
   )
