@@ -1,4 +1,4 @@
-"""SQLAlchemy model definition for base stations."""
+"""SQLAlchemy model definition for coverage zones."""
 
 from __future__ import annotations
 
@@ -8,18 +8,18 @@ from sqlalchemy.orm import relationship
 from ..database import Base
 
 
-class BaseStation(Base):
-    """Represents a physical base station used to serve clients."""
+class Zone(Base):
+    """Represents a physical coverage zone used to serve clients."""
 
-    __tablename__ = "base_stations"
+    __tablename__ = "zones"
 
-    id = Column("base_id", Integer, primary_key=True, autoincrement=True)
+    id = Column("zone_id", Integer, primary_key=True, autoincrement=True)
     code = Column(String, unique=True, nullable=False)
     name = Column(String, nullable=False)
     location = Column(String, nullable=False)
     notes = Column(Text, nullable=True)
 
-    clients = relationship("Client", back_populates="base")
+    clients = relationship("Client", back_populates="zone")
     resellers = relationship("Reseller", back_populates="base")
     expenses = relationship("Expense", back_populates="base")
     inventory_items = relationship("InventoryItem", back_populates="base")
@@ -45,3 +45,7 @@ class BaseStation(Base):
         back_populates="to_base",
         foreign_keys="InventoryMovement.to_base_id",
     )
+
+
+# Backwards compatibility alias while the rest of the codebase transitions
+BaseStation = Zone

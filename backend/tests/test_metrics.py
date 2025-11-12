@@ -8,14 +8,14 @@ from sqlalchemy.orm import Session
 from backend.app import models
 
 
-def _ensure_base(db_session: Session, base_code: str, name: str, location: str) -> models.BaseStation:
+def _ensure_base(db_session: Session, base_code: str, name: str, location: str) -> models.Zone:
     base = (
-        db_session.query(models.BaseStation)
-        .filter(models.BaseStation.code == base_code)
+        db_session.query(models.Zone)
+        .filter(models.Zone.code == base_code)
         .first()
     )
     if base is None:
-        base = models.BaseStation(code=base_code, name=name, location=location)
+        base = models.Zone(code=base_code, name=name, location=location)
         db_session.add(base)
         db_session.flush()
     return base

@@ -22,18 +22,26 @@ def list_clients(
     skip: int = Query(0, ge=0, description="Number of clients to skip"),
     limit: int = Query(50, ge=1, le=200, description="Maximum number of clients to return"),
     search: Optional[str] = Query(None, description="Case-insensitive search by client name"),
-    base_id: Optional[int] = Query(None, ge=1, description="Filter by base station"),
+    zone_id: Optional[int] = Query(None, ge=1, description="Filter by coverage zone"),
+    base_id: Optional[int] = Query(
+        None,
+        ge=1,
+        description="Deprecated: use zone_id instead",
+        include_in_schema=False,
+    ),
     status: Optional[ServiceStatus] = Query(None, description="Filter by service status"),
     db: Session = Depends(get_db),
 ) -> schemas.ClientListResponse:
     """Return clients with pagination and optional filters."""
     normalized_search = search.strip() if search else None
+    effective_zone_id = zone_id if zone_id is not None else base_id
+
     items, total = ClientService.list_clients(
         db,
         skip=skip,
         limit=limit,
         search=normalized_search,
-        base_id=base_id,
+        zone_id=effective_zone_id,
         status=status,
     )
     return schemas.ClientListResponse(items=items, total=total, limit=limit, skip=skip)

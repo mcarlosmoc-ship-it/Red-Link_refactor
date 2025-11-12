@@ -6,7 +6,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from ..models.client import ClientType, ServiceStatus
 from .common import PaginatedResponse
@@ -21,13 +21,17 @@ class ClientBase(BaseModel):
     client_type: ClientType
     full_name: str
     location: str
-    base_id: int
+    zone_id: Optional[int] = Field(
+        default=None,
+        ge=1,
+        validation_alias=AliasChoices("zone_id", "base_id"),
+    )
     ip_address: Optional[str] = None
     antenna_ip: Optional[str] = None
     modem_ip: Optional[str] = None
     antenna_model: Optional[str] = None
     modem_model: Optional[str] = None
-    monthly_fee: Decimal = Field(default=Decimal("0"), ge=0)
+    monthly_fee: Optional[Decimal] = Field(default=None, ge=0)
     paid_months_ahead: Decimal = Field(default=Decimal("0"), ge=0)
     debt_months: Decimal = Field(default=Decimal("0"), ge=0)
     service_status: ServiceStatus = ServiceStatus.ACTIVE
@@ -46,7 +50,11 @@ class ClientUpdate(BaseModel):
     client_type: Optional[ClientType] = None
     full_name: Optional[str] = None
     location: Optional[str] = None
-    base_id: Optional[int] = None
+    zone_id: Optional[int] = Field(
+        default=None,
+        ge=1,
+        validation_alias=AliasChoices("zone_id", "base_id"),
+    )
     ip_address: Optional[str] = None
     antenna_ip: Optional[str] = None
     modem_ip: Optional[str] = None

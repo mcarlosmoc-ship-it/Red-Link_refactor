@@ -17,7 +17,7 @@ from sqlalchemy import (
     String,
     func,
 )
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, synonym
 
 from ..database import Base
 from ..db_types import GUID, INET
@@ -61,19 +61,20 @@ class Client(Base):
     )
     full_name = Column(String, nullable=False)
     location = Column(String, nullable=False)
-    base_id = Column(
+    zone_id = Column(
         Integer,
-        ForeignKey("base_stations.base_id", onupdate="CASCADE"),
-        nullable=False,
+        ForeignKey("zones.zone_id", onupdate="CASCADE"),
+        nullable=True,
     )
     ip_address = Column(INET(), nullable=True)
     antenna_ip = Column(INET(), nullable=True)
     modem_ip = Column(INET(), nullable=True)
     antenna_model = Column(String, nullable=True)
     modem_model = Column(String, nullable=True)
-    monthly_fee = Column(Numeric(10, 2), nullable=False, default=0)
+    monthly_fee = Column(Numeric(10, 2), nullable=True)
     paid_months_ahead = Column(Numeric(6, 2), nullable=False, default=0)
     debt_months = Column(Numeric(6, 2), nullable=False, default=0)
+    base_id = synonym("zone_id")
     active_client_plan_id = Column(
         GUID(),
         ForeignKey("client_plans.client_plan_id", ondelete="SET NULL"),
@@ -96,7 +97,7 @@ class Client(Base):
         nullable=False,
     )
 
-    base = relationship("BaseStation", back_populates="clients")
+    zone = relationship("Zone", back_populates="clients")
     payments = relationship(
         "ServicePayment",
         back_populates="client",
@@ -144,6 +145,16 @@ class Client(Base):
     )
     support_tickets = relationship("SupportTicket", back_populates="client")
 
+    @property
+    def base(self):
+        """Compatibility alias returning the client's zone."""
+
+        return self.zone
+
+    @base.setter
+    def base(self, value):
+        self.zone = value
+
 
 Index(
     "clients_full_name_idx",
@@ -152,9 +163,9 @@ Index(
     postgresql_ops={"full_name": "gin_trgm_ops"},
 )
 Index("clients_location_idx", Client.location)
-Index("clients_base_idx", Client.base_id)
+Index("clients_zone_idx", Client.zone_id)
 Index("clients_active_plan_idx", Client.active_client_plan_id)
-Index("clients_base_status_idx", Client.base_id, Client.service_status)
+Index("clients_zone_status_idx", Client.zone_id, Client.service_status)
 Index(
     "clients_ip_address_unique_idx",
     Client.ip_address,

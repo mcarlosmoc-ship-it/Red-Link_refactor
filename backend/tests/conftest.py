@@ -105,8 +105,8 @@ def client(db_session: Session, security_settings: dict) -> Generator[TestClient
 
 @pytest.fixture
 def seed_basic_data(db_session: Session) -> dict:
-    base = models.BaseStation(code="B1", name="Base Uno", location="Centro")
-    db_session.add(base)
+    zone = models.Zone(code="Z1", name="Zona Uno", location="Centro")
+    db_session.add(zone)
 
     period = models.BillingPeriod(period_key="2025-01", starts_on=date(2025, 1, 1), ends_on=date(2025, 1, 31))
     db_session.add(period)
@@ -114,7 +114,7 @@ def seed_basic_data(db_session: Session) -> dict:
     client = models.Client(
         full_name="Cliente Demo",
         location="Centro",
-        base=base,
+        zone=zone,
         client_type=models.ClientType.RESIDENTIAL,
         monthly_fee=Decimal("300"),
         debt_months=Decimal("2"),

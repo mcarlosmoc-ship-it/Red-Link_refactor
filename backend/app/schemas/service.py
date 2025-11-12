@@ -36,7 +36,12 @@ class ClientServiceBase(BaseModel):
     status: ClientServiceStatus = ClientServiceStatus.ACTIVE
     billing_day: Optional[int] = Field(default=None, ge=1, le=31)
     next_billing_date: Optional[date] = None
-    base_id: Optional[int] = Field(default=None, ge=1)
+    zone_id: Optional[int] = Field(
+        default=None,
+        ge=1,
+        validation_alias=AliasChoices("zone_id", "base_id"),
+        serialization_alias="zone_id",
+    )
     ip_address: Optional[str] = None
     custom_price: Optional[Decimal] = Field(default=None, ge=0)
     notes: Optional[str] = None
@@ -66,7 +71,12 @@ class ClientServiceUpdate(BaseModel):
     status: Optional[ClientServiceStatus] = None
     billing_day: Optional[int] = Field(default=None, ge=1, le=31)
     next_billing_date: Optional[date] = None
-    base_id: Optional[int] = Field(default=None, ge=1)
+    zone_id: Optional[int] = Field(
+        default=None,
+        ge=1,
+        validation_alias=AliasChoices("zone_id", "base_id"),
+        serialization_alias="zone_id",
+    )
     ip_address: Optional[str] = None
     custom_price: Optional[Decimal] = Field(default=None, ge=0)
     notes: Optional[str] = None
@@ -88,7 +98,12 @@ class ClientServiceRead(BaseModel):
     status: ClientServiceStatus
     billing_day: Optional[int] = None
     next_billing_date: Optional[date] = None
-    base_id: Optional[int] = None
+    zone_id: Optional[int] = Field(
+        default=None,
+        ge=1,
+        validation_alias=AliasChoices("zone_id", "base_id"),
+        serialization_alias="zone_id",
+    )
     ip_address: Optional[str] = None
     custom_price: Optional[Decimal] = None
     effective_price: Optional[Decimal] = None
@@ -123,7 +138,12 @@ class ClientServiceBulkCreate(BaseModel):
     client_ids: list[str] = Field(..., min_length=1)
     status: ClientServiceStatus = ClientServiceStatus.ACTIVE
     billing_day: Optional[int] = Field(default=None, ge=1, le=31)
-    base_id: Optional[int] = Field(default=None, ge=1)
+    zone_id: Optional[int] = Field(
+        default=None,
+        ge=1,
+        validation_alias=AliasChoices("zone_id", "base_id"),
+        serialization_alias="zone_id",
+    )
     ip_address: Optional[str] = None
     custom_price: Optional[Decimal] = Field(default=None, ge=0)
     notes: Optional[str] = None

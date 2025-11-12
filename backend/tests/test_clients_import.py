@@ -17,23 +17,23 @@ def test_download_import_template(client):
     header = content[0]
     assert "client_type" in header
     assert "full_name" in header
-    assert "base_id" in header
+    assert "zone_id" in header
 
 
 def test_import_clients_creates_records(client, db_session):
-    base = models.BaseStation(code="B1", name="Base 1", location="Centro")
-    db_session.add(base)
+    zone = models.Zone(code="Z1", name="Zona 1", location="Centro")
+    db_session.add(zone)
     db_session.commit()
 
     csv_content = io.StringIO()
     csv_content.write(
-        "client_type,full_name,location,base_id,monthly_fee,paid_months_ahead,debt_months\n"
+        "client_type,full_name,location,zone_id,monthly_fee,paid_months_ahead,debt_months\n"
     )
     csv_content.write(
-        f"residential,Cliente 1,Centro,{base.id},350,0,0\n"
+        f"residential,Cliente 1,Centro,{zone.id},350,0,0\n"
     )
     csv_content.write(
-        f"token,Plaza,Centro,{base.id},0,0,0\n"
+        f"token,Plaza,Centro,{zone.id},0,0,0\n"
     )
     csv_content.seek(0)
 
@@ -56,7 +56,7 @@ def test_import_clients_creates_records(client, db_session):
 
 def test_import_clients_reports_errors(client, db_session):
     # No base stations created on purpose
-    csv_content = "client_type,full_name,location,base_id\nresidential,Cliente Error,Centro,99\n"
+    csv_content = "client_type,full_name,location,zone_id\nresidential,Cliente Error,Centro,99\n"
 
     response = client.post(
         "/clients/import",
