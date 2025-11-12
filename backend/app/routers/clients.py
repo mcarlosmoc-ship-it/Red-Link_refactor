@@ -130,23 +130,12 @@ def create_client(
     db: Session = Depends(get_db),
 ) -> schemas.ClientRead:
     """Create a new client record."""
-
-    return _create_client(client_in, db)
-
-
-@router.post(
-    "/",
-    response_model=schemas.ClientRead,
-    status_code=status.HTTP_201_CREATED,
-    include_in_schema=False,
-)
-def create_client_trailing_slash(
-    client_in: schemas.ClientCreate,
-    db: Session = Depends(get_db),
-) -> schemas.ClientRead:
-    """Compatibility wrapper for trailing slash client creation."""
-
-    return _create_client(client_in, db)
+    try:
+        return ClientService.create_client(db, client_in)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
 
 
 @router.delete("/{client_id}", status_code=status.HTTP_204_NO_CONTENT)
