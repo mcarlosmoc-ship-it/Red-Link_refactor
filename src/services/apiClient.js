@@ -20,7 +20,7 @@ const readDevBackendPort = () => {
   return trimmed || DEFAULT_DEV_BACKEND_PORT
 }
 
-const DEV_SERVER_PORTS = new Set(['5173', '4173'])
+const DEV_SERVER_PORTS = new Set(['5173', '5174', '4173'])
 
 const isRunningOnDevServer = ({ isLocalHost, port }) => {
   if (!isLocalHost) {
