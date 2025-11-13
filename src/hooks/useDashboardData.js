@@ -4,6 +4,14 @@ import { useToast } from './useToast.js'
 
 const DEFAULT_TTL = 60_000
 
+/**
+ * Orquesta la carga de métricas, revendedores y gastos para el dashboard.
+ *
+ * Durante la inicialización global el store ya solicita estos recursos, por lo que
+ * el hook espera a que termine (`isInitializingResources`) antes de lanzar cargas
+ * automáticas. Cuando no hay caché en React Query, delega en su mecanismo de
+ * deduplicación llamando a `load*` sin `force`.
+ */
 export const useDashboardData = ({
   autoLoad = true,
   ttl = DEFAULT_TTL,
@@ -27,6 +35,7 @@ export const useDashboardData = ({
     clearMetricsError,
     clearResellersError,
     clearExpensesError,
+    isInitializingResources,
   } = useBackofficeStore((state) => ({
     metrics: state.metrics,
     resellers: state.resellers,
@@ -44,6 +53,7 @@ export const useDashboardData = ({
     clearMetricsError: () => state.clearResourceError('metrics'),
     clearResellersError: () => state.clearResourceError('resellers'),
     clearExpensesError: () => state.clearResourceError('expenses'),
+    isInitializingResources: state.isInitializingResources,
   }))
 
   const { showToast } = useToast()
@@ -82,22 +92,43 @@ export const useDashboardData = ({
 
   useEffect(() => {
     if (!autoLoad) return
+    if (isInitializingResources) return
     if (resellersStatus?.isLoading) return
     if (resellersStatus?.lastFetchedAt && Date.now() - resellersStatus.lastFetchedAt < ttl) return
 
-    loadResellers({ force: !resellersStatus?.lastFetchedAt }).catch(() => {})
-  }, [autoLoad, ttl, resellersStatus?.isLoading, resellersStatus?.lastFetchedAt, loadResellers])
+    const hasCache = Boolean(resellersStatus?.lastFetchedAt)
+
+    loadResellers(hasCache ? undefined : { force: false }).catch(() => {})
+  }, [
+    autoLoad,
+    ttl,
+    resellersStatus?.isLoading,
+    resellersStatus?.lastFetchedAt,
+    isInitializingResources,
+    loadResellers,
+  ])
 
   useEffect(() => {
     if (!autoLoad) return
+    if (isInitializingResources) return
     if (expensesStatus?.isLoading) return
     if (expensesStatus?.lastFetchedAt && Date.now() - expensesStatus.lastFetchedAt < ttl) return
 
-    loadExpenses({ force: !expensesStatus?.lastFetchedAt }).catch(() => {})
-  }, [autoLoad, ttl, expensesStatus?.isLoading, expensesStatus?.lastFetchedAt, loadExpenses])
+    const hasCache = Boolean(expensesStatus?.lastFetchedAt)
+
+    loadExpenses(hasCache ? undefined : { force: false }).catch(() => {})
+  }, [
+    autoLoad,
+    ttl,
+    expensesStatus?.isLoading,
+    expensesStatus?.lastFetchedAt,
+    isInitializingResources,
+    loadExpenses,
+  ])
 
   useEffect(() => {
     if (!autoLoad) return
+    if (isInitializingResources) return
     if (metricsStatus?.isLoading) return
 
     const matchesPeriod = (metricsPeriodKey ?? null) === (targetPeriod ?? null)
@@ -110,7 +141,8 @@ export const useDashboardData = ({
       (metricsFilters?.searchTerm ?? '') === activeFilters.searchTerm
 
     loadMetrics({
-      force: !metricsStatus?.lastFetchedAt || !matchesPeriod || !matchesFilters,
+      force:
+        Boolean(metricsStatus?.lastFetchedAt) && (!matchesPeriod || !matchesFilters),
       periodKey: targetPeriod,
       statusFilter: activeFilters.statusFilter,
       searchTerm: activeFilters.searchTerm,
@@ -128,6 +160,7 @@ export const useDashboardData = ({
     metricsFilters?.statusFilter,
     metricsFilters?.searchTerm,
     currentPeriod,
+    isInitializingResources,
     loadMetrics,
   ])
 
