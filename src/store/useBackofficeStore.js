@@ -67,6 +67,7 @@ const createInitialState = () => ({
   dashboardClients: [],
   paymentsPeriodKey: null,
   status: createInitialStatus(),
+  isInitializingResources: false,
 })
 
 const updateMetricsState = (set, data, periodKey, filters) => {
@@ -532,24 +533,30 @@ export const useBackofficeStore = create((set, get) => ({
       },
     })
   },
-  initialize: async ({ force = false } = {}) =>
-    runWithStatus({
-      set,
-      get,
-      resource: 'initialize',
-      updateTimestamp: false,
-      action: async () => {
-        await Promise.all([
-          get().loadClients({ force, retries: 1 }),
-          get().loadClientServices({ force, retries: 1 }),
-          get().loadPayments({ force, retries: 1 }),
-          get().loadResellers({ force, retries: 1 }),
-          get().loadExpenses({ force, retries: 1 }),
-          get().loadInventory({ force, retries: 1 }),
-        ])
-        await get().loadMetrics({ force, retries: 1 })
-      },
-    }),
+  initialize: async ({ force = false } = {}) => {
+    set({ isInitializingResources: true })
+    try {
+      return await runWithStatus({
+        set,
+        get,
+        resource: 'initialize',
+        updateTimestamp: false,
+        action: async () => {
+          await Promise.all([
+            get().loadClients({ force, retries: 1 }),
+            get().loadClientServices({ force, retries: 1 }),
+            get().loadPayments({ force, retries: 1 }),
+            get().loadResellers({ force, retries: 1 }),
+            get().loadExpenses({ force, retries: 1 }),
+            get().loadInventory({ force, retries: 1 }),
+          ])
+          await get().loadMetrics({ force, retries: 1 })
+        },
+      })
+    } finally {
+      set({ isInitializingResources: false })
+    }
+  },
   refreshData: async ({ silent = false } = {}) => {
     try {
       await get().initialize({ force: true })

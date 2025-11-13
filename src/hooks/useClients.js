@@ -3,6 +3,14 @@ import { useBackofficeStore } from '../store/useBackofficeStore.js'
 
 const DEFAULT_TTL = 60_000
 
+/**
+ * Gestiona el estado de clientes y coordina la carga automática de datos.
+ *
+ * Al inicializar el backoffice el store ya dispara `loadClients()`, por lo que este
+ * hook observa `isInitializingResources` para evitar solicitudes duplicadas.
+ * Cuando no existe caché (`status.lastFetchedAt` vacío) realiza la primera carga sin
+ * `force` para que React Query pueda deducir llamadas concurrentes al mismo recurso.
+ */
 export const useClients = ({ autoLoad = true, ttl = DEFAULT_TTL } = {}) => {
   const {
     clients,
@@ -16,6 +24,7 @@ export const useClients = ({ autoLoad = true, ttl = DEFAULT_TTL } = {}) => {
     deleteClient,
     importClients,
     clearError,
+    isInitializingResources,
   } = useBackofficeStore((state) => ({
     clients: state.clients,
     status: state.status.clients,
@@ -28,10 +37,14 @@ export const useClients = ({ autoLoad = true, ttl = DEFAULT_TTL } = {}) => {
     deleteClient: state.deleteClient,
     importClients: state.importClients,
     clearError: () => state.clearResourceError('clients'),
+    isInitializingResources: state.isInitializingResources,
   }))
 
   useEffect(() => {
     if (!autoLoad) {
+      return
+    }
+    if (isInitializingResources) {
       return
     }
     if (status?.isLoading || status?.isMutating) {
@@ -41,10 +54,20 @@ export const useClients = ({ autoLoad = true, ttl = DEFAULT_TTL } = {}) => {
       return
     }
 
-    loadClients({ force: !status?.lastFetchedAt }).catch(() => {
+    const hasCache = Boolean(status?.lastFetchedAt)
+
+    loadClients(hasCache ? undefined : { force: false }).catch(() => {
       // el hook de error ya muestra retroalimentación
     })
-  }, [autoLoad, ttl, status?.isLoading, status?.isMutating, status?.lastFetchedAt, loadClients])
+  }, [
+    autoLoad,
+    ttl,
+    status?.isLoading,
+    status?.isMutating,
+    status?.lastFetchedAt,
+    isInitializingResources,
+    loadClients,
+  ])
 
   const reload = useMemo(
     () =>
