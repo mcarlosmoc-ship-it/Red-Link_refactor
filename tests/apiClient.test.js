@@ -39,4 +39,19 @@ describe('buildApiUrl', () => {
 
     expect(url).toBe('http://localhost:8000/clients?status=active&status=vip&sort=name')
   })
+
+  it('supports building query strings from Map instances', () => {
+    const filters = new Map([
+      ['page', 5],
+      ['status', ['active', 'vip']],
+      ['sort', 'name'],
+      ['tags', ['priority', 'new']]
+    ])
+
+    const url = buildApiUrl('/clients', Object.fromEntries(filters))
+
+    expect(url).toBe(
+      'http://localhost:8000/clients?page=5&status=active&status=vip&sort=name&tags=priority&tags=new'
+    )
+  })
 })
