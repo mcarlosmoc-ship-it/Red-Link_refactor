@@ -2029,100 +2029,53 @@ export default function ClientsPage() {
   }
 
   return (
-    <div className={`space-y-8 ${hasSelectedClients ? 'pb-24' : ''}`}>
-      {hasSelectedClients ? (
-        <div className="fixed inset-x-0 bottom-4 z-40 flex justify-center px-4">
-          <div className="w-full max-w-5xl rounded-2xl border border-blue-200 bg-white/95 p-4 shadow-lg backdrop-blur">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div className="space-y-0.5">
-                <p className="text-sm font-semibold text-slate-900">
-                  {selectedClientsCount === 1
-                    ? '1 cliente seleccionado'
-                    : `${selectedClientsCount} clientes seleccionados`}
-                </p>
-                <p className="text-xs text-slate-600">
-                  {isSingleSelection
-                    ? 'Elige una acción para revisar o actualizar los datos del cliente.'
-                    : 'Aplica cambios masivos para sincronizar servicios, estado o base asignada.'}
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  onClick={handleViewSelectedClientInfo}
-                  disabled={!isSingleSelection}
-                >
-                  Ver información
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  onClick={handleEditSelectedClientServices}
-                  disabled={!isSingleSelection}
-                >
-                  Editar servicio
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={handleOpenBulkAssign}
-                  disabled={!isMultiSelection || isProcessingBulkAssign}
-                >
-                  {isProcessingBulkAssign
-                    ? 'Preparando…'
-                    : `Aplicar cambios masivos${isMultiSelection ? ` (${selectedClientsCount})` : ''}`}
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="danger"
-                  onClick={handleDeleteSelectedClient}
-                  disabled={!isSingleSelection || isMutatingClients}
-                >
-                  Eliminar
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  onClick={handleClearSelection}
-                  className="border border-transparent text-slate-600 hover:border-slate-200 hover:bg-slate-100"
-                >
-                  Limpiar selección
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+    <div className="space-y-8">
+      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold text-slate-900">Panel operativo de clientes</h1>
           <p className="text-sm text-slate-600">
             Gestiona tus clientes, consulta su estado y administra los servicios mensuales disponibles.
           </p>
         </div>
-        <div className="inline-flex w-full flex-wrap items-center gap-2 rounded-full border border-slate-200 bg-slate-100 p-1 md:w-auto">
-          {MAIN_TABS.map((tab) => {
-            const isActive = activeMainTab === tab.id
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => handleSelectMainTab(tab.id)}
-                className={`rounded-full px-3.5 py-1.5 text-sm font-semibold transition ${
-                  isActive ? 'bg-white text-slate-900 shadow' : 'text-slate-600 hover:text-slate-900'
-                }`}
-                aria-pressed={isActive}
-              >
-                {tab.label}
-              </button>
-            )
-          })}
+        <div className="flex flex-col gap-2 md:items-end">
+          <div className="inline-flex w-full flex-wrap items-center gap-2 rounded-full border border-slate-200 bg-slate-100 p-1 md:w-auto md:self-end">
+            {MAIN_TABS.map((tab) => {
+              const isActive = activeMainTab === tab.id
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => handleSelectMainTab(tab.id)}
+                  className={`rounded-full px-3.5 py-1.5 text-sm font-semibold transition ${
+                    isActive ? 'bg-white text-slate-900 shadow' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                  aria-pressed={isActive}
+                >
+                  {tab.label}
+                </button>
+              )
+            })}
+          </div>
+          {isClientsTabActive ? (
+            <div className="inline-flex w-full flex-wrap items-center gap-2 rounded-full border border-slate-200 bg-slate-100 p-1 md:w-auto md:self-end">
+              {CLIENTS_SUB_TABS.map((tab) => {
+                const isActive = activeClientsSubTab === tab.id
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => handleSelectClientsSubTab(tab.id)}
+                    className={`rounded-full px-3.5 py-1.5 text-sm font-semibold transition ${
+                      isActive ? 'bg-white text-slate-900 shadow' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                    aria-pressed={isActive}
+                  >
+                    {tab.label}
+                  </button>
+                )
+              })}
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -2166,25 +2119,6 @@ export default function ClientsPage() {
                   Exportar clientes
                 </Button>
               </div>
-            </div>
-
-            <div className="inline-flex w-full flex-wrap items-center gap-2 rounded-full border border-slate-200 bg-slate-100 p-1 md:w-auto">
-              {CLIENTS_SUB_TABS.map((tab) => {
-                const isActive = activeClientsSubTab === tab.id
-                return (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    onClick={() => handleSelectClientsSubTab(tab.id)}
-                    className={`rounded-full px-3.5 py-1.5 text-sm font-semibold transition ${
-                      isActive ? 'bg-white text-slate-900 shadow' : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                    aria-pressed={isActive}
-                  >
-                    {tab.label}
-                  </button>
-                )
-              })}
             </div>
 
         {activeClientsSubTab === 'create' ? (
@@ -2800,6 +2734,71 @@ export default function ClientsPage() {
                 </Button>
               </div>
             </div>
+
+            {hasSelectedClients && activeClientsSubTab === 'list' ? (
+              <div className="flex flex-col gap-3 rounded-md border border-blue-200 bg-blue-50/80 p-4 md:flex-row md:items-center md:justify-between">
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold text-slate-900">
+                    {selectedClientsCount === 1
+                      ? '1 cliente seleccionado'
+                      : `${selectedClientsCount} clientes seleccionados`}
+                  </p>
+                  <p className="text-xs text-slate-600">
+                    {isSingleSelection
+                      ? 'Elige una acción para revisar o actualizar los datos del cliente.'
+                      : 'Aplica cambios masivos para sincronizar servicios, estado o base asignada.'}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={handleViewSelectedClientInfo}
+                    disabled={!isSingleSelection}
+                  >
+                    Ver información
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={handleEditSelectedClientServices}
+                    disabled={!isSingleSelection}
+                  >
+                    Editar servicio
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={handleOpenBulkAssign}
+                    disabled={!isMultiSelection || isProcessingBulkAssign}
+                  >
+                    {isProcessingBulkAssign
+                      ? 'Preparando…'
+                      : `Aplicar cambios masivos${isMultiSelection ? ` (${selectedClientsCount})` : ''}`}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="danger"
+                    onClick={handleDeleteSelectedClient}
+                    disabled={!isSingleSelection || isMutatingClients}
+                  >
+                    Eliminar
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={handleClearSelection}
+                    className="border border-transparent text-slate-600 hover:border-slate-200 hover:bg-slate-100"
+                  >
+                    Limpiar selección
+                  </Button>
+                </div>
+              </div>
+            ) : null}
 
             <div className="space-y-6">
               <section aria-label="Clientes residenciales" className="space-y-3">
