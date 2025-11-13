@@ -33,6 +33,14 @@ const FRACTION_EPSILON = 0.0001
 
 const LOCATIONS = ['Nuevo Amatenango', 'Zapotal', 'Naranjal', 'Belén', 'Lagunita']
 
+const parseNumberOrNull = (value) => {
+  if (value === null || value === undefined || value === '') {
+    return null
+  }
+  const numeric = Number(value)
+  return Number.isFinite(numeric) ? numeric : null
+}
+
 const LOCATION_FILTER_NONE = '__none__'
 
 const MAIN_TABS = [
@@ -1432,15 +1440,14 @@ export default function ClientsPage() {
     return selectedClient?.service ?? 'Sin servicio'
   }, [primaryService, selectedClient?.service])
   const primaryServicePrice = useMemo(() => {
-    if (primaryService?.price) {
-      const parsed = Number(primaryService.price)
-      if (Number.isFinite(parsed) && parsed > 0) {
-        return parsed
-      }
+    const serviceEffectivePrice = parseNumberOrNull(
+      primaryService?.effectivePrice ?? primaryService?.price,
+    )
+    if (serviceEffectivePrice !== null) {
+      return serviceEffectivePrice
     }
-    const parsedClientFee = Number(selectedClient?.monthlyFee)
-    return Number.isFinite(parsedClientFee) ? parsedClientFee : CLIENT_PRICE
-  }, [primaryService?.price, selectedClient?.monthlyFee])
+    return parseNumberOrNull(selectedClient?.monthlyFee)
+  }, [primaryService?.effectivePrice, primaryService?.price, selectedClient?.monthlyFee])
 
   const validateForm = () => {
     const errors = {}
@@ -2942,17 +2949,23 @@ export default function ClientsPage() {
                         const canSuspendPrimaryService =
                           Boolean(primaryServiceForRow) && primaryServiceStatus === 'active'
                         const primaryMonthlyFee = (() => {
-                          const effective = Number(
+                          const effective = parseNumberOrNull(
                             primaryServiceForRow?.effectivePrice ?? primaryServiceForRow?.price,
                           )
-                          if (Number.isFinite(effective) && effective > 0) {
+                          if (effective !== null && effective > 0) {
                             return effective
                           }
-                          const mappedFee = Number(client.monthlyFee)
-                          if (Number.isFinite(mappedFee) && mappedFee > 0) {
+                          const mappedFee = parseNumberOrNull(client.monthlyFee)
+                          if (mappedFee !== null && mappedFee > 0) {
                             return mappedFee
                           }
-                          return 0
+                          if (effective !== null) {
+                            return effective
+                          }
+                          if (mappedFee !== null) {
+                            return mappedFee
+                          }
+                          return null
                         })()
                         const clientServices = Array.isArray(client.services) ? client.services : []
                         const activeServiceNames = clientServices
@@ -3033,14 +3046,16 @@ export default function ClientsPage() {
                               </div>
                             </td>
                             <td className="px-3 py-2 text-slate-600">
-                            {isCourtesyClient ? (
-                              <span className="font-semibold text-emerald-700">
-                                Servicio activo · {peso(0)} (cortesía)
-                              </span>
-                            ) : (
-                              peso(primaryMonthlyFee)
-                            )}
-                          </td>
+                              {isCourtesyClient && clientServices.length > 0 ? (
+                                <span className="font-semibold text-emerald-700">
+                                  Servicio activo · {peso(0)} (cortesía)
+                                </span>
+                              ) : clientServices.length > 0 && primaryMonthlyFee !== null ? (
+                                peso(Math.max(primaryMonthlyFee, 0))
+                              ) : (
+                                '—'
+                              )}
+                            </td>
                             <td className="px-3 py-2 text-slate-600">
                             {client.debtMonths > 0 && !isCourtesyClient ? (
                               <div className="flex flex-col">
@@ -3249,11 +3264,18 @@ export default function ClientsPage() {
                     <p className="text-sm font-semibold text-emerald-700">
                       Servicio activo · {peso(0)} (cortesía)
                     </p>
-                  ) : (
+                  ) : primaryServicePrice !== null ? (
                     <>
                       <p className="text-base font-semibold text-slate-900">{peso(primaryServicePrice)}</p>
                       <p className="text-xs text-slate-500">
                         Adelantado: {formatPeriods(selectedClient.paidMonthsAhead)} periodo(s)
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-base font-semibold text-slate-900">—</p>
+                      <p className="text-xs text-slate-500">
+                        Asigna un servicio para definir la tarifa mensual.
                       </p>
                     </>
                   )}
@@ -3265,16 +3287,16 @@ export default function ClientsPage() {
                   ) : (
                     <>
                       <p className="text-base font-semibold text-slate-900">
-                        {selectedClient.debtMonths > 0
+                        {selectedClient.debtMonths > 0 && primaryServicePrice !== null
                           ? peso(selectedClient.debtMonths * primaryServicePrice)
                           : 'Sin deuda'}
                       </p>
-                      {selectedClient.debtMonths > 0 && (
+                      {selectedClient.debtMonths > 0 && primaryServicePrice !== null ? (
                         <p className="text-xs text-slate-500">
                           {formatPeriods(selectedClient.debtMonths)}{' '}
                           {isApproximatelyOne(selectedClient.debtMonths) ? 'periodo' : 'periodos'} pendientes
                         </p>
-                      )}
+                      ) : null}
                     </>
                   )}
                 </div>

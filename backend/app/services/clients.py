@@ -177,8 +177,6 @@ class ClientService:
 
             if effective_prices:
                 client.monthly_fee = effective_prices[0]
-            elif client.monthly_fee is None:
-                client.monthly_fee = Decimal("0")
 
             db.commit()
         except Exception:
