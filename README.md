@@ -182,8 +182,11 @@ respuesta para configurarlo en el frontend.
 
 ### Inyectar el token en el frontend
 
-El SPA guarda el token JWT en `localStorage` usando la clave
-`red-link.backoffice.accessToken`. Existen dos formas sencillas de establecerlo:
+El SPA intenta guardar el token JWT en `localStorage` con la clave
+`red-link.backoffice.accessToken`; si el navegador sólo expone
+`sessionStorage` (por ejemplo, en contextos con restricciones de privacidad)
+usa ese almacenamiento como alternativa para que las peticiones sigan
+autenticadas durante la sesión. Existen dos formas sencillas de establecerlo:
 
 1. **Variable de entorno**: define `VITE_API_ACCESS_TOKEN` en `.env.local`.
    Durante el arranque el cliente leerá ese valor y lo aplicará a todas las
