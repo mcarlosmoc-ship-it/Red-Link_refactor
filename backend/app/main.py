@@ -1,4 +1,4 @@
-"""Expose the Red-Link backend FastAPI app with clients, payments, resellers, expenses, inventory, and metrics routers."""
+"""Expose the Red-Link backend FastAPI app and enforce local development CORS defaults."""
 
 import logging
 import os
@@ -30,11 +30,13 @@ from .services.payment_reminders import (
     stop_payment_reminder_scheduler,
 )
 
+LOCAL_DEVELOPMENT_ORIGIN = "http://localhost:5174"
+
 DEFAULT_ALLOWED_ORIGINS = {
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "http://0.0.0.0:5173",
-    "http://localhost:5174",
+    LOCAL_DEVELOPMENT_ORIGIN,
     "http://127.0.0.1:5174",
     "http://0.0.0.0:5174",
     "https://localhost:5174",
@@ -84,8 +86,17 @@ def _load_allowed_origins_from_env() -> list[str]:
 def _resolve_allowed_origins() -> list[str]:
     env_origins = _load_allowed_origins_from_env()
     if env_origins:
-        return env_origins
-    return _read_allowed_origins(DEFAULT_ALLOWED_ORIGINS)
+        origins = list(env_origins)
+    else:
+        origins = _read_allowed_origins(DEFAULT_ALLOWED_ORIGINS)
+
+    if LOCAL_DEVELOPMENT_ORIGIN not in origins:
+        # Always include the Vite dev server origin used in local development
+        # scripts so that requests from ``http://localhost:5174`` succeed even
+        # when the environment configuration omits it.
+        origins = _read_allowed_origins([*origins, LOCAL_DEVELOPMENT_ORIGIN])
+
+    return origins
 
 
 app = FastAPI(title="Red-Link Backoffice API")
