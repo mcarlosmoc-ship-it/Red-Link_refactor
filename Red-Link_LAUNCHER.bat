@@ -19,22 +19,22 @@ set "VENV_ACTIVATE=%VENV_DIR%\Scripts\activate.bat"
 set "WARNINGS="
 
 call :banner
-call :log INFO "Ubicacion del proyecto: %PROJECT_DIR%"
+call :log INFO "Ubicación del proyecto: %PROJECT_DIR%"
 
-call :require_command npm "No se encontro npm. Instala Node.js desde https://nodejs.org/ antes de continuar."
+call :require_command npm "No se encontró npm. Instala Node.js desde https://nodejs.org/ antes de continuar."
 if errorlevel 1 goto :fail
 
-call :require_command python "No se encontro Python en el PATH. Instala Python 3.10+ desde https://www.python.org/downloads/ y vuelve a ejecutar este script."
+call :require_command python "No se encontró Python en el PATH. Instala Python 3.10+ desde https://www.python.org/downloads/ y vuelve a ejecutar este script."
 if errorlevel 1 goto :fail
 
-call :require_file "%PROJECT_DIR%\package.json" "No se encontro package.json en el directorio del proyecto. Asegurate de ejecutar el script dentro del repositorio clonado."
+call :require_file "%PROJECT_DIR%\package.json" "No se encontró package.json en el directorio del proyecto. Asegúrate de ejecutar el script dentro del repositorio clonado."
 if errorlevel 1 goto :fail
 
-call :require_file "%BACKEND_DIR%\requirements.txt" "No se encontro backend\\requirements.txt. Verifica que el repositorio este completo."
+call :require_file "%BACKEND_DIR%\requirements.txt" "No se encontró backend\\requirements.txt. Verifica que el repositorio esté completo."
 if errorlevel 1 goto :fail
 
 if not exist "%PROJECT_DIR%\.env.local" (
-    call :log WARN "No se encontro .env.local. Copia .env.example a .env.local y ajusta VITE_API_BASE_URL segun tu backend."
+    call :log WARN "No se encontró .env.local. Copia .env.example a .env.local y ajusta VITE_API_BASE_URL según tu backend."
 )
 
 call :setup_backend
@@ -54,7 +54,7 @@ goto :end
 
 :fail
 echo.
-call :log ERROR "Se detectaron errores que impidieron completar la configuracion automatica. Revisa los mensajes anteriores para mas detalles."
+call :log ERROR "Se detectaron errores que impidieron completar la configuración automática. Revisa los mensajes anteriores para más detalles."
 echo.
 pause
 exit /b 1
@@ -115,12 +115,12 @@ if not exist "%VENV_PYTHON%" (
     )
     call :log SUCCESS "Entorno virtual creado correctamente."
 ) else (
-    call :log INFO "Se encontro entorno virtual existente."
+    call :log INFO "Se encontró entorno virtual existente."
 )
 
 if not exist "%VENV_PIP%" (
     popd >nul
-    call :log ERROR "No se encontro pip dentro del entorno virtual. Intenta eliminar backend\\.venv y vuelve a ejecutar el script."
+    call :log ERROR "No se encontró pip dentro del entorno virtual. Intenta eliminar backend\\.venv y vuelve a ejecutar el script."
     exit /b 1
 )
 
@@ -128,7 +128,7 @@ call :log INFO "Actualizando pip..."
 call "%VENV_PYTHON%" -m pip install --upgrade pip
 if errorlevel 1 (
     popd >nul
-    call :log ERROR "Fallo la actualizacion de pip en el entorno virtual."
+    call :log ERROR "Falló la actualización de pip en el entorno virtual."
     exit /b 1
 )
 
@@ -136,7 +136,7 @@ call :log INFO "Instalando dependencias del backend..."
 call "%VENV_PIP%" install -r requirements.txt
 if errorlevel 1 (
     popd >nul
-    call :log ERROR "Fallo la instalacion de dependencias del backend."
+    call :log ERROR "Falló la instalación de dependencias del backend."
     exit /b 1
 )
 
@@ -160,7 +160,7 @@ if not exist "node_modules" (
     call npm install
     if errorlevel 1 (
         popd >nul
-        call :log ERROR "npm install fallo. Revisa tu conexion a internet o permisos."
+        call :log ERROR "npm install falló. Revisa tu conexión a internet o permisos."
         exit /b 1
     )
 ) else (
@@ -171,12 +171,12 @@ call :log SUCCESS "Frontend listo."
 exit /b 0
 
 :run_checks
-call :log INFO "Ejecutando comprobaciones rapidas (lint y pruebas)..."
+call :log INFO "Ejecutando comprobaciones rápidas (lint y pruebas)..."
 pushd "%PROJECT_DIR%" >nul
 call npm run lint
 if errorlevel 1 (
     set "WARNINGS=1"
-    call :log WARN "npm run lint reporto problemas. Corrige los errores de ESLint antes de subir cambios."
+    call :log WARN "npm run lint reportó problemas. Corrige los errores de ESLint antes de subir cambios."
 ) else (
     call :log SUCCESS "Lint del frontend completado sin errores."
 )
@@ -220,14 +220,14 @@ if errorlevel 1 (
 )
 
 start "" "http://localhost:5173/"
-call :log SUCCESS "Servicios iniciados. Se intento abrir http://localhost:5173/ en tu navegador predeterminado."
+call :log SUCCESS "Servicios iniciados. Se intentó abrir http://localhost:5173/ en tu navegador predeterminado."
 exit /b 0
 
 :summary
 echo.
 call :log INFO "Resumen del asistente:"
 if defined WARNINGS (
-    call :log WARN "Se detectaron advertencias en las comprobaciones. Revisa las ventanas para mas detalles."
+    call :log WARN "Se detectaron advertencias en las comprobaciones. Revisa las ventanas para más detalles."
 ) else (
     call :log SUCCESS "No se detectaron problemas en las comprobaciones automatizadas."
 )
