@@ -144,7 +144,7 @@ def seed_basic_data(db_session: Session) -> dict:
     )
     db_session.add(client_service)
 
-    reseller = models.Reseller(full_name="Revendedor Demo", base=base, location="Centro")
+    reseller = models.Reseller(full_name="Revendedor Demo", base=zone, location="Centro")
     db_session.add(reseller)
 
     settlement = models.ResellerSettlement(
@@ -156,7 +156,7 @@ def seed_basic_data(db_session: Session) -> dict:
     db_session.add(settlement)
 
     expense = models.Expense(
-        base=base,
+        base=zone,
         expense_date=date(2025, 1, 5),
         category="Gasolina",
         description="Traslados",
@@ -164,7 +164,11 @@ def seed_basic_data(db_session: Session) -> dict:
     )
     db_session.add(expense)
 
-    base_cost = models.BaseOperatingCost(base=base, period_key="2025-01", total_cost=Decimal("200"))
+    base_cost = models.BaseOperatingCost(
+        base=zone,
+        period_key="2025-01",
+        total_cost=Decimal("200"),
+    )
     db_session.add(base_cost)
 
     db_session.commit()
