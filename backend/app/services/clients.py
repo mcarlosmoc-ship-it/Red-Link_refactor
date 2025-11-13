@@ -105,9 +105,12 @@ class ClientService:
         client = (
             db.query(models.Client)
             .options(
-                selectinload(models.Client.services)
-                .selectinload(models.ClientService.payments)
-                .selectinload(models.ClientService.service_plan),
+                selectinload(models.Client.services).selectinload(
+                    models.ClientService.payments
+                ),
+                selectinload(models.Client.services).selectinload(
+                    models.ClientService.service_plan
+                ),
                 selectinload(models.Client.payments),
                 selectinload(models.Client.zone),
             )
