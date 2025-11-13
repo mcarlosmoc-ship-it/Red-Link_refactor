@@ -85,6 +85,7 @@ const mapRecentPayment = (payment) => ({
 
 export const mapClient = (client) => {
   const services = Array.isArray(client.services) ? client.services.map(mapClientService) : []
+  const hasServices = services.length > 0
   const internetService = services.find((service) => isInternetLikeService(service.type))
   const activeServices = services.filter((service) => service.status === 'active')
   const paidService = activeServices.find(
@@ -95,18 +96,25 @@ export const mapClient = (client) => {
   )
   const referenceService = paidService ?? courtesyService ?? internetService ?? services[0] ?? null
 
-  const fallbackMonthlyFee = normalizeDecimal(client.monthly_fee, 0)
   const referencePrice = referenceService
-    ? normalizeDecimal(referenceService.effectivePrice ?? referenceService.price, 0)
-    : fallbackMonthlyFee
-  const isCourtesy = referenceService
+    ? parseDecimalOrNull(referenceService.effectivePrice ?? referenceService.price)
+    : null
+  const fallbackMonthlyFee = parseDecimalOrNull(client.monthly_fee)
+  const isCourtesy = referencePrice !== null
     ? referencePrice <= 0
-    : fallbackMonthlyFee <= 0
-  const normalizedMonthlyFee = isCourtesy
-    ? 0
-    : referenceService
-      ? referencePrice
-      : fallbackMonthlyFee
+    : hasServices && fallbackMonthlyFee !== null && fallbackMonthlyFee <= 0
+  const normalizedMonthlyFee = (() => {
+    if (referencePrice !== null) {
+      return isCourtesy ? 0 : referencePrice
+    }
+    if (fallbackMonthlyFee !== null) {
+      if (!hasServices && fallbackMonthlyFee === 0) {
+        return null
+      }
+      return isCourtesy ? 0 : fallbackMonthlyFee
+    }
+    return null
+  })()
   const normalizedDebtMonths = isCourtesy ? 0 : normalizeDecimal(client.debt_months)
   const normalizedAheadMonths = isCourtesy ? 0 : normalizeDecimal(client.paid_months_ahead)
   const normalizedServiceStatus = (() => {
