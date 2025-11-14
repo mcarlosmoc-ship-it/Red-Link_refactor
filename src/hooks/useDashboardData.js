@@ -10,7 +10,9 @@ const DEFAULT_TTL = 60_000
  * Durante la inicialización global el store ya solicita estos recursos, por lo que
  * el hook espera a que termine (`isInitializingResources`) antes de lanzar cargas
  * automáticas. Cuando no hay caché en React Query, delega en su mecanismo de
- * deduplicación llamando a `load*` sin `force`.
+ * deduplicación llamando a `load*` sin `force`. Las recargas dependen del TTL o
+ * de acciones de la UI, por lo que evitar refetches automáticos al volver al foco
+ * o recuperar la conexión mantiene estable la experiencia del dashboard.
  */
 export const useDashboardData = ({
   autoLoad = true,

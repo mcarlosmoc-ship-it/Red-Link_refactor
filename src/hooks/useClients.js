@@ -10,6 +10,8 @@ const DEFAULT_TTL = 60_000
  * hook observa `isInitializingResources` para evitar solicitudes duplicadas.
  * Cuando no existe caché (`status.lastFetchedAt` vacío) realiza la primera carga sin
  * `force` para que React Query pueda deducir llamadas concurrentes al mismo recurso.
+ * Las recargas posteriores dependen del TTL o de acciones explícitas (`reload`,
+ * mutaciones), evitando refetches automáticos al recuperar foco o conexión.
  */
 export const useClients = ({ autoLoad = true, ttl = DEFAULT_TTL } = {}) => {
   const {
