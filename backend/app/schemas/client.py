@@ -38,11 +38,6 @@ class ClientBase(BaseModel):
         ge=1,
         validation_alias=AliasChoices("zone_id", "base_id"),
     )
-    ip_address: Optional[str] = None
-    antenna_ip: Optional[str] = None
-    modem_ip: Optional[str] = None
-    antenna_model: Optional[str] = None
-    modem_model: Optional[str] = None
     monthly_fee: Optional[Decimal] = Field(default=None, ge=0)
     paid_months_ahead: Decimal = Field(default=Decimal("0"), ge=0)
     debt_months: Decimal = Field(default=Decimal("0"), ge=0)
@@ -67,11 +62,6 @@ class ClientUpdate(BaseModel):
         ge=1,
         validation_alias=AliasChoices("zone_id", "base_id"),
     )
-    ip_address: Optional[str] = None
-    antenna_ip: Optional[str] = None
-    modem_ip: Optional[str] = None
-    antenna_model: Optional[str] = None
-    modem_model: Optional[str] = None
     monthly_fee: Optional[Decimal] = Field(default=None, ge=0)
     paid_months_ahead: Optional[Decimal] = Field(default=None, ge=0)
     debt_months: Optional[Decimal] = Field(default=None, ge=0)

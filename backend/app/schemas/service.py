@@ -43,6 +43,22 @@ class ClientServiceBase(BaseModel):
         serialization_alias="zone_id",
     )
     ip_address: Optional[str] = None
+    antenna_ip: Optional[str] = None
+    modem_ip: Optional[str] = None
+    antenna_model: Optional[str] = None
+    modem_model: Optional[str] = None
+    antenna_ip: Optional[str] = None
+    modem_ip: Optional[str] = None
+    antenna_model: Optional[str] = None
+    modem_model: Optional[str] = None
+    antenna_ip: Optional[str] = None
+    modem_ip: Optional[str] = None
+    antenna_model: Optional[str] = None
+    modem_model: Optional[str] = None
+    antenna_ip: Optional[str] = None
+    modem_ip: Optional[str] = None
+    antenna_model: Optional[str] = None
+    modem_model: Optional[str] = None
     custom_price: Optional[Decimal] = Field(default=None, ge=0)
     notes: Optional[str] = None
     service_metadata: Optional[dict[str, Any]] = Field(

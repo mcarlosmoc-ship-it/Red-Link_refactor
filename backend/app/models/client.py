@@ -20,7 +20,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship, synonym
 
 from ..database import Base
-from ..db_types import GUID, INET
+from ..db_types import GUID
 
 
 class ClientType(str, enum.Enum):
@@ -66,11 +66,6 @@ class Client(Base):
         ForeignKey("zones.zone_id", onupdate="CASCADE"),
         nullable=True,
     )
-    ip_address = Column(INET(), nullable=True)
-    antenna_ip = Column(INET(), nullable=True)
-    modem_ip = Column(INET(), nullable=True)
-    antenna_model = Column(String, nullable=True)
-    modem_model = Column(String, nullable=True)
     monthly_fee = Column(Numeric(10, 2), nullable=True)
     paid_months_ahead = Column(Numeric(6, 2), nullable=False, default=0)
     debt_months = Column(Numeric(6, 2), nullable=False, default=0)
@@ -166,24 +161,3 @@ Index("clients_location_idx", Client.location)
 Index("clients_zone_idx", Client.zone_id)
 Index("clients_active_plan_idx", Client.active_client_plan_id)
 Index("clients_zone_status_idx", Client.zone_id, Client.service_status)
-Index(
-    "clients_ip_address_unique_idx",
-    Client.ip_address,
-    unique=True,
-    postgresql_where=Client.ip_address.isnot(None),
-    sqlite_where=Client.ip_address.isnot(None),
-)
-Index(
-    "clients_antenna_ip_unique_idx",
-    Client.antenna_ip,
-    unique=True,
-    postgresql_where=Client.antenna_ip.isnot(None),
-    sqlite_where=Client.antenna_ip.isnot(None),
-)
-Index(
-    "clients_modem_ip_unique_idx",
-    Client.modem_ip,
-    unique=True,
-    postgresql_where=Client.modem_ip.isnot(None),
-    sqlite_where=Client.modem_ip.isnot(None),
-)

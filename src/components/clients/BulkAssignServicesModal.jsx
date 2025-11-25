@@ -109,6 +109,11 @@ export default function BulkAssignServicesModal({
     [activePlans],
   )
 
+  const planRequiresUniqueIp = useMemo(
+    () => Boolean(selectedPlan && (selectedPlan.requiresIp ?? selectedPlan.requires_ip)),
+    [selectedPlan],
+  )
+
   if (!isOpen) {
     return null
   }
@@ -135,6 +140,15 @@ export default function BulkAssignServicesModal({
     const normalizedPlanId = Number(formState.servicePlanId)
     if (!Number.isFinite(normalizedPlanId) || normalizedPlanId <= 0) {
       setErrors({ servicePlanId: 'Selecciona un servicio mensual válido.' })
+      return
+    }
+
+    if (planRequiresUniqueIp) {
+      setErrors((prev) => ({
+        ...prev,
+        form:
+          'Este plan requiere asignar una IP distinta por cliente. Asigna el servicio de forma individual o utiliza la importación masiva con IPs predefinidas.',
+      }))
       return
     }
 
@@ -214,7 +228,7 @@ export default function BulkAssignServicesModal({
         price: nextPrice,
       }
     })
-    setErrors((prev) => ({ ...prev, servicePlanId: undefined, price: undefined }))
+    setErrors((prev) => ({ ...prev, servicePlanId: undefined, price: undefined, form: undefined }))
   }
 
   return (
@@ -261,6 +275,16 @@ export default function BulkAssignServicesModal({
                 </p>
               )}
             </div>
+
+            {planRequiresUniqueIp && selectedPlan ? (
+              <div className="rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+                <p className="font-semibold">No disponible para asignación masiva</p>
+                <p className="mt-1">
+                  Este plan requiere registrar una dirección IP distinta por cliente. Gestiona el servicio desde
+                  la ficha individual de cada cliente o importa un archivo CSV con las IPs asignadas previamente.
+                </p>
+              </div>
+            ) : null}
 
             <label className="grid gap-1 text-xs font-semibold text-slate-700">
               <span>Servicio mensual</span>
@@ -471,12 +495,15 @@ export default function BulkAssignServicesModal({
         </div>
 
         <footer className="flex flex-shrink-0 flex-col gap-3 border-t border-slate-200 px-6 py-4 md:flex-row md:items-center md:justify-end">
+          {errors.form ? (
+            <p className="text-sm font-medium text-red-600 md:mr-auto">{errors.form}</p>
+          ) : null}
           <Button type="button" variant="ghost" onClick={onClose} disabled={isProcessing}>
-              Cancelar
-            </Button>
-            <Button type="submit" disabled={isProcessing || selectedCount === 0}>
-              {isProcessing ? 'Aplicando…' : 'Aplicar cambios'}
-            </Button>
+            Cancelar
+          </Button>
+          <Button type="submit" disabled={isProcessing || selectedCount === 0 || planRequiresUniqueIp}>
+            {isProcessing ? 'Aplicando…' : 'Aplicar cambios'}
+          </Button>
         </footer>
       </form>
     </div>
