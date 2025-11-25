@@ -78,7 +78,9 @@ def db_session() -> Generator[Session, None, None]:
 
 
 @pytest.fixture
-def client(db_session: Session, security_settings: dict) -> Generator[TestClient, None, None]:
+def client(
+    db_session: Session, security_settings: dict, monkeypatch
+) -> Generator[TestClient, None, None]:
     def override_get_db() -> Generator[Session, None, None]:
         try:
             yield db_session
@@ -86,6 +88,7 @@ def client(db_session: Session, security_settings: dict) -> Generator[TestClient
             db_session.expire_all()
 
     app.dependency_overrides[get_db] = override_get_db
+    monkeypatch.setattr("backend.app.main.run_database_migrations", lambda: None)
     with TestClient(app) as test_client:
         otp_code = generate_totp_code(security_settings["otp_secret"])
         response = test_client.post(

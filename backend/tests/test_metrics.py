@@ -21,17 +21,26 @@ def _ensure_base(db_session: Session, base_code: str, name: str, location: str) 
     return base
 
 
-def test_metrics_overview_returns_totals(client, db_session, seed_basic_data):
+def test_metrics_overview_returns_totals(client, db_session, seed_basic_data, monkeypatch):
     client_model = seed_basic_data["client"]
     client_service = seed_basic_data["client_service"]
     period = seed_basic_data["period"]
     period_key = period.period_key
 
+    fixed_date = date(2025, 1, 1)
+
+    class FixedDate(date):
+        @classmethod
+        def today(cls):
+            return fixed_date
+
+    monkeypatch.setattr("backend.app.services.metrics.date", FixedDate)
+
     payment_payload = {
         "client_id": client_model.id,
         "client_service_id": client_service.id,
         "period_key": period_key,
-        "paid_on": date.today().isoformat(),
+        "paid_on": fixed_date.isoformat(),
         "amount": "600.00",
         "months_paid": "2",
         "method": models.PaymentMethod.TRANSFERENCIA.value,
