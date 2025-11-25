@@ -94,6 +94,10 @@ class ClientService(Base):
     )
     base_id = synonym("zone_id")
     ip_address = Column(INET(), nullable=True)
+    antenna_ip = Column(INET(), nullable=True)
+    modem_ip = Column(INET(), nullable=True)
+    antenna_model = Column(String, nullable=True)
+    modem_model = Column(String, nullable=True)
     notes = Column(Text, nullable=True)
     service_metadata = Column(
         "metadata", JSON().with_variant(SQLiteJSON(), "sqlite"), nullable=True
@@ -202,3 +206,24 @@ Index("service_payments_client_idx", ServicePayment.client_id)
 Index("service_payments_service_idx", ServicePayment.client_service_id)
 Index("service_payments_period_idx", ServicePayment.period_key)
 Index("service_payments_paid_on_idx", ServicePayment.paid_on)
+Index(
+    "client_services_ip_unique_idx",
+    ClientService.ip_address,
+    unique=True,
+    postgresql_where=ClientService.ip_address.isnot(None),
+    sqlite_where=ClientService.ip_address.isnot(None),
+)
+Index(
+    "client_services_antenna_ip_unique_idx",
+    ClientService.antenna_ip,
+    unique=True,
+    postgresql_where=ClientService.antenna_ip.isnot(None),
+    sqlite_where=ClientService.antenna_ip.isnot(None),
+)
+Index(
+    "client_services_modem_ip_unique_idx",
+    ClientService.modem_ip,
+    unique=True,
+    postgresql_where=ClientService.modem_ip.isnot(None),
+    sqlite_where=ClientService.modem_ip.isnot(None),
+)

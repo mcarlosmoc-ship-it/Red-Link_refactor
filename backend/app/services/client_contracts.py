@@ -124,14 +124,8 @@ class ClientContractService:
             raise ClientContractError("Este servicio requiere asignar una zona.")
 
         if plan.requires_ip:
-            if not payload.get("ip_address"):
-                inferred_ip = None
-                if existing and existing.ip_address:
-                    inferred_ip = existing.ip_address
-                elif client and client.ip_address:
-                    inferred_ip = client.ip_address
-                if inferred_ip:
-                    payload.setdefault("ip_address", inferred_ip)
+            if not payload.get("ip_address") and existing and existing.ip_address:
+                payload.setdefault("ip_address", existing.ip_address)
             if not payload.get("ip_address"):
                 raise ClientContractError("Este servicio requiere asignar una dirección IP.")
 

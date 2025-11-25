@@ -6,11 +6,6 @@ import { buildApiUrl } from '../../services/apiClient.js'
 const REQUIRED_COLUMNS = ['client_type', 'full_name', 'location', 'base_id']
 const OPTIONAL_COLUMNS = [
   'external_code',
-  'ip_address',
-  'antenna_ip',
-  'modem_ip',
-  'antenna_model',
-  'modem_model',
   'monthly_fee',
   'paid_months_ahead',
   'debt_months',

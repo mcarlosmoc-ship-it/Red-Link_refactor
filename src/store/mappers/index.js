@@ -31,6 +31,10 @@ export const mapClientService = (service) => ({
   nextBillingDate: service.next_billing_date ?? null,
   baseId: service.base_id ?? null,
   ipAddress: service.ip_address ?? null,
+  antennaIp: service.antenna_ip ?? null,
+  modemIp: service.modem_ip ?? null,
+  antennaModel: service.antenna_model ?? null,
+  modemModel: service.modem_model ?? null,
   customPrice: normalizeDecimal(service.custom_price),
   effectivePrice: normalizeDecimal(
     service.effective_price ?? service.effectivePrice ?? service.custom_price,
@@ -144,6 +148,19 @@ export const mapClient = (client) => {
 
   const zoneInfo = client.zone ?? null
 
+  const networkService = internetService ?? referenceService ?? services[0] ?? null
+  const legacyIpAddress = client.ip_address ?? client.ipAddress ?? null
+  const legacyAntennaIp = client.antenna_ip ?? null
+  const legacyModemIp = client.modem_ip ?? null
+  const legacyAntennaModel = client.antenna_model ?? null
+  const legacyModemModel = client.modem_model ?? null
+
+  const resolvedIp = networkService?.ipAddress ?? legacyIpAddress ?? null
+  const resolvedAntennaIp = networkService?.antennaIp ?? legacyAntennaIp ?? null
+  const resolvedModemIp = networkService?.modemIp ?? legacyModemIp ?? null
+  const resolvedAntennaModel = networkService?.antennaModel ?? legacyAntennaModel ?? null
+  const resolvedModemModel = networkService?.modemModel ?? legacyModemModel ?? null
+
   return {
     id: client.id,
     type: client.client_type,
@@ -162,9 +179,11 @@ export const mapClient = (client) => {
           location: zoneInfo.location ?? null,
         }
       : null,
-    ip: client.ip_address,
-    antennaIp: client.antenna_ip,
-    modemIp: client.modem_ip,
+    ip: resolvedIp,
+    antennaIp: resolvedAntennaIp,
+    modemIp: resolvedModemIp,
+    antennaModel: resolvedAntennaModel,
+    modemModel: resolvedModemModel,
     monthlyFee: normalizedMonthlyFee,
     paidMonthsAhead: normalizedAheadMonths,
     debtMonths: normalizedDebtMonths,
@@ -324,11 +343,6 @@ export const serializeClientPayload = (payload) => {
     location: payload.location,
     zone_id: payload.zoneId ?? payload.base ?? null,
     base_id: payload.base ?? payload.zoneId ?? null,
-    ip_address: payload.ip || null,
-    antenna_ip: payload.antennaIp || null,
-    modem_ip: payload.modemIp || null,
-    antenna_model: payload.antennaModel || null,
-    modem_model: payload.modemModel || null,
     monthly_fee: payload.monthlyFee ?? null,
     paid_months_ahead: payload.paidMonthsAhead ?? 0,
     debt_months: payload.debtMonths ?? 0,
@@ -372,6 +386,22 @@ export const serializeClientPayload = (payload) => {
 
           if (service?.ipAddress || service?.ip_address) {
             serviceBody.ip_address = service.ipAddress ?? service.ip_address
+          }
+
+          if (service?.antennaIp || service?.antenna_ip) {
+            serviceBody.antenna_ip = service.antennaIp ?? service.antenna_ip
+          }
+
+          if (service?.modemIp || service?.modem_ip) {
+            serviceBody.modem_ip = service.modemIp ?? service.modem_ip
+          }
+
+          if (service?.antennaModel || service?.antenna_model) {
+            serviceBody.antenna_model = service.antennaModel ?? service.antenna_model
+          }
+
+          if (service?.modemModel || service?.modem_model) {
+            serviceBody.modem_model = service.modemModel ?? service.modem_model
           }
 
           if (service?.customPrice !== undefined && service?.customPrice !== null && service.customPrice !== '') {
@@ -428,6 +458,22 @@ export const serializeClientServicePayload = (payload) => {
     body.ip_address = payload.ipAddress
   }
 
+  if (payload.antennaIp) {
+    body.antenna_ip = payload.antennaIp
+  }
+
+  if (payload.modemIp) {
+    body.modem_ip = payload.modemIp
+  }
+
+  if (payload.antennaModel) {
+    body.antenna_model = payload.antennaModel
+  }
+
+  if (payload.modemModel) {
+    body.modem_model = payload.modemModel
+  }
+
   if (payload.customPrice !== undefined && payload.customPrice !== null) {
     body.custom_price = payload.customPrice
   }
@@ -477,6 +523,22 @@ export const serializeClientServiceBulkPayload = (payload = {}) => {
     body.ip_address = payload.ipAddress
   }
 
+  if (payload.antennaIp) {
+    body.antenna_ip = payload.antennaIp
+  }
+
+  if (payload.modemIp) {
+    body.modem_ip = payload.modemIp
+  }
+
+  if (payload.antennaModel) {
+    body.antenna_model = payload.antennaModel
+  }
+
+  if (payload.modemModel) {
+    body.modem_model = payload.modemModel
+  }
+
   if (payload.customPrice !== undefined && payload.customPrice !== null) {
     body.custom_price = payload.customPrice
   }
@@ -517,6 +579,22 @@ export const serializeClientServiceUpdatePayload = (payload = {}) => {
 
   if (Object.prototype.hasOwnProperty.call(payload, 'ipAddress')) {
     body.ip_address = payload.ipAddress ?? null
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'antennaIp')) {
+    body.antenna_ip = payload.antennaIp ?? null
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'modemIp')) {
+    body.modem_ip = payload.modemIp ?? null
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'antennaModel')) {
+    body.antenna_model = payload.antennaModel ?? null
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'modemModel')) {
+    body.modem_model = payload.modemModel ?? null
   }
 
   if (Object.prototype.hasOwnProperty.call(payload, 'customPrice')) {

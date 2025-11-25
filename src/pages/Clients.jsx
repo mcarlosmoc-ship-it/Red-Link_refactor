@@ -255,6 +255,7 @@ export default function ClientsPage() {
     excludedPlanIds: [],
   })
   const [isProcessingExtraServices, setIsProcessingExtraServices] = useState(false)
+  const [isProcessingSelectionAction, setIsProcessingSelectionAction] = useState(false)
   const activeServicePlans = useMemo(
     () =>
       servicePlans.filter(
@@ -642,19 +643,29 @@ export default function ClientsPage() {
         })
         .join(',')
 
-    const rows = clients.map((client) => [
-      client.type ?? '',
-      client.name ?? '',
-      client.location ?? '',
-      client.base ?? '',
-      client.ip ?? '',
-      client.antennaIp ?? '',
-      client.modemIp ?? '',
-      client.monthlyFee ?? '',
-      client.paidMonthsAhead ?? '',
-      client.debtMonths ?? '',
-      client.service ?? '',
-    ])
+    const rows = clients.map((client) => {
+      const primaryService = getPrimaryService(client)
+      const ipAddress = primaryService?.ipAddress ?? client.ip ?? ''
+      const antennaIp = primaryService?.antennaIp ?? client.antennaIp ?? ''
+      const modemIp = primaryService?.modemIp ?? client.modemIp ?? ''
+      const serviceStatus = primaryService
+        ? formatServiceStatus(primaryService.status)
+        : client.service ?? ''
+
+      return [
+        client.type ?? '',
+        client.name ?? '',
+        client.location ?? '',
+        client.base ?? '',
+        ipAddress,
+        antennaIp,
+        modemIp,
+        client.monthlyFee ?? '',
+        client.paidMonthsAhead ?? '',
+        client.debtMonths ?? '',
+        serviceStatus,
+      ]
+    })
 
     const csvContent = [headers, ...rows].map(serializeRow).join('\r\n')
 
@@ -723,7 +734,17 @@ export default function ClientsPage() {
       const serviceNames = Array.isArray(client.services)
         ? client.services.map((service) => service?.name ?? service?.plan?.name ?? '')
         : []
-      const searchValues = [client.name, client.location, client.zoneId, ...serviceNames]
+      const primaryService = getPrimaryService(client)
+      const networkValues = primaryService
+        ? [primaryService.ipAddress, primaryService.antennaIp, primaryService.modemIp]
+        : [client.ip, client.antennaIp, client.modemIp]
+      const searchValues = [
+        client.name,
+        client.location,
+        client.zoneId,
+        ...serviceNames,
+        ...networkValues,
+      ]
       if (!matchesTerm(searchValues)) return false
 
       if (locationFilter === LOCATION_FILTER_NONE) {
@@ -782,6 +803,22 @@ export default function ClientsPage() {
   const hasSelectedClients = selectedClientsCount > 0
   const isSingleSelection = selectedClientsCount === 1
   const isMultiSelection = selectedClientsCount > 1
+  const canActivateSelection = useMemo(
+    () =>
+      selectedClientsForBulk.some((client) => {
+        const primary = getPrimaryService(client)
+        return primary && primary.status !== 'active' && primary.status !== 'cancelled'
+      }),
+    [selectedClientsForBulk],
+  )
+  const canSuspendSelection = useMemo(
+    () =>
+      selectedClientsForBulk.some((client) => {
+        const primary = getPrimaryService(client)
+        return primary && primary.status === 'active'
+      }),
+    [selectedClientsForBulk],
+  )
 
   const handleOpenBulkAssign = useCallback(() => {
     if (selectedClientsCount === 0) {
@@ -827,22 +864,21 @@ export default function ClientsPage() {
     setSelectedClientId(normalizedId)
   }, [isSingleSelection, selectedClientsForBulk, showToast])
 
-  const handleEditSelectedClientServices = useCallback(() => {
+  const handleManageSelectedClientServices = useCallback(() => {
     if (!isSingleSelection || selectedClientsForBulk.length === 0) {
       showToast({
         type: 'info',
         title: 'Selecciona un cliente',
-        description: 'Elige un solo cliente para editar sus servicios.',
+        description: 'Elige un solo cliente para gestionar sus servicios.',
       })
       return
     }
-    const normalizedId = normalizeId(selectedClientsForBulk[0]?.id)
-    if (!normalizedId) {
-      return
+
+    const [clientToManage] = selectedClientsForBulk
+    if (clientToManage) {
+      handleOpenExtraServicesForClient(clientToManage)
     }
-    setActiveClientDetailTab('services')
-    setSelectedClientId(normalizedId)
-  }, [isSingleSelection, selectedClientsForBulk, showToast])
+  }, [handleOpenExtraServicesForClient, isSingleSelection, selectedClientsForBulk, showToast])
 
   const handleToggleClientDetails = useCallback((clientId) => {
     const normalizedId = normalizeId(clientId)
@@ -1816,6 +1852,25 @@ export default function ClientsPage() {
       })
     })
 
+    if (serviceAssignments.length > 0) {
+      const primaryAssignment = serviceAssignments[0]
+      if (formState.ip?.trim()) {
+        primaryAssignment.ipAddress = formState.ip.trim()
+      }
+      if (formState.antennaIp?.trim()) {
+        primaryAssignment.antennaIp = formState.antennaIp.trim()
+      }
+      if (formState.modemIp?.trim()) {
+        primaryAssignment.modemIp = formState.modemIp.trim()
+      }
+      if (formState.antennaModel) {
+        primaryAssignment.antennaModel = formState.antennaModel
+      }
+      if (formState.modemModel?.trim()) {
+        primaryAssignment.modemModel = formState.modemModel.trim()
+      }
+    }
+
     const resolvePlanPrice = (planId) => {
       const plan = servicePlans.find((item) => String(item.id) === String(planId))
       if (!plan) {
@@ -1851,11 +1906,6 @@ export default function ClientsPage() {
       paidMonthsAhead: 0,
       monthlyFee: normalizedMonthlyFee,
       services: serviceAssignments,
-      ip: formState.ip?.trim() ? formState.ip.trim() : null,
-      antennaIp: formState.antennaIp?.trim() ? formState.antennaIp.trim() : null,
-      modemIp: formState.modemIp?.trim() ? formState.modemIp.trim() : null,
-      antennaModel: formState.antennaModel || null,
-      modemModel: formState.modemModel?.trim() ? formState.modemModel.trim() : null,
       service: serviceAssignments.length > 0 ? 'Activo' : 'Suspendido',
     }
 
@@ -2021,6 +2071,92 @@ export default function ClientsPage() {
       handleDeleteClient(clientToDelete)
     }
   }, [handleDeleteClient, isSingleSelection, selectedClientsForBulk, showToast])
+
+  const handleUpdateSelectionStatusBulk = useCallback(
+    async (nextStatus) => {
+      if (isMutatingClients || isProcessingSelectionAction) {
+        return
+      }
+
+      if (selectedClientsCount === 0) {
+        showToast({
+          type: 'info',
+          title: 'Selecciona clientes',
+          description: 'Elige al menos un cliente para actualizar el estado de sus servicios.',
+        })
+        return
+      }
+
+      const normalizedStatus = nextStatus === 'active' ? 'active' : 'suspended'
+      const actionable = selectedClientsForBulk
+        .map((client) => ({ client, service: getPrimaryService(client) }))
+        .filter(({ service }) => service && service.status !== normalizedStatus && service.status !== 'cancelled')
+
+      if (actionable.length === 0) {
+        showToast({
+          type: 'info',
+          title: 'Sin cambios por aplicar',
+          description: 'Selecciona clientes con servicios disponibles para actualizar.',
+        })
+        return
+      }
+
+      setIsProcessingSelectionAction(true)
+      let successCount = 0
+      let errorCount = 0
+      let lastError = null
+
+      for (const { client, service } of actionable) {
+        try {
+          await updateClientServiceStatus(client.id, service.id, normalizedStatus)
+          successCount += 1
+        } catch (error) {
+          errorCount += 1
+          lastError = error
+        }
+      }
+
+      setIsProcessingSelectionAction(false)
+
+      if (successCount > 0) {
+        const title = normalizedStatus === 'active' ? 'Servicios activados' : 'Servicios suspendidos'
+        const description =
+          successCount === 1
+            ? 'Se actualizó el servicio seleccionado.'
+            : `Se actualizaron ${successCount} servicios seleccionados.`
+        showToast({
+          type: 'success',
+          title,
+          description,
+        })
+      }
+
+      if (errorCount > 0) {
+        showToast({
+          type: 'error',
+          title: 'Algunos servicios no se actualizaron',
+          description: resolveApiErrorMessage(lastError, 'Revisa la selección e intenta nuevamente.'),
+        })
+      }
+    },
+    [
+      getPrimaryService,
+      isMutatingClients,
+      isProcessingSelectionAction,
+      selectedClientsCount,
+      selectedClientsForBulk,
+      showToast,
+      updateClientServiceStatus,
+    ],
+  )
+
+  const handleActivateSelection = useCallback(() => {
+    void handleUpdateSelectionStatusBulk('active')
+  }, [handleUpdateSelectionStatusBulk])
+
+  const handleSuspendSelection = useCallback(() => {
+    void handleUpdateSelectionStatusBulk('suspended')
+  }, [handleUpdateSelectionStatusBulk])
 
   const isClientsTabActive = activeMainTab === 'clients'
 
@@ -2750,23 +2886,44 @@ export default function ClientsPage() {
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Acciones
+                  </span>
                   <Button
                     type="button"
                     size="sm"
                     variant="secondary"
                     onClick={handleViewSelectedClientInfo}
-                    disabled={!isSingleSelection}
+                    disabled={!isSingleSelection || isMutatingClients}
                   >
-                    Ver información
+                    Ver detalles
                   </Button>
                   <Button
                     type="button"
                     size="sm"
                     variant="secondary"
-                    onClick={handleEditSelectedClientServices}
-                    disabled={!isSingleSelection}
+                    onClick={handleManageSelectedClientServices}
+                    disabled={!isSingleSelection || isMutatingClients}
                   >
-                    Editar servicio
+                    Gestionar servicios
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={handleActivateSelection}
+                    disabled={!canActivateSelection || isMutatingClients || isProcessingSelectionAction}
+                  >
+                    Activar
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={handleSuspendSelection}
+                    disabled={!canSuspendSelection || isMutatingClients || isProcessingSelectionAction}
+                  >
+                    Suspender
                   </Button>
                   <Button
                     type="button"
@@ -2776,7 +2933,7 @@ export default function ClientsPage() {
                   >
                     {isProcessingBulkAssign
                       ? 'Preparando…'
-                      : `Aplicar cambios masivos${isMultiSelection ? ` (${selectedClientsCount})` : ''}`}
+                      : `Cambios masivos${isMultiSelection ? ` (${selectedClientsCount})` : ''}`}
                   </Button>
                   <Button
                     type="button"
@@ -2791,8 +2948,8 @@ export default function ClientsPage() {
                     type="button"
                     size="sm"
                     variant="ghost"
+                    className="border border-transparent text-slate-600 hover:border-slate-200"
                     onClick={handleClearSelection}
-                    className="border border-transparent text-slate-600 hover:border-slate-200 hover:bg-slate-100"
                   >
                     Limpiar selección
                   </Button>
@@ -2910,9 +3067,6 @@ export default function ClientsPage() {
                         <th scope="col" className="px-3 py-2 font-medium">
                           Deuda
                         </th>
-                        <th scope="col" className="px-3 py-2 font-medium text-right">
-                          Acciones
-                        </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -3016,9 +3170,14 @@ export default function ClientsPage() {
                               />
                             </td>
                             <td className="px-3 py-2 font-medium text-slate-900">
-                              <div className="flex flex-col">
-                                <span>{client.name}</span>
-                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleToggleClientDetails(clientRowId)}
+                                className="text-left font-semibold text-slate-900 transition hover:text-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40"
+                              >
+                                {client.name}
+                              </button>
+                              <span className="block text-xs text-slate-500">{clientTypeLabel}</span>
                             </td>
                             <td className="px-3 py-2 text-slate-600">{clientTypeLabel}</td>
                             <td className="px-3 py-2 text-slate-600">{client.location || '—'}</td>
@@ -3070,62 +3229,12 @@ export default function ClientsPage() {
                               isCourtesyClient ? 'Sin deuda (cortesía)' : 'Sin deuda'
                             )}
                           </td>
-                          <td className="px-3 py-2 text-right">
-                            <div className="flex flex-wrap justify-end gap-2">
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className={ACTION_BUTTON_CLASSES}
-                                onClick={() => handleOpenExtraServicesForClient(client)}
-                              >
-                                Gestionar servicios
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className={ACTION_BUTTON_CLASSES}
-                                onClick={() => handleToggleClientDetails(clientRowId)}
-                              >
-                                {selectedClientId === clientRowId ? 'Ocultar' : 'Ver detalles'}
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className={ACTION_BUTTON_CLASSES}
-                                onClick={() =>
-                                  handleUpdateServiceStatus(client, primaryServiceForRow, 'active')
-                                }
-                                disabled={isMutatingClients || !canActivatePrimaryService}
-                              >
-                                Activar
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className={ACTION_BUTTON_CLASSES}
-                                onClick={() =>
-                                  handleUpdateServiceStatus(client, primaryServiceForRow, 'suspended')
-                                }
-                                disabled={isMutatingClients || !canSuspendPrimaryService}
-                              >
-                                Suspender
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="danger"
-                                onClick={() => handleDeleteClient(client)}
-                                disabled={isMutatingClients}
-                              >
-                                Eliminar
-                              </Button>
-                            </div>
-                          </td>
                         </tr>
                         )
                       })}
                       {filteredResidentialClients.length === 0 && (
                         <tr>
-                          <td colSpan={9} className="px-3 py-6 text-center text-sm text-slate-500">
+                          <td colSpan={8} className="px-3 py-6 text-center text-sm text-slate-500">
                             No se encontraron clientes residenciales.
                           </td>
                         </tr>
