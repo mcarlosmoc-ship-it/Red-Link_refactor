@@ -90,15 +90,18 @@ Si te encuentras en la raíz del repositorio también puedes ejecutar:
 El script localiza el entorno virtual (si existe), apunta automáticamente a
 `backend/alembic.ini` y aplica cualquier subcomando de Alembic que le pases.
 
-Si vas a crear nuevas versiones, genera un borrador autogenerado con:
+Si vas a crear nuevas versiones, genera un borrador autogenerado desde la raíz
+del repositorio con:
 
 ```bash
-./scripts/new_migration.sh -m "descripcion breve"
+./backend/scripts/new_migration.sh -m "descripcion breve"
 ```
 
 El script se asegura de que el entorno virtual esté listo antes de invocar
-`alembic revision --autogenerate`. Después edita el archivo generado en
-`alembic/versions/` para ajustar defaults o movimientos de datos.
+`alembic revision --autogenerate`. Si ya te encuentras dentro de `backend/`,
+puedes ejecutar la misma instrucción como `./scripts/new_migration.sh`.
+Después edita el archivo generado en `alembic/versions/` para ajustar defaults
+o movimientos de datos.
 
 La primera migración (`20240315_0001_initial_schema.py`) recrea las tablas,
 claves foráneas, índices e inserciones iniciales que aparecen en
