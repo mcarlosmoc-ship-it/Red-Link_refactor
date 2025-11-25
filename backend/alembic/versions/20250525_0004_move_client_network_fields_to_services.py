@@ -1,4 +1,10 @@
-"""Migrate client network fields into client service records."""
+"""Migrate client network fields into client service records.
+
+This migration recreates the ``clients`` table using ``batch_alter_table`` with
+``recreate="always"`` so SQLite can drop legacy columns. Because SQLite
+implements table recreation with temporary tables, dependent views must be
+removed and rebuilt as part of the process to avoid locking errors.
+"""
 
 from typing import Sequence
 
@@ -24,6 +30,11 @@ def _index_exists(inspector: sa.Inspector, table: str, index: str) -> bool:
 def upgrade() -> None:
     bind = op.get_bind()
     inspector = sa.inspect(bind)
+
+    # SQLite cannot recreate the clients table while dependent views are present.
+    # Drop them up front and rebuild after the structural changes.
+    for view in ("base_period_revenue",):
+        op.execute(sa.text(f"DROP VIEW IF EXISTS {view}"))
 
     if bind.dialect.name == "sqlite" and inspector.has_table("_alembic_tmp_clients"):
         op.execute(sa.text("DROP TABLE IF EXISTS _alembic_tmp_clients"))
@@ -131,6 +142,27 @@ def upgrade() -> None:
                 batch_op.drop_column("antenna_model")
             if "modem_model" in client_columns:
                 batch_op.drop_column("modem_model")
+
+    inspector = sa.inspect(bind)
+    if inspector.has_table("clients"):
+        payments_table = (
+            "service_payments" if inspector.has_table("service_payments") else "payments"
+        )
+
+        op.execute(
+            sa.text(
+                f"""
+                CREATE VIEW base_period_revenue AS
+                SELECT
+                    c.zone_id,
+                    p.period_key,
+                    SUM(p.amount) AS total_payments
+                FROM {payments_table} p
+                JOIN clients c ON c.client_id = p.client_id
+                GROUP BY c.zone_id, p.period_key;
+                """
+            )
+        )
 
 
 def downgrade() -> None:
