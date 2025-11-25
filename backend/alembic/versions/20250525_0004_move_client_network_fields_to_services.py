@@ -25,6 +25,9 @@ def upgrade() -> None:
     bind = op.get_bind()
     inspector = sa.inspect(bind)
 
+    if bind.dialect.name == "sqlite" and inspector.has_table("_alembic_tmp_clients"):
+        op.execute(sa.text("DROP TABLE IF EXISTS _alembic_tmp_clients"))
+
     if inspector.has_table("client_services"):
         service_columns = {col["name"] for col in inspector.get_columns("client_services")}
 
