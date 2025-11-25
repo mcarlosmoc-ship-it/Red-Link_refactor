@@ -6,7 +6,8 @@ const findByTestId = (markup, testId) => {
   if (!markup) {
     return null
   }
-  const pattern = new RegExp(`data-testid="${testId}"`, 'i')
+  const escapedTestId = testId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const pattern = new RegExp(`data-testid="${escapedTestId}"`, 'i')
   return pattern.test(markup) ? { testId } : null
 }
 
