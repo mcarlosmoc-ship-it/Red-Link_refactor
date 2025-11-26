@@ -5,6 +5,18 @@ import { computeServiceFormErrors } from '../../utils/serviceFormValidation.js'
 import { isCourtesyPrice, resolveEffectivePriceForFormState } from '../../utils/effectivePrice.js'
 import { formatServicePlanLabel, planRequiresIp } from '../../utils/servicePlanMetadata.js'
 
+const INTERNET_TEMPLATE_COLUMNS = [
+  { key: 'client_id', label: 'ID del cliente' },
+  { key: 'client_name', label: 'Nombre del cliente' },
+  { key: 'ip_address', label: 'IP asignada' },
+  { key: 'base_id', label: 'Base / nodo' },
+  { key: 'network_node', label: 'Nodo (opcional)' },
+  { key: 'router', label: 'Router / OLT (opcional)' },
+  { key: 'vlan', label: 'VLAN (opcional)' },
+  { key: 'billing_day', label: 'Día de cobro (opcional)' },
+  { key: 'notes', label: 'Notas (opcional)' },
+]
+
 const STATUS_OPTIONS = [
   { value: 'active', label: 'Activo' },
   { value: 'suspended', label: 'Suspendido' },
@@ -30,9 +42,12 @@ export default function BulkAssignServicesModal({
   clients = [],
   servicePlans = [],
   onOpenIndividualAssign,
+  onImportInternetAssignments,
 }) {
   const [formState, setFormState] = useState(() => createDefaultFormState())
   const [errors, setErrors] = useState({})
+  const [importFile, setImportFile] = useState(null)
+  const [importError, setImportError] = useState('')
 
   const activePlans = useMemo(
     () => servicePlans.filter((plan) => plan.isActive !== false),
@@ -66,6 +81,8 @@ export default function BulkAssignServicesModal({
     if (!isOpen) {
       setFormState(createDefaultFormState())
       setErrors({})
+      setImportFile(null)
+      setImportError('')
     }
   }, [isOpen])
 
@@ -143,7 +160,7 @@ export default function BulkAssignServicesModal({
       setErrors((prev) => ({
         ...prev,
         form:
-          'Este plan requiere asignar una IP distinta por cliente. Asigna el servicio de forma individual o utiliza la importación masiva con IPs predefinidas.',
+          'Este plan requiere asignar una IP distinta por cliente. Usa la plantilla de Internet o captura el servicio de forma individual.',
       }))
       return
     }
@@ -225,6 +242,121 @@ export default function BulkAssignServicesModal({
       }
     })
     setErrors((prev) => ({ ...prev, servicePlanId: undefined, price: undefined, form: undefined }))
+    setImportError('')
+  }
+
+  const buildTemplateValue = (value) => {
+    if (value === null || value === undefined) {
+      return ''
+    }
+    const stringValue = String(value)
+    if (stringValue.includes(',') || stringValue.includes('"')) {
+      return `"${stringValue.replace(/"/g, '""')}"`
+    }
+    return stringValue
+  }
+
+  const handleDownloadTemplate = () => {
+    if (!planRequiresUniqueIp || selectedCount === 0) {
+      return
+    }
+
+    const header = INTERNET_TEMPLATE_COLUMNS.map((column) => column.key).join(',')
+    const rows = clients.map((client) => {
+      const cells = [
+        buildTemplateValue(client?.id ?? ''),
+        buildTemplateValue(client?.name ?? 'Cliente'),
+        '',
+        buildTemplateValue(client?.base ?? client?.zoneId ?? ''),
+        '',
+        '',
+        '',
+        '',
+        '',
+      ]
+      return cells.join(',')
+    })
+
+    const csvContent = [header, ...rows].join('\n')
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'asignacion_servicios_internet.csv'
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const parseCsvAssignments = async (file) => {
+    const content = await file.text()
+    const lines = content
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+
+    if (lines.length <= 1) {
+      throw new Error('La plantilla no tiene filas con datos.')
+    }
+
+    const headers = lines[0].split(',').map((header) => header.trim().toLowerCase())
+    const indexOf = (key) => headers.indexOf(key)
+
+    const idxClientId = indexOf('client_id')
+    const idxIp = indexOf('ip_address')
+    const idxBase = indexOf('base_id')
+    const idxNode = indexOf('network_node')
+    const idxRouter = indexOf('router')
+    const idxVlan = indexOf('vlan')
+    const idxBillingDay = indexOf('billing_day')
+    const idxNotes = indexOf('notes')
+
+    if (idxClientId === -1 || idxIp === -1) {
+      throw new Error('La plantilla debe incluir las columnas client_id e ip_address.')
+    }
+
+    const assignments = lines.slice(1).map((line) => {
+      const cells = line.split(',').map((cell) => cell.replace(/^"|"$/g, '').replace(/""/g, '"').trim())
+
+      const getValue = (index) => (index >= 0 && index < cells.length ? cells[index] ?? '' : '')
+
+      return {
+        clientId: getValue(idxClientId),
+        ipAddress: getValue(idxIp),
+        baseId: getValue(idxBase),
+        networkNode: getValue(idxNode),
+        router: getValue(idxRouter),
+        vlan: getValue(idxVlan),
+        billingDay: getValue(idxBillingDay),
+        notes: getValue(idxNotes),
+      }
+    })
+
+    return assignments.filter((assignment) => assignment.clientId || assignment.ipAddress)
+  }
+
+  const handleSubmitInternetImport = async () => {
+    if (!planRequiresUniqueIp || !selectedPlan) {
+      return
+    }
+
+    if (!importFile) {
+      setImportError('Selecciona un archivo CSV con las IPs asignadas.')
+      return
+    }
+
+    try {
+      setImportError('')
+      const assignments = await parseCsvAssignments(importFile)
+      if (typeof onImportInternetAssignments === 'function') {
+        await onImportInternetAssignments({
+          plan: selectedPlan,
+          assignments,
+        })
+      }
+    } catch (error) {
+      setImportError(error.message || 'No se pudo procesar la plantilla. Revisa el formato.')
+    }
   }
 
   return (
@@ -274,32 +406,56 @@ export default function BulkAssignServicesModal({
 
             {planRequiresUniqueIp && selectedPlan ? (
               <div className="rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
-                <p className="font-semibold">No disponible para asignación masiva</p>
+                <p className="font-semibold">Asignación con IP por cliente</p>
                 <p className="mt-1">
-                  Este plan requiere registrar una dirección IP distinta por cliente. Gestiona el servicio desde
-                  la ficha individual de cada cliente o importa un archivo CSV con las IPs asignadas previamente.
+                  Este plan requiere registrar una dirección IP distinta por cliente. Descarga la plantilla, agrega las
+                  IPs y base para cada fila seleccionada y vuelve a subir el archivo para crear los servicios uno por uno.
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <Button
                     type="button"
                     size="sm"
                     variant="secondary"
-                    onClick={handleOpenIndividualAssign}
+                    onClick={handleDownloadTemplate}
                     disabled={isProcessing}
                   >
-                    Abrir asignación individual
+                    Descargar plantilla
+                  </Button>
+                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-amber-200 bg-white px-3 py-2 text-xs font-semibold text-amber-900 shadow-sm hover:border-amber-300">
+                    <input
+                      type="file"
+                      accept=".csv"
+                      className="sr-only"
+                      onChange={(event) => {
+                        setImportFile(event.target.files?.[0] ?? null)
+                        setImportError('')
+                      }}
+                      disabled={isProcessing}
+                    />
+                    <span>{importFile ? importFile.name : 'Subir archivo CSV'}</span>
+                  </label>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={handleSubmitInternetImport}
+                    disabled={isProcessing}
+                  >
+                    Importar asignación
                   </Button>
                   <Button
                     type="button"
                     size="sm"
                     variant="ghost"
                     className="border border-amber-300 text-amber-900 hover:border-amber-400"
-                    onClick={onClose}
+                    onClick={handleOpenIndividualAssign}
                     disabled={isProcessing}
                   >
-                    Cerrar
+                    Asignación individual
                   </Button>
                 </div>
+                {importError ? (
+                  <p className="mt-2 text-xs font-medium text-red-700">{importError}</p>
+                ) : null}
               </div>
             ) : null}
 
@@ -486,7 +642,9 @@ export default function BulkAssignServicesModal({
                       ? 'bg-slate-100 text-slate-500'
                       : ''
                   }`}
-                  placeholder={selectedPlan ? `Tarifa sugerida: ${formatPlanLabel(selectedPlan)}` : '300'}
+                  placeholder={
+                    selectedPlan ? `Tarifa sugerida: ${formatServicePlanLabel(selectedPlan)}` : '300'
+                  }
                   disabled={isProcessing || !formState.isCustomPriceEnabled || isCourtesyMode}
                 />
                 {errors.price && (

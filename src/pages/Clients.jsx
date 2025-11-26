@@ -1014,6 +1014,143 @@ export default function ClientsPage() {
     [bulkAssignClientServicesToMultiple, selectedClientsForBulk, showToast],
   )
 
+  const handleImportInternetAssignments = useCallback(
+    async ({ plan, assignments } = {}) => {
+      const planId = plan?.id ?? plan?.plan_id ?? null
+      if (!planId) {
+        showToast({
+          type: 'error',
+          title: 'Selecciona un plan válido',
+          description: 'No se pudo identificar el plan de Internet para la importación.',
+        })
+        return
+      }
+
+      if (!Array.isArray(assignments) || assignments.length === 0) {
+        showToast({
+          type: 'error',
+          title: 'Plantilla vacía',
+          description: 'Agrega al menos una fila con IP y cliente antes de importar.',
+        })
+        return
+      }
+
+      const selectedIds = new Set(
+        selectedClientsForBulk
+          .map((client) => normalizeId(client?.id))
+          .filter(Boolean),
+      )
+
+      const normalizedAssignments = assignments
+        .map((assignment) => ({
+          ...assignment,
+          clientId: normalizeId(assignment.clientId),
+        }))
+        .filter((assignment) => assignment.clientId && selectedIds.has(assignment.clientId))
+
+      if (normalizedAssignments.length === 0) {
+        showToast({
+          type: 'error',
+          title: 'Sin coincidencias',
+          description: 'La plantilla no incluye a los clientes seleccionados.',
+        })
+        return
+      }
+
+      setIsProcessingBulkAssign(true)
+      const failed = []
+      let successCount = 0
+
+      try {
+        for (const assignment of normalizedAssignments) {
+          const client = selectedClientsForBulk.find(
+            (item) => normalizeId(item.id) === assignment.clientId,
+          )
+
+          if (!client) {
+            failed.push({
+              clientId: assignment.clientId,
+              reason: 'Cliente no encontrado.',
+            })
+            continue
+          }
+
+          if (!assignment.ipAddress || !assignment.ipAddress.trim()) {
+            failed.push({ clientName: client.name, reason: 'IP requerida.' })
+            continue
+          }
+
+          const metadata = {}
+          if (assignment.networkNode?.trim()) {
+            metadata.node = assignment.networkNode.trim()
+          }
+          if (assignment.router?.trim()) {
+            metadata.router = assignment.router.trim()
+          }
+          if (assignment.vlan?.trim()) {
+            metadata.vlan = assignment.vlan.trim()
+          }
+
+          const parsedBillingDay = Number(assignment.billingDay)
+          const billingDay =
+            Number.isInteger(parsedBillingDay) && parsedBillingDay >= 1 && parsedBillingDay <= 31
+              ? parsedBillingDay
+              : null
+
+          const parsedBase = Number(assignment.baseId)
+          const baseId = Number.isInteger(parsedBase) && parsedBase > 0 ? parsedBase : client.base
+
+          const payload = {
+            clientId: client.id,
+            servicePlanId: planId,
+            status: 'active',
+            ipAddress: assignment.ipAddress.trim(),
+            baseId: baseId ?? null,
+            billingDay,
+            notes: assignment.notes?.trim() || null,
+          }
+
+          if (Object.keys(metadata).length > 0) {
+            payload.metadata = metadata
+          }
+
+          try {
+            await createClientService(payload)
+            successCount += 1
+          } catch (error) {
+            failed.push({
+              clientName: client.name,
+              reason: resolveApiErrorMessage(error, 'No se pudo crear el servicio.'),
+            })
+          }
+        }
+
+        if (successCount > 0) {
+          showToast({
+            type: 'success',
+            title: 'Servicios creados',
+            description: `Se asignaron ${successCount} servicios de Internet con IP.`,
+          })
+          setIsBulkAssignModalOpen(false)
+        }
+
+        if (failed.length > 0) {
+          const detail = failed
+            .map((item) => `${item.clientName ?? item.clientId ?? 'Cliente'}: ${item.reason}`)
+            .join(' ')
+          showToast({
+            type: 'error',
+            title: 'Asignaciones pendientes',
+            description: detail || 'Revisa la plantilla e inténtalo de nuevo.',
+          })
+        }
+      } finally {
+        setIsProcessingBulkAssign(false)
+      }
+    },
+    [createClientService, selectedClientsForBulk, showToast],
+  )
+
   const handleOpenIndividualAssignment = useCallback(() => {
     if (selectedClientsForBulk.length !== 1) {
       showToast({
@@ -4332,6 +4469,7 @@ export default function ClientsPage() {
         clients={selectedClientsForBulk}
         servicePlans={servicePlans}
         onOpenIndividualAssign={handleOpenIndividualAssignment}
+        onImportInternetAssignments={handleImportInternetAssignments}
       />
       <AssignExtraServicesModal
         isOpen={extraServicesModalState.isOpen}
