@@ -864,6 +864,30 @@ export default function ClientsPage() {
     setSelectedClientId(normalizedId)
   }, [isSingleSelection, selectedClientsForBulk, showToast])
 
+  const handleOpenExtraServicesForClient = useCallback((client) => {
+    if (!client || !client.id) {
+      return
+    }
+
+    const services = Array.isArray(client.services) ? client.services : []
+    const selectedPlanIds = services
+      .map((service) => {
+        const planId =
+          service?.servicePlanId ?? service?.plan?.id ?? service?.service_plan_id ?? null
+        return planId ? String(planId) : null
+      })
+      .filter(Boolean)
+
+    setExtraServicesModalState({
+      isOpen: true,
+      mode: 'edit',
+      client,
+      selectedPlanIds,
+      clientName: client.name ?? 'Cliente',
+      excludedPlanIds: [],
+    })
+  }, [])
+
   const handleManageSelectedClientServices = useCallback(() => {
     if (!isSingleSelection || selectedClientsForBulk.length === 0) {
       showToast({
@@ -999,30 +1023,6 @@ export default function ClientsPage() {
       excludedPlanIds,
     })
   }, [formState.name, pendingExtraServicePlans, primaryPlanId])
-
-  const handleOpenExtraServicesForClient = useCallback((client) => {
-    if (!client || !client.id) {
-      return
-    }
-
-    const services = Array.isArray(client.services) ? client.services : []
-    const selectedPlanIds = services
-      .map((service) => {
-        const planId =
-          service?.servicePlanId ?? service?.plan?.id ?? service?.service_plan_id ?? null
-        return planId ? String(planId) : null
-      })
-      .filter(Boolean)
-
-    setExtraServicesModalState({
-      isOpen: true,
-      mode: 'edit',
-      client,
-      selectedPlanIds,
-      clientName: client.name ?? 'Cliente',
-      excludedPlanIds: [],
-    })
-  }, [])
 
   const handleCloseExtraServicesModal = useCallback(() => {
     if (isProcessingExtraServices) {
