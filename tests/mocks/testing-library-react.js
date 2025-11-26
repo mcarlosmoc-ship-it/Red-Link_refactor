@@ -11,6 +11,14 @@ const findByTestId = (markup, testId) => {
   return pattern.test(markup) ? { testId } : null
 }
 
+const findByText = (markup, text) => {
+  if (!markup || !text) {
+    return null
+  }
+  const normalized = typeof text === 'string' ? text : String(text)
+  return markup.includes(normalized) ? { text: normalized } : null
+}
+
 const createQueries = () => ({
   getByTestId: (testId) => {
     const result = findByTestId(currentMarkup, testId)
@@ -20,6 +28,14 @@ const createQueries = () => ({
     return result
   },
   queryByTestId: (testId) => findByTestId(currentMarkup, testId),
+  getByText: (text) => {
+    const result = findByText(currentMarkup, text)
+    if (!result) {
+      throw new Error(`Unable to find an element by text: ${String(text)}`)
+    }
+    return result
+  },
+  queryByText: (text) => findByText(currentMarkup, text),
 })
 
 let currentQueries = createQueries()
@@ -55,6 +71,12 @@ export const render = (ui) => {
 export const cleanup = () => {
   currentMarkup = ''
   currentQueries = createQueries()
+}
+
+export const fireEvent = {
+  change: () => {},
+  click: () => {},
+  submit: () => {},
 }
 
 export { screen }
