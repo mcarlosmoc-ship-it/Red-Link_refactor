@@ -424,6 +424,7 @@ export default function ClientsPage() {
     () => planRequiresIp(selectedServicePlan),
     [selectedServicePlan],
   )
+  const shouldValidateServiceInfrastructure = shouldShowServiceTechnicalFields
   const isServiceFormCourtesy = useMemo(
     () => isCourtesyPrice(serviceFormEffectivePrice),
     [serviceFormEffectivePrice],
@@ -437,10 +438,11 @@ export default function ClientsPage() {
     selectedServicePlan?.requiresBase ?? selectedServicePlan?.requires_base,
   )
   const servicePlanRequiresBillingDay = planRequiresBillingDay(selectedServicePlan)
+  const shouldValidateInitialInfrastructure = planRequiresIp(selectedInitialPlan)
   const shouldRequireInitialBillingDay =
-    initialPlanRequiresBillingDay && !isInitialCourtesy
+    initialPlanRequiresBillingDay && !isInitialCourtesy && shouldValidateInitialInfrastructure
   const shouldRequireServiceBillingDay =
-    servicePlanRequiresBillingDay && !isServiceFormCourtesy
+    servicePlanRequiresBillingDay && !isServiceFormCourtesy && shouldValidateServiceInfrastructure
   const selectAllCheckboxRef = useRef(null)
   const shouldOpenServiceFormRef = useRef(false)
   const lastScrolledClientRef = useRef(null)
@@ -1012,6 +1014,28 @@ export default function ClientsPage() {
     [bulkAssignClientServicesToMultiple, selectedClientsForBulk, showToast],
   )
 
+  const handleOpenIndividualAssignment = useCallback(() => {
+    if (selectedClientsForBulk.length !== 1) {
+      showToast({
+        type: 'info',
+        title: 'Asignación individual requerida',
+        description: 'Selecciona un solo cliente para registrar los datos técnicos del servicio.',
+      })
+      return
+    }
+
+    const [client] = selectedClientsForBulk
+    const normalizedId = normalizeId(client?.id)
+    if (!normalizedId) {
+      return
+    }
+
+    setSelectedClientIds(new Set([normalizedId]))
+    setSelectedClientId(normalizedId)
+    shouldOpenServiceFormRef.current = true
+    setIsBulkAssignModalOpen(false)
+  }, [selectedClientsForBulk, setSelectedClientId, showToast])
+
   const handleOpenExtraServicesForCreate = useCallback(() => {
     const excludedPlanIds = primaryPlanId ? [primaryPlanId] : []
     setExtraServicesModalState({
@@ -1438,6 +1462,28 @@ export default function ClientsPage() {
       setIsAddingService(false)
     }
   }, [buildDefaultServiceFormState, selectedClientId])
+
+  useEffect(() => {
+    if (shouldShowServiceTechnicalFields) {
+      return
+    }
+
+    setServiceFormErrors((prev) => {
+      if (!prev || typeof prev !== 'object') {
+        return {}
+      }
+      const next = { ...prev }
+      delete next.ipAddress
+      delete next.antennaIp
+      delete next.modemIp
+      delete next.networkNode
+      delete next.router
+      delete next.vlanId
+      delete next.baseId
+      delete next.billingDay
+      return next
+    })
+  }, [shouldShowServiceTechnicalFields])
   const primaryServiceStatusValue = primaryService?.status ?? null
   const canActivateSelectedPrimaryService =
     Boolean(primaryService) &&
@@ -1540,6 +1586,8 @@ export default function ClientsPage() {
         plan: selectedServicePlan,
         effectivePrice: serviceFormEffectivePrice,
         validateTechnicalFields: shouldShowServiceTechnicalFields,
+        validateBillingDay: shouldValidateServiceInfrastructure,
+        validateBase: shouldValidateServiceInfrastructure,
       },
     )
 
@@ -1550,7 +1598,58 @@ export default function ClientsPage() {
     serviceFormState,
     selectedServicePlan,
     shouldShowServiceTechnicalFields,
+    shouldValidateServiceInfrastructure,
   ])
+
+  const runInlineTechnicalValidation = useCallback(
+    (nextState) => {
+      if (!shouldShowServiceTechnicalFields) {
+        return
+      }
+
+      const computedErrors = computeServiceFormErrors(
+        {
+          ...nextState,
+          price: nextState.isCustomPriceEnabled ? nextState.price : '',
+        },
+        {
+          plan: selectedServicePlan,
+          effectivePrice: serviceFormEffectivePrice,
+          validateTechnicalFields: true,
+          validateBillingDay: shouldValidateServiceInfrastructure,
+          validateBase: shouldValidateServiceInfrastructure,
+        },
+      )
+
+      setServiceFormErrors((prev) => {
+        const nextErrors = { ...prev }
+        const fieldsToSync = [
+          'ipAddress',
+          'antennaIp',
+          'modemIp',
+          'networkNode',
+          'router',
+          'vlanId',
+        ]
+
+        fieldsToSync.forEach((field) => {
+          if (computedErrors[field]) {
+            nextErrors[field] = computedErrors[field]
+          } else {
+            delete nextErrors[field]
+          }
+        })
+
+        return nextErrors
+      })
+    },
+    [
+      selectedServicePlan,
+      serviceFormEffectivePrice,
+      shouldShowServiceTechnicalFields,
+      shouldValidateServiceInfrastructure,
+    ],
+  )
 
   const validateInitialService = useCallback(() => {
     if (!initialServiceState.servicePlanId) {
@@ -1567,12 +1666,20 @@ export default function ClientsPage() {
         requireClientId: false,
         plan: selectedInitialPlan,
         effectivePrice: initialServiceEffectivePrice,
+        validateTechnicalFields: shouldValidateInitialInfrastructure,
+        validateBillingDay: shouldValidateInitialInfrastructure,
+        validateBase: shouldValidateInitialInfrastructure,
       },
     )
 
     setInitialServiceErrors(computedErrors)
     return Object.keys(computedErrors).length === 0
-  }, [initialServiceState, selectedInitialPlan, initialServiceEffectivePrice])
+  }, [
+    initialServiceEffectivePrice,
+    initialServiceState,
+    selectedInitialPlan,
+    shouldValidateInitialInfrastructure,
+  ])
 
   const handleSelectInitialPlan = useCallback(
     (planId) => {
@@ -1753,7 +1860,7 @@ export default function ClientsPage() {
       })()
 
       const normalizedBillingDay = (() => {
-        if (isServiceFormCourtesy) {
+        if (isServiceFormCourtesy || !shouldValidateServiceInfrastructure) {
           return null
         }
         if (serviceFormState.billingDay === '' || serviceFormState.billingDay === null) {
@@ -1764,6 +1871,9 @@ export default function ClientsPage() {
       })()
 
       const normalizedBaseId = (() => {
+        if (!shouldValidateServiceInfrastructure) {
+          return null
+        }
         if (serviceFormState.baseId === '' || serviceFormState.baseId === null) {
           return null
         }
@@ -1861,6 +1971,7 @@ export default function ClientsPage() {
       buildDefaultServiceFormState,
       selectedServicePlan,
       isServiceFormCourtesy,
+      shouldValidateServiceInfrastructure,
     ],
   )
 
@@ -3659,87 +3770,124 @@ export default function ClientsPage() {
                       </label>
 
                       <label className="grid gap-1 text-xs font-semibold text-slate-700">
-                        <span>
-                          Día de cobro (1-31){' '}
-                          {shouldRequireServiceBillingDay ? <span className="text-red-500">*</span> : null}
-                        </span>
-                        <input
-                          type="number"
-                          min="1"
-                          max="31"
-                          value={serviceFormState.billingDay}
+                        <span>Estado del servicio</span>
+                        <select
+                          value={serviceFormState.status}
                           onChange={(event) =>
                             setServiceFormState((prev) => ({
                               ...prev,
-                              billingDay: event.target.value,
+                              status: event.target.value,
                             }))
                           }
                           className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
-                            serviceFormErrors.billingDay
-                              ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
-                              : 'border-slate-300'
-                          } ${isServiceFormCourtesy ? 'bg-slate-100 text-slate-500' : ''}`}
-                          placeholder={
-                            isServiceFormCourtesy
-                              ? 'Servicio de cortesía: sin cobro mensual'
-                              : shouldRequireServiceBillingDay
-                                ? 'Obligatorio'
-                                : 'Opcional'
-                          }
-                          disabled={isServiceFormCourtesy}
-                        />
-                        <span className="text-[11px] text-slate-500">
-                          {isServiceFormCourtesy
-                            ? 'Este servicio es de cortesía, no requiere programar cobros.'
-                            : shouldRequireServiceBillingDay
-                              ? 'Este plan requiere registrar un día de cobro.'
-                              : 'Puedes dejarlo en blanco si no aplica un día fijo.'}
-                        </span>
-                        {serviceFormErrors.billingDay && (
-                          <span className="text-xs font-medium text-red-600">
-                            {serviceFormErrors.billingDay}
-                          </span>
-                        )}
-                      </label>
-
-                      <label className="grid gap-1 text-xs font-semibold text-slate-700">
-                        <span>
-                          {servicePlanRequiresBase ? 'Base asignada *' : 'Base (opcional)'}
-                        </span>
-                        <select
-                          value={serviceFormState.baseId}
-                          onChange={(event) =>
-                            setServiceFormState((prev) => ({
-                              ...prev,
-                              baseId: event.target.value,
-                            }))
-                          }
-                          className={`rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
-                            serviceFormErrors.baseId
+                            serviceFormErrors.status
                               ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
                               : 'border-slate-300'
                           }`}
                         >
-                          <option value="">
-                            Usar base del cliente {selectedClient?.base ? `(Base ${selectedClient.base})` : ''}
-                          </option>
-                          <option value="1">Base 1</option>
-                          <option value="2">Base 2</option>
+                          {SERVICE_STATUS_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
                         </select>
-                        {serviceFormErrors.baseId && (
+                        {serviceFormErrors.status && (
                           <span className="text-xs font-medium text-red-600">
-                            {serviceFormErrors.baseId}
+                            {serviceFormErrors.status}
                           </span>
                         )}
                       </label>
 
+                      {shouldValidateServiceInfrastructure ? (
+                        <>
+                          <label className="grid gap-1 text-xs font-semibold text-slate-700">
+                            <span>
+                              Día de cobro (1-31){' '}
+                              {shouldRequireServiceBillingDay ? <span className="text-red-500">*</span> : null}
+                            </span>
+                            <input
+                              type="number"
+                              min="1"
+                              max="31"
+                              value={serviceFormState.billingDay}
+                              onChange={(event) =>
+                                setServiceFormState((prev) => ({
+                                  ...prev,
+                                  billingDay: event.target.value,
+                                }))
+                              }
+                              className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
+                                serviceFormErrors.billingDay
+                                  ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
+                                  : 'border-slate-300'
+                              } ${isServiceFormCourtesy ? 'bg-slate-100 text-slate-500' : ''}`}
+                              placeholder={
+                                isServiceFormCourtesy
+                                  ? 'Servicio de cortesía: sin cobro mensual'
+                                  : shouldRequireServiceBillingDay
+                                    ? 'Obligatorio'
+                                    : 'Opcional'
+                              }
+                              disabled={isServiceFormCourtesy}
+                            />
+                            <span className="text-[11px] text-slate-500">
+                              {isServiceFormCourtesy
+                                ? 'Este servicio es de cortesía, no requiere programar cobros.'
+                                : shouldRequireServiceBillingDay
+                                  ? 'Este plan requiere registrar un día de cobro.'
+                                  : 'Puedes dejarlo en blanco si no aplica un día fijo.'}
+                            </span>
+                            {serviceFormErrors.billingDay && (
+                              <span className="text-xs font-medium text-red-600">
+                                {serviceFormErrors.billingDay}
+                              </span>
+                            )}
+                          </label>
+
+                          <label className="grid gap-1 text-xs font-semibold text-slate-700">
+                            <span>
+                              {servicePlanRequiresBase ? 'Base asignada *' : 'Base (opcional)'}
+                            </span>
+                            <select
+                              value={serviceFormState.baseId}
+                              onChange={(event) =>
+                                setServiceFormState((prev) => ({
+                                  ...prev,
+                                  baseId: event.target.value,
+                                }))
+                              }
+                              className={`rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
+                                serviceFormErrors.baseId
+                                  ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
+                                  : 'border-slate-300'
+                              }`}
+                            >
+                              <option value="">
+                                Usar base del cliente {selectedClient?.base ? `(Base ${selectedClient.base})` : ''}
+                              </option>
+                              <option value="1">Base 1</option>
+                              <option value="2">Base 2</option>
+                            </select>
+                            {serviceFormErrors.baseId && (
+                              <span className="text-xs font-medium text-red-600">
+                                {serviceFormErrors.baseId}
+                              </span>
+                            )}
+                          </label>
+                        </>
+                      ) : null}
+
                       {shouldShowServiceTechnicalFields ? (
                         <div className="md:col-span-2 space-y-3 rounded-md border border-slate-200 bg-white px-3 py-3">
-                          <div className="space-y-1">
-                            <p className="text-xs font-semibold text-slate-800">Datos técnicos del servicio</p>
-                            <p className="text-[11px] text-slate-500">
-                              Completa la información de red para planes de Internet o Hotspot.
-                            </p>
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="space-y-1">
+                              <p className="text-xs font-semibold text-slate-800">Datos técnicos del servicio</p>
+                              <p className="text-[11px] text-slate-500">
+                                Necesitamos la IP y el nodo para ubicar el enlace en la red y evitar conflictos de
+                                direccionamiento.
+                              </p>
+                            </div>
+                            <InfoTooltip text="Las IPs únicas por cliente y el nodo de conexión permiten configurar el servicio y rastrear incidencias en la red." />
                           </div>
 
                           <div className="grid gap-3 md:grid-cols-2">
@@ -3748,10 +3896,14 @@ export default function ClientsPage() {
                               <input
                                 value={serviceFormState.ipAddress}
                                 onChange={(event) =>
-                                  setServiceFormState((prev) => ({
-                                    ...prev,
-                                    ipAddress: event.target.value,
-                                  }))
+                                  setServiceFormState((prev) => {
+                                    const nextState = {
+                                      ...prev,
+                                      ipAddress: event.target.value,
+                                    }
+                                    runInlineTechnicalValidation(nextState)
+                                    return nextState
+                                  })
                                 }
                                 className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
                                   serviceFormErrors.ipAddress
@@ -3772,10 +3924,14 @@ export default function ClientsPage() {
                               <input
                                 value={serviceFormState.antennaIp}
                                 onChange={(event) =>
-                                  setServiceFormState((prev) => ({
-                                    ...prev,
-                                    antennaIp: event.target.value,
-                                  }))
+                                  setServiceFormState((prev) => {
+                                    const nextState = {
+                                      ...prev,
+                                      antennaIp: event.target.value,
+                                    }
+                                    runInlineTechnicalValidation(nextState)
+                                    return nextState
+                                  })
                                 }
                                 className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
                                   serviceFormErrors.antennaIp
@@ -3798,10 +3954,14 @@ export default function ClientsPage() {
                               <input
                                 value={serviceFormState.modemIp}
                                 onChange={(event) =>
-                                  setServiceFormState((prev) => ({
-                                    ...prev,
-                                    modemIp: event.target.value,
-                                  }))
+                                  setServiceFormState((prev) => {
+                                    const nextState = {
+                                      ...prev,
+                                      modemIp: event.target.value,
+                                    }
+                                    runInlineTechnicalValidation(nextState)
+                                    return nextState
+                                  })
                                 }
                                 className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
                                   serviceFormErrors.modemIp
@@ -3822,10 +3982,14 @@ export default function ClientsPage() {
                               <input
                                 value={serviceFormState.networkNode}
                                 onChange={(event) =>
-                                  setServiceFormState((prev) => ({
-                                    ...prev,
-                                    networkNode: event.target.value,
-                                  }))
+                                  setServiceFormState((prev) => {
+                                    const nextState = {
+                                      ...prev,
+                                      networkNode: event.target.value,
+                                    }
+                                    runInlineTechnicalValidation(nextState)
+                                    return nextState
+                                  })
                                 }
                                 className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
                                   serviceFormErrors.networkNode
@@ -3848,10 +4012,14 @@ export default function ClientsPage() {
                               <input
                                 value={serviceFormState.router}
                                 onChange={(event) =>
-                                  setServiceFormState((prev) => ({
-                                    ...prev,
-                                    router: event.target.value,
-                                  }))
+                                  setServiceFormState((prev) => {
+                                    const nextState = {
+                                      ...prev,
+                                      router: event.target.value,
+                                    }
+                                    runInlineTechnicalValidation(nextState)
+                                    return nextState
+                                  })
                                 }
                                 className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
                                   serviceFormErrors.router
@@ -3872,10 +4040,14 @@ export default function ClientsPage() {
                               <input
                                 value={serviceFormState.vlanId}
                                 onChange={(event) =>
-                                  setServiceFormState((prev) => ({
-                                    ...prev,
-                                    vlanId: event.target.value,
-                                  }))
+                                  setServiceFormState((prev) => {
+                                    const nextState = {
+                                      ...prev,
+                                      vlanId: event.target.value,
+                                    }
+                                    runInlineTechnicalValidation(nextState)
+                                    return nextState
+                                  })
                                 }
                                 className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
                                   serviceFormErrors.vlanId
@@ -4159,6 +4331,7 @@ export default function ClientsPage() {
         isProcessing={isProcessingBulkAssign}
         clients={selectedClientsForBulk}
         servicePlans={servicePlans}
+        onOpenIndividualAssign={handleOpenIndividualAssignment}
       />
       <AssignExtraServicesModal
         isOpen={extraServicesModalState.isOpen}
