@@ -54,6 +54,8 @@ export const computeServiceFormErrors = (
     plan = null,
     effectivePrice: overrideEffectivePrice = null,
     validateTechnicalFields = false,
+    validateBillingDay = true,
+    validateBase = true,
   } = {},
 ) => {
   const errors = {}
@@ -99,31 +101,35 @@ export const computeServiceFormErrors = (
   })()
 
   const billingDayValue = state?.billingDay
-  if (billingDayValue !== '' && billingDayValue !== null && billingDayValue !== undefined) {
-    const parsedDay = Number(billingDayValue)
-    if (!Number.isInteger(parsedDay) || parsedDay < 1 || parsedDay > 31) {
-      errors.billingDay = 'Indica un día de cobro entre 1 y 31.'
+  if (validateBillingDay) {
+    if (billingDayValue !== '' && billingDayValue !== null && billingDayValue !== undefined) {
+      const parsedDay = Number(billingDayValue)
+      if (!Number.isInteger(parsedDay) || parsedDay < 1 || parsedDay > 31) {
+        errors.billingDay = 'Indica un día de cobro entre 1 y 31.'
+      }
+    } else if (isBillingDayRequired(plan, resolvedEffectivePrice)) {
+      errors.billingDay = 'Selecciona un día de cobro entre 1 y 31.'
     }
-  } else if (isBillingDayRequired(plan, resolvedEffectivePrice)) {
-    errors.billingDay = 'Selecciona un día de cobro entre 1 y 31.'
   }
 
   const shouldUseClientBase = Boolean(state?.useClientBase ?? state?.shouldUseClientBase)
   const baseIdValue = state?.baseId
-  if (plan?.requiresBase && !shouldUseClientBase) {
-    const parsedBase = Number(baseIdValue)
-    if (!Number.isInteger(parsedBase) || parsedBase < 1) {
-      errors.baseId = 'Selecciona una base válida.'
-    }
-  } else if (
-    !shouldUseClientBase &&
-    baseIdValue !== '' &&
-    baseIdValue !== null &&
-    baseIdValue !== undefined
-  ) {
-    const parsedBase = Number(baseIdValue)
-    if (!Number.isInteger(parsedBase) || parsedBase < 1) {
-      errors.baseId = 'Selecciona una base válida.'
+  if (validateBase) {
+    if (plan?.requiresBase && !shouldUseClientBase) {
+      const parsedBase = Number(baseIdValue)
+      if (!Number.isInteger(parsedBase) || parsedBase < 1) {
+        errors.baseId = 'Selecciona una base válida.'
+      }
+    } else if (
+      !shouldUseClientBase &&
+      baseIdValue !== '' &&
+      baseIdValue !== null &&
+      baseIdValue !== undefined
+    ) {
+      const parsedBase = Number(baseIdValue)
+      if (!Number.isInteger(parsedBase) || parsedBase < 1) {
+        errors.baseId = 'Selecciona una base válida.'
+      }
     }
   }
 

@@ -29,6 +29,7 @@ export default function BulkAssignServicesModal({
   isProcessing = false,
   clients = [],
   servicePlans = [],
+  onOpenIndividualAssign,
 }) {
   const [formState, setFormState] = useState(() => createDefaultFormState())
   const [errors, setErrors] = useState({})
@@ -102,6 +103,12 @@ export default function BulkAssignServicesModal({
     () => planRequiresIp(selectedPlan),
     [selectedPlan],
   )
+
+  const handleOpenIndividualAssign = () => {
+    if (typeof onOpenIndividualAssign === 'function') {
+      onOpenIndividualAssign()
+    }
+  }
 
   if (!isOpen) {
     return null
@@ -272,6 +279,27 @@ export default function BulkAssignServicesModal({
                   Este plan requiere registrar una dirección IP distinta por cliente. Gestiona el servicio desde
                   la ficha individual de cada cliente o importa un archivo CSV con las IPs asignadas previamente.
                 </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={handleOpenIndividualAssign}
+                    disabled={isProcessing}
+                  >
+                    Abrir asignación individual
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="border border-amber-300 text-amber-900 hover:border-amber-400"
+                    onClick={onClose}
+                    disabled={isProcessing}
+                  >
+                    Cerrar
+                  </Button>
+                </div>
               </div>
             ) : null}
 
