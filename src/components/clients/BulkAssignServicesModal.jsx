@@ -3,7 +3,7 @@ import { X } from 'lucide-react'
 import Button from '../ui/Button.jsx'
 import { computeServiceFormErrors } from '../../utils/serviceFormValidation.js'
 import { isCourtesyPrice, resolveEffectivePriceForFormState } from '../../utils/effectivePrice.js'
-import { peso } from '../../utils/formatters.js'
+import { formatServicePlanLabel, planRequiresIp } from '../../utils/servicePlanMetadata.js'
 
 const STATUS_OPTIONS = [
   { value: 'active', label: 'Activo' },
@@ -21,17 +21,6 @@ const createDefaultFormState = () => ({
   price: '',
   notes: '',
 })
-
-const formatPlanLabel = (plan) => {
-  const price = Number(plan?.monthlyPrice ?? plan?.defaultMonthlyFee)
-  if (Number.isFinite(price) && price > 0) {
-    return `${plan.name} · ${peso(price)}`
-  }
-  if (Number.isFinite(price) && price === 0) {
-    return `${plan.name} · ${peso(0)} (cortesía)`
-  }
-  return `${plan?.name ?? 'Servicio'} · Monto variable`
-}
 
 export default function BulkAssignServicesModal({
   isOpen,
@@ -104,13 +93,13 @@ export default function BulkAssignServicesModal({
   const planOptions = useMemo(
     () =>
       activePlans
-        .map((plan) => ({ value: String(plan.id), label: formatPlanLabel(plan) }))
+        .map((plan) => ({ value: String(plan.id), label: formatServicePlanLabel(plan) }))
         .sort((a, b) => a.label.localeCompare(b.label, 'es', { sensitivity: 'base' })),
     [activePlans],
   )
 
   const planRequiresUniqueIp = useMemo(
-    () => Boolean(selectedPlan && (selectedPlan.requiresIp ?? selectedPlan.requires_ip)),
+    () => planRequiresIp(selectedPlan),
     [selectedPlan],
   )
 

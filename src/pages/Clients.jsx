@@ -12,10 +12,17 @@ import { useServicePlans } from '../hooks/useServicePlans.js'
 import { useClientServices } from '../hooks/useClientServices.js'
 import { useToast } from '../hooks/useToast.js'
 import { peso, formatDate, formatPeriodLabel, addMonthsToPeriod } from '../utils/formatters.js'
-import { SERVICE_STATUS_OPTIONS, getServiceTypeLabel, getServiceStatusLabel } from '../constants/serviceTypes.js'
+import { SERVICE_STATUS_OPTIONS, getServiceStatusLabel } from '../constants/serviceTypes.js'
 import { computeServiceFormErrors } from '../utils/serviceFormValidation.js'
 import { isCourtesyPrice, resolveEffectivePriceForFormState } from '../utils/effectivePrice.js'
 import { CLIENT_ANTENNA_MODELS } from '../utils/clientIpConfig.js'
+import {
+  formatServicePlanLabel,
+  isInternetLikeCategory,
+  planRequiresBillingDay,
+  planRequiresIp,
+  resolveServiceCategoryLabel,
+} from '../utils/servicePlanMetadata.js'
 import { useBackofficeRefresh } from '../contexts/BackofficeRefreshContext.jsx'
 import ClientsSkeleton from './ClientsSkeleton.jsx'
 import MonthlyServicesPage from './MonthlyServices.jsx'
@@ -67,27 +74,16 @@ const CLIENT_TYPE_LABELS = {
 
 const formatServiceStatus = (status) => getServiceStatusLabel(status)
 
-const formatServiceType = (type) => getServiceTypeLabel(type)
+const formatServiceType = (type) => resolveServiceCategoryLabel(type)
 
-const formatServicePlanOptionLabel = (plan) => {
-  const fee = Number(plan?.monthlyPrice ?? plan?.defaultMonthlyFee)
-  if (Number.isFinite(fee) && fee > 0) {
-    return `${plan.name} · ${peso(fee)}`
-  }
-  return `${plan.name} · Monto variable`
-}
-
-const isInternetLikeService = (serviceType) => {
-  const normalized = String(serviceType ?? '').toLowerCase()
-  return normalized === 'internet' || normalized === 'hotspot'
-}
+const formatServicePlanOptionLabel = (plan) => formatServicePlanLabel(plan)
 
 const getPrimaryService = (client) => {
   const services = Array.isArray(client?.services) ? client.services : []
   if (services.length === 0) {
     return null
   }
-  return services.find((service) => isInternetLikeService(service.type)) ?? services[0]
+  return services.find((service) => isInternetLikeCategory(service)) ?? services[0]
 }
 
 const normalizeId = (value) => {
@@ -286,9 +282,7 @@ export default function ClientsPage() {
   const servicePlanOptions = useMemo(
     () =>
       activeServicePlans
-        .filter((plan) =>
-          isInternetLikeService(plan?.serviceType ?? plan?.service_type),
-        )
+        .filter((plan) => isInternetLikeCategory(plan))
         .map((plan) => ({
           value: String(plan.id),
           label: formatServicePlanOptionLabel(plan),
@@ -388,7 +382,7 @@ export default function ClientsPage() {
         summary.push({
           id: planId,
           name: selectedInitialPlan.name,
-          category: getServiceTypeLabel(categorySource ?? 'internet'),
+          category: resolveServiceCategoryLabel(categorySource ?? 'internet'),
           isPrimary: true,
         })
       }
@@ -407,7 +401,7 @@ export default function ClientsPage() {
       summary.push({
         id: planId,
         name: plan.name,
-        category: getServiceTypeLabel(categorySource ?? 'other'),
+        category: resolveServiceCategoryLabel(categorySource ?? 'other'),
         isPrimary: false,
       })
     })
@@ -426,51 +420,25 @@ export default function ClientsPage() {
     () => resolveEffectivePriceForFormState(serviceFormState, selectedServicePlan),
     [serviceFormState, selectedServicePlan],
   )
-  const shouldShowServiceTechnicalFields = useMemo(() => {
-    if (!selectedServicePlan) {
-      return false
-    }
-    const category =
-      selectedServicePlan.serviceType ??
-      selectedServicePlan.service_type ??
-      selectedServicePlan.category ?? ''
-    const normalizedCategory = String(category).toLowerCase()
-    const isInternetPlan = normalizedCategory === 'internet' || normalizedCategory === 'hotspot'
-    return Boolean(selectedServicePlan.requiresIp || isInternetPlan)
-  }, [selectedServicePlan])
+  const shouldShowServiceTechnicalFields = useMemo(
+    () => planRequiresIp(selectedServicePlan),
+    [selectedServicePlan],
+  )
   const isServiceFormCourtesy = useMemo(
     () => isCourtesyPrice(serviceFormEffectivePrice),
     [serviceFormEffectivePrice],
   )
-  const planRequiresIp = Boolean(
-    selectedInitialPlan?.requiresIp ?? selectedInitialPlan?.requires_ip,
-  )
   const planRequiresBase = Boolean(
     selectedInitialPlan?.requiresBase ?? selectedInitialPlan?.requires_base,
   )
-  const planRequiresBillingDay = Boolean(
-    planRequiresIp ||
-      planRequiresBase ||
-      (selectedInitialPlan &&
-        isInternetLikeService(
-          selectedInitialPlan.serviceType ?? selectedInitialPlan.service_type,
-        )),
-  )
-  const servicePlanRequiresIp = Boolean(
-    selectedServicePlan?.requiresIp ?? selectedServicePlan?.requires_ip,
-  )
+  const initialPlanRequiresBillingDay = planRequiresBillingDay(selectedInitialPlan)
+  const servicePlanRequiresIp = planRequiresIp(selectedServicePlan)
   const servicePlanRequiresBase = Boolean(
     selectedServicePlan?.requiresBase ?? selectedServicePlan?.requires_base,
   )
-  const servicePlanRequiresBillingDay = Boolean(
-    servicePlanRequiresIp ||
-      servicePlanRequiresBase ||
-      (selectedServicePlan &&
-        isInternetLikeService(
-          selectedServicePlan.serviceType ?? selectedServicePlan.service_type,
-        )),
-  )
-  const shouldRequireInitialBillingDay = planRequiresBillingDay && !isInitialCourtesy
+  const servicePlanRequiresBillingDay = planRequiresBillingDay(selectedServicePlan)
+  const shouldRequireInitialBillingDay =
+    initialPlanRequiresBillingDay && !isInitialCourtesy
   const shouldRequireServiceBillingDay =
     servicePlanRequiresBillingDay && !isServiceFormCourtesy
   const selectAllCheckboxRef = useRef(null)
@@ -1357,7 +1325,7 @@ export default function ClientsPage() {
       if (currentName) {
         return prev
       }
-      return { ...prev, displayName: getServiceTypeLabel(prev.serviceType) }
+      return { ...prev, displayName: resolveServiceCategoryLabel(prev.serviceType) }
     })
   }, [])
 
@@ -1657,7 +1625,8 @@ export default function ClientsPage() {
         servicePlanId: String(foundPlan.id),
         serviceType: resolvedServiceType ?? prev.serviceType,
         displayName:
-          foundPlan.name ?? getServiceTypeLabel(resolvedServiceType ?? prev.serviceType),
+          foundPlan.name ??
+          resolveServiceCategoryLabel(resolvedServiceType ?? prev.serviceType),
         price: defaultPrice,
         isCustomPriceEnabled: false,
         billingDay: prev.billingDay && String(prev.billingDay).trim() ? prev.billingDay : '1',
@@ -2560,7 +2529,7 @@ export default function ClientsPage() {
                         </p>
                         <p>
                           <span className="font-semibold text-slate-700">Tipo de servicio:</span>{' '}
-                          {getServiceTypeLabel(
+                          {resolveServiceCategoryLabel(
                             selectedInitialPlan.serviceType ??
                               selectedInitialPlan.service_type ??
                               'internet',
@@ -2649,7 +2618,7 @@ export default function ClientsPage() {
                                   <div className="space-y-1">
                                     <p className="text-sm font-semibold text-slate-900">{plan.name}</p>
                                     <p className="text-xs text-slate-500">
-                                      {getServiceTypeLabel(planCategory ?? 'other')}
+                                      {resolveServiceCategoryLabel(planCategory ?? 'other')}
                                     </p>
                                     <p className="text-xs text-slate-500">
                                       {planPrice === null || planPrice === undefined
@@ -3598,7 +3567,7 @@ export default function ClientsPage() {
                           </p>
                           <p>
                             <span className="font-semibold text-slate-700">Tipo de servicio:</span>{' '}
-                            {getServiceTypeLabel(
+                            {resolveServiceCategoryLabel(
                               selectedServicePlan.serviceType ??
                                 selectedServicePlan.service_type ??
                                 'internet',
