@@ -177,6 +177,16 @@ const defaultForm = {
   monthlyFee: CLIENT_PRICE,
 }
 
+const resolveServiceMetadataValue = (service, key) => {
+  const metadata = service?.metadata
+  if (!metadata || typeof metadata !== 'object') {
+    return ''
+  }
+
+  const value = metadata[key]
+  return value === null || value === undefined ? '' : String(value)
+}
+
 const ACTION_BUTTON_CLASSES =
   'border border-slate-200 bg-white text-slate-700 hover:border-blue-200 disabled:cursor-not-allowed disabled:opacity-50'
 
@@ -238,6 +248,16 @@ export default function ClientsPage() {
     isCustomPriceEnabled: false,
     billingDay: '1',
     baseId: '',
+    ipAddress: '',
+    antennaIp: '',
+    modemIp: '',
+    antennaModel: '',
+    modemModel: '',
+    networkNode: '',
+    router: '',
+    vlanId: '',
+    wifiSsid: '',
+    wifiPassword: '',
     status: 'active',
     notes: '',
   })
@@ -406,6 +426,18 @@ export default function ClientsPage() {
     () => resolveEffectivePriceForFormState(serviceFormState, selectedServicePlan),
     [serviceFormState, selectedServicePlan],
   )
+  const shouldShowServiceTechnicalFields = useMemo(() => {
+    if (!selectedServicePlan) {
+      return false
+    }
+    const category =
+      selectedServicePlan.serviceType ??
+      selectedServicePlan.service_type ??
+      selectedServicePlan.category ?? ''
+    const normalizedCategory = String(category).toLowerCase()
+    const isInternetPlan = normalizedCategory === 'internet' || normalizedCategory === 'hotspot'
+    return Boolean(selectedServicePlan.requiresIp || isInternetPlan)
+  }, [selectedServicePlan])
   const isServiceFormCourtesy = useMemo(
     () => isCourtesyPrice(serviceFormEffectivePrice),
     [serviceFormEffectivePrice],
@@ -1388,6 +1420,15 @@ export default function ClientsPage() {
   )
   const isClientPanelOpen = Boolean(selectedClientId && selectedClient)
   const isSelectedClientCourtesy = Boolean(selectedClient?.isCourtesyService)
+  const selectedClientServices = useMemo(
+    () => (selectedClient?.services ? [...selectedClient.services] : []),
+    [selectedClient],
+  )
+  const selectedClientRecentPayments = useMemo(
+    () => (selectedClient?.recentPayments ? [...selectedClient.recentPayments] : []),
+    [selectedClient],
+  )
+  const primaryService = useMemo(() => getPrimaryService(selectedClient), [selectedClient])
   const buildDefaultServiceFormState = useCallback(
     () => ({
       servicePlanId: '',
@@ -1395,10 +1436,29 @@ export default function ClientsPage() {
       isCustomPriceEnabled: false,
       billingDay: '1',
       baseId: selectedClient?.base ? String(selectedClient.base) : '',
+      ipAddress: primaryService?.ipAddress ?? '',
+      antennaIp: primaryService?.antennaIp ?? '',
+      modemIp: primaryService?.modemIp ?? '',
+      antennaModel: primaryService?.antennaModel ?? '',
+      modemModel: primaryService?.modemModel ?? '',
+      networkNode: resolveServiceMetadataValue(primaryService, 'node'),
+      router: resolveServiceMetadataValue(primaryService, 'router'),
+      vlanId: resolveServiceMetadataValue(primaryService, 'vlan'),
+      wifiSsid: resolveServiceMetadataValue(primaryService, 'ssid'),
+      wifiPassword: resolveServiceMetadataValue(primaryService, 'wifiPassword'),
       status: 'active',
       notes: '',
     }),
-    [selectedClient?.base],
+    [
+      primaryService,
+      primaryService?.antennaIp,
+      primaryService?.antennaModel,
+      primaryService?.ipAddress,
+      primaryService?.metadata,
+      primaryService?.modemIp,
+      primaryService?.modemModel,
+      selectedClient?.base,
+    ],
   )
   useEffect(() => {
     setServiceFormState(buildDefaultServiceFormState())
@@ -1410,15 +1470,6 @@ export default function ClientsPage() {
       setIsAddingService(false)
     }
   }, [buildDefaultServiceFormState, selectedClientId])
-  const selectedClientServices = useMemo(
-    () => (selectedClient?.services ? [...selectedClient.services] : []),
-    [selectedClient],
-  )
-  const selectedClientRecentPayments = useMemo(
-    () => (selectedClient?.recentPayments ? [...selectedClient.recentPayments] : []),
-    [selectedClient],
-  )
-  const primaryService = useMemo(() => getPrimaryService(selectedClient), [selectedClient])
   const primaryServiceStatusValue = primaryService?.status ?? null
   const canActivateSelectedPrimaryService =
     Boolean(primaryService) &&
@@ -1517,12 +1568,21 @@ export default function ClientsPage() {
         ...serviceFormState,
         price: serviceFormState.isCustomPriceEnabled ? serviceFormState.price : '',
       },
-      { plan: selectedServicePlan, effectivePrice: serviceFormEffectivePrice },
+      {
+        plan: selectedServicePlan,
+        effectivePrice: serviceFormEffectivePrice,
+        validateTechnicalFields: shouldShowServiceTechnicalFields,
+      },
     )
 
     setServiceFormErrors(errors)
     return Object.keys(errors).length === 0
-  }, [serviceFormState, selectedServicePlan, serviceFormEffectivePrice])
+  }, [
+    serviceFormEffectivePrice,
+    serviceFormState,
+    selectedServicePlan,
+    shouldShowServiceTechnicalFields,
+  ])
 
   const validateInitialService = useCallback(() => {
     if (!initialServiceState.servicePlanId) {
@@ -1629,6 +1689,9 @@ export default function ClientsPage() {
       }
 
       const foundPlan = servicePlans.find((plan) => String(plan.id) === String(planId))
+      const existingService = selectedClientServices.find(
+        (service) => String(service.servicePlanId) === String(planId),
+      )
       if (!foundPlan) {
         setServiceFormState((prev) => ({
           ...prev,
@@ -1656,6 +1719,19 @@ export default function ClientsPage() {
             ? String(selectedClient.base)
             : prev.baseId
           : prev.baseId,
+        ipAddress:
+          existingService?.ipAddress ?? existingService?.ip ?? prev.ipAddress ?? '',
+        antennaIp: existingService?.antennaIp ?? prev.antennaIp ?? '',
+        modemIp: existingService?.modemIp ?? prev.modemIp ?? '',
+        antennaModel: existingService?.antennaModel ?? prev.antennaModel ?? '',
+        modemModel: existingService?.modemModel ?? prev.modemModel ?? '',
+        networkNode:
+          resolveServiceMetadataValue(existingService, 'node') || prev.networkNode || '',
+        router: resolveServiceMetadataValue(existingService, 'router') || prev.router || '',
+        vlanId: resolveServiceMetadataValue(existingService, 'vlan') || prev.vlanId || '',
+        wifiSsid: resolveServiceMetadataValue(existingService, 'ssid') || prev.wifiSsid || '',
+        wifiPassword:
+          resolveServiceMetadataValue(existingService, 'wifiPassword') || prev.wifiPassword || '',
       }))
 
       setServiceFormErrors((prev) => {
@@ -1670,7 +1746,7 @@ export default function ClientsPage() {
         return next
       })
     },
-    [selectedClient?.base, servicePlans],
+    [selectedClient?.base, selectedClientServices, servicePlans],
   )
 
   const handleCancelNewService = useCallback(() => {
@@ -1737,7 +1813,7 @@ export default function ClientsPage() {
       }
 
       try {
-        await createClientService({
+        const payload = {
           clientId: selectedClient.id,
           servicePlanId: parsedPlanId,
           customPrice: normalizedPrice,
@@ -1745,7 +1821,50 @@ export default function ClientsPage() {
           baseId: normalizedBaseId,
           status: serviceFormState.status || 'active',
           notes: serviceFormState.notes?.trim() ? serviceFormState.notes.trim() : null,
-        })
+        }
+
+        if (serviceFormState.ipAddress?.trim()) {
+          payload.ipAddress = serviceFormState.ipAddress.trim()
+        }
+
+        if (serviceFormState.antennaIp?.trim()) {
+          payload.antennaIp = serviceFormState.antennaIp.trim()
+        }
+
+        if (serviceFormState.modemIp?.trim()) {
+          payload.modemIp = serviceFormState.modemIp.trim()
+        }
+
+        if (serviceFormState.antennaModel?.trim()) {
+          payload.antennaModel = serviceFormState.antennaModel.trim()
+        }
+
+        if (serviceFormState.modemModel?.trim()) {
+          payload.modemModel = serviceFormState.modemModel.trim()
+        }
+
+        const metadata = {}
+        if (serviceFormState.networkNode?.trim()) {
+          metadata.node = serviceFormState.networkNode.trim()
+        }
+        if (serviceFormState.router?.trim()) {
+          metadata.router = serviceFormState.router.trim()
+        }
+        if (serviceFormState.vlanId?.trim()) {
+          metadata.vlan = serviceFormState.vlanId.trim()
+        }
+        if (serviceFormState.wifiSsid?.trim()) {
+          metadata.ssid = serviceFormState.wifiSsid.trim()
+        }
+        if (serviceFormState.wifiPassword?.trim()) {
+          metadata.wifiPassword = serviceFormState.wifiPassword.trim()
+        }
+
+        if (Object.keys(metadata).length > 0) {
+          payload.metadata = metadata
+        }
+
+        await createClientService(payload)
 
         showToast({
           type: 'success',
@@ -3644,6 +3763,231 @@ export default function ClientsPage() {
                           </span>
                         )}
                       </label>
+
+                      {shouldShowServiceTechnicalFields ? (
+                        <div className="md:col-span-2 space-y-3 rounded-md border border-slate-200 bg-white px-3 py-3">
+                          <div className="space-y-1">
+                            <p className="text-xs font-semibold text-slate-800">Datos técnicos del servicio</p>
+                            <p className="text-[11px] text-slate-500">
+                              Completa la información de red para planes de Internet o Hotspot.
+                            </p>
+                          </div>
+
+                          <div className="grid gap-3 md:grid-cols-2">
+                            <label className="grid gap-1 text-xs font-semibold text-slate-700">
+                              <span>IP asignada *</span>
+                              <input
+                                value={serviceFormState.ipAddress}
+                                onChange={(event) =>
+                                  setServiceFormState((prev) => ({
+                                    ...prev,
+                                    ipAddress: event.target.value,
+                                  }))
+                                }
+                                className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
+                                  serviceFormErrors.ipAddress
+                                    ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
+                                    : 'border-slate-300'
+                                }`}
+                                placeholder="Ej. 192.168.1.10"
+                              />
+                              {serviceFormErrors.ipAddress && (
+                                <span className="text-xs font-medium text-red-600">
+                                  {serviceFormErrors.ipAddress}
+                                </span>
+                              )}
+                            </label>
+
+                            <label className="grid gap-1 text-xs font-semibold text-slate-700">
+                              <span>IP de antena (opcional)</span>
+                              <input
+                                value={serviceFormState.antennaIp}
+                                onChange={(event) =>
+                                  setServiceFormState((prev) => ({
+                                    ...prev,
+                                    antennaIp: event.target.value,
+                                  }))
+                                }
+                                className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
+                                  serviceFormErrors.antennaIp
+                                    ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
+                                    : 'border-slate-300'
+                                }`}
+                                placeholder="IP del equipo exterior"
+                              />
+                              {serviceFormErrors.antennaIp && (
+                                <span className="text-xs font-medium text-red-600">
+                                  {serviceFormErrors.antennaIp}
+                                </span>
+                              )}
+                            </label>
+                          </div>
+
+                          <div className="grid gap-3 md:grid-cols-2">
+                            <label className="grid gap-1 text-xs font-semibold text-slate-700">
+                              <span>IP de módem / router (opcional)</span>
+                              <input
+                                value={serviceFormState.modemIp}
+                                onChange={(event) =>
+                                  setServiceFormState((prev) => ({
+                                    ...prev,
+                                    modemIp: event.target.value,
+                                  }))
+                                }
+                                className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
+                                  serviceFormErrors.modemIp
+                                    ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
+                                    : 'border-slate-300'
+                                }`}
+                                placeholder="IP del módem o router"
+                              />
+                              {serviceFormErrors.modemIp && (
+                                <span className="text-xs font-medium text-red-600">
+                                  {serviceFormErrors.modemIp}
+                                </span>
+                              )}
+                            </label>
+
+                            <label className="grid gap-1 text-xs font-semibold text-slate-700">
+                              <span>Base / nodo *</span>
+                              <input
+                                value={serviceFormState.networkNode}
+                                onChange={(event) =>
+                                  setServiceFormState((prev) => ({
+                                    ...prev,
+                                    networkNode: event.target.value,
+                                  }))
+                                }
+                                className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
+                                  serviceFormErrors.networkNode
+                                    ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
+                                    : 'border-slate-300'
+                                }`}
+                                placeholder="Nodo, base o sector"
+                              />
+                              {serviceFormErrors.networkNode && (
+                                <span className="text-xs font-medium text-red-600">
+                                  {serviceFormErrors.networkNode}
+                                </span>
+                              )}
+                            </label>
+                          </div>
+
+                          <div className="grid gap-3 md:grid-cols-3">
+                            <label className="grid gap-1 text-xs font-semibold text-slate-700">
+                              <span>Router / OLT *</span>
+                              <input
+                                value={serviceFormState.router}
+                                onChange={(event) =>
+                                  setServiceFormState((prev) => ({
+                                    ...prev,
+                                    router: event.target.value,
+                                  }))
+                                }
+                                className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
+                                  serviceFormErrors.router
+                                    ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
+                                    : 'border-slate-300'
+                                }`}
+                                placeholder="Equipo de distribución"
+                              />
+                              {serviceFormErrors.router && (
+                                <span className="text-xs font-medium text-red-600">
+                                  {serviceFormErrors.router}
+                                </span>
+                              )}
+                            </label>
+
+                            <label className="grid gap-1 text-xs font-semibold text-slate-700">
+                              <span>VLAN / segmento *</span>
+                              <input
+                                value={serviceFormState.vlanId}
+                                onChange={(event) =>
+                                  setServiceFormState((prev) => ({
+                                    ...prev,
+                                    vlanId: event.target.value,
+                                  }))
+                                }
+                                className={`rounded-md border px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200 ${
+                                  serviceFormErrors.vlanId
+                                    ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
+                                    : 'border-slate-300'
+                                }`}
+                                placeholder="ID de VLAN"
+                              />
+                              {serviceFormErrors.vlanId && (
+                                <span className="text-xs font-medium text-red-600">
+                                  {serviceFormErrors.vlanId}
+                                </span>
+                              )}
+                            </label>
+
+                            <label className="grid gap-1 text-xs font-semibold text-slate-700">
+                              <span>SSID (opcional)</span>
+                              <input
+                                value={serviceFormState.wifiSsid}
+                                onChange={(event) =>
+                                  setServiceFormState((prev) => ({
+                                    ...prev,
+                                    wifiSsid: event.target.value,
+                                  }))
+                                }
+                                className="rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200"
+                                placeholder="Nombre de red"
+                              />
+                            </label>
+                          </div>
+
+                          <div className="grid gap-3 md:grid-cols-2">
+                            <label className="grid gap-1 text-xs font-semibold text-slate-700">
+                              <span>Modelo de antena (opcional)</span>
+                              <input
+                                value={serviceFormState.antennaModel}
+                                onChange={(event) =>
+                                  setServiceFormState((prev) => ({
+                                    ...prev,
+                                    antennaModel: event.target.value,
+                                  }))
+                                }
+                                className="rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200"
+                                placeholder="Modelo o referencia"
+                              />
+                            </label>
+
+                            <label className="grid gap-1 text-xs font-semibold text-slate-700">
+                              <span>Modelo de módem (opcional)</span>
+                              <input
+                                value={serviceFormState.modemModel}
+                                onChange={(event) =>
+                                  setServiceFormState((prev) => ({
+                                    ...prev,
+                                    modemModel: event.target.value,
+                                  }))
+                                }
+                                className="rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200"
+                                placeholder="Marca / modelo"
+                              />
+                            </label>
+                          </div>
+
+                          <div className="grid gap-3 md:grid-cols-2">
+                            <label className="grid gap-1 text-xs font-semibold text-slate-700">
+                              <span>Contraseña WiFi (opcional)</span>
+                              <input
+                                value={serviceFormState.wifiPassword}
+                                onChange={(event) =>
+                                  setServiceFormState((prev) => ({
+                                    ...prev,
+                                    wifiPassword: event.target.value,
+                                  }))
+                                }
+                                className="rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200"
+                                placeholder="Clave de acceso"
+                              />
+                            </label>
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
 
                     <label className="grid gap-1 text-xs font-semibold text-slate-700">
