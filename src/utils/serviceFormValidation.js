@@ -1,17 +1,10 @@
 import { SERVICE_STATUS_OPTIONS } from '../constants/serviceTypes.js'
+import { planRequiresBillingDay, planRequiresIp } from './servicePlanMetadata.js'
 
 const SERVICE_STATUS_VALUES = new Set(SERVICE_STATUS_OPTIONS.map((option) => option.value))
 
 const isBillingDayRequired = (plan, effectivePrice) => {
-  if (!plan) {
-    return false
-  }
-  const category = plan.serviceType ?? plan.category ?? null
-  const requiresSchedule = Boolean(
-    plan.requiresIp || plan.requiresBase || category === 'internet' || category === 'hotspot',
-  )
-
-  if (!requiresSchedule) {
+  if (!planRequiresBillingDay(plan)) {
     return false
   }
 
@@ -27,10 +20,7 @@ const isBillingDayRequired = (plan, effectivePrice) => {
       }
     }
 
-    if (
-      plan?.defaultMonthlyFee !== undefined &&
-      plan?.defaultMonthlyFee !== null
-    ) {
+    if (plan?.defaultMonthlyFee !== undefined && plan?.defaultMonthlyFee !== null) {
       const fallbackPrice = Number(plan.defaultMonthlyFee)
       if (Number.isFinite(fallbackPrice)) {
         return fallbackPrice > 0
@@ -46,15 +36,6 @@ const isBillingDayRequired = (plan, effectivePrice) => {
   }
 
   return false
-}
-
-const isInternetPlanCategory = (plan) => {
-  const category = plan?.serviceType ?? plan?.category ?? plan?.service_type ?? ''
-  if (!category) {
-    return false
-  }
-  const normalized = String(category).toLowerCase()
-  return normalized === 'internet' || normalized === 'hotspot'
 }
 
 const resolveMetadataValue = (state, key) => {
@@ -170,8 +151,7 @@ export const computeServiceFormErrors = (
     }
   }
 
-  const shouldValidateTechnicalFields =
-    validateTechnicalFields && (isInternetPlanCategory(plan) || plan?.requiresIp)
+  const shouldValidateTechnicalFields = validateTechnicalFields && planRequiresIp(plan)
 
   if (shouldValidateTechnicalFields) {
     const ipAddress = state?.ipAddress ?? state?.ip ?? ''
