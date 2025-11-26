@@ -48,9 +48,32 @@ const isBillingDayRequired = (plan, effectivePrice) => {
   return false
 }
 
+const isInternetPlanCategory = (plan) => {
+  const category = plan?.serviceType ?? plan?.category ?? plan?.service_type ?? ''
+  if (!category) {
+    return false
+  }
+  const normalized = String(category).toLowerCase()
+  return normalized === 'internet' || normalized === 'hotspot'
+}
+
+const resolveMetadataValue = (state, key) => {
+  const metadata = state?.metadata ?? state?.serviceMetadata
+  if (!metadata || typeof metadata !== 'object') {
+    return ''
+  }
+  const value = metadata[key]
+  return value === null || value === undefined ? '' : String(value)
+}
+
 export const computeServiceFormErrors = (
   state,
-  { requireClientId = false, plan = null, effectivePrice: overrideEffectivePrice = null } = {},
+  {
+    requireClientId = false,
+    plan = null,
+    effectivePrice: overrideEffectivePrice = null,
+    validateTechnicalFields = false,
+  } = {},
 ) => {
   const errors = {}
 
@@ -144,6 +167,39 @@ export const computeServiceFormErrors = (
     const clientId = state?.clientId
     if (!clientId) {
       errors.clientId = 'Selecciona un cliente.'
+    }
+  }
+
+  const shouldValidateTechnicalFields =
+    validateTechnicalFields && (isInternetPlanCategory(plan) || plan?.requiresIp)
+
+  if (shouldValidateTechnicalFields) {
+    const ipAddress = state?.ipAddress ?? state?.ip ?? ''
+    const antennaIp = state?.antennaIp ?? ''
+    const modemIp = state?.modemIp ?? ''
+    const networkNode = state?.networkNode ?? resolveMetadataValue(state, 'node')
+    const router = state?.router ?? resolveMetadataValue(state, 'router')
+    const vlanId = state?.vlanId ?? resolveMetadataValue(state, 'vlan')
+
+    if (!String(ipAddress).trim()) {
+      errors.ipAddress = 'Asigna una IP disponible para este servicio.'
+    }
+
+    if (!String(networkNode ?? '').trim()) {
+      errors.networkNode = 'Indica el nodo o base donde se conecta el servicio.'
+    }
+
+    if (!String(router ?? '').trim()) {
+      errors.router = 'Define el router o equipo asociado al servicio.'
+    }
+
+    if (!String(vlanId ?? '').trim()) {
+      errors.vlanId = 'Especifica la VLAN o segmento asignado.'
+    }
+
+    if (antennaIp && modemIp && String(antennaIp).trim() === String(modemIp).trim()) {
+      errors.antennaIp = 'La IP de antena y del módem deben ser distintas.'
+      errors.modemIp = 'La IP de antena y del módem deben ser distintas.'
     }
   }
 
