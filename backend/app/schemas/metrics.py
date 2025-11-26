@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from decimal import Decimal
 from typing import Dict, List, Mapping
 
@@ -117,3 +118,13 @@ class BaseCostUpdateResponse(BaseModel):
 
     period_key: str
     costs: dict[str, Decimal] = Field(default_factory=dict)
+
+
+class SchedulerJobHealth(BaseModel):
+    enabled: bool
+    last_tick: datetime | None = None
+    recent_errors: List[str] = Field(default_factory=list)
+
+
+class SchedulerHealthResponse(BaseModel):
+    jobs: Dict[str, SchedulerJobHealth] = Field(default_factory=dict)

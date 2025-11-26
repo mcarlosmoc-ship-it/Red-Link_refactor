@@ -13,6 +13,7 @@ from typing import Optional
 from sqlalchemy.engine import make_url
 
 from ..database import SQLALCHEMY_DATABASE_URL
+from .scheduler_monitor import JOB_BACKUPS, SchedulerMonitor
 
 LOGGER = logging.getLogger(__name__)
 
@@ -95,6 +96,8 @@ def _backup_worker(interval: timedelta) -> None:
             perform_backup()
         except Exception as exc:  # pragma: no cover - defensive logging
             LOGGER.exception("Automatic backup failed: %s", exc)
+            SchedulerMonitor.record_error(JOB_BACKUPS, str(exc))
+        SchedulerMonitor.record_tick(JOB_BACKUPS)
         _backup_stop.wait(_seconds_until_next_backup(interval))
 
 
@@ -109,6 +112,8 @@ def start_backup_scheduler() -> None:
         _resolve_backup_directory()
     except RuntimeError as exc:
         LOGGER.warning("Automatic backups disabled: %s", exc)
+        SchedulerMonitor.set_job_enabled(JOB_BACKUPS, False)
+        SchedulerMonitor.record_error(JOB_BACKUPS, str(exc))
         return
 
     _backup_stop.clear()
