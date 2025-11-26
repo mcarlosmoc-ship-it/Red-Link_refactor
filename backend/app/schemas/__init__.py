@@ -54,6 +54,8 @@ from .metrics import (
     DashboardMetricsSummary,
     MetricsOverview,
     MetricsResponse,
+    SchedulerHealthResponse,
+    SchedulerJobHealth,
     StatusFilter,
 )
 from .payment import (
@@ -162,6 +164,8 @@ __all__ = [
     "MetricsOverview",
     "CommunityMetrics",
     "MetricsResponse",
+    "SchedulerJobHealth",
+    "SchedulerHealthResponse",
     "StatusFilter",
     "DashboardClient",
     "DashboardMetricsSummary",

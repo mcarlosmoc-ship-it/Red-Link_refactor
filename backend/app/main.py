@@ -3,7 +3,7 @@
 import logging
 import os
 import re
-from typing import Iterable
+from typing import Callable, Iterable
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -28,6 +28,12 @@ from .services.backups import start_backup_scheduler, stop_backup_scheduler
 from .services.payment_reminders import (
     start_payment_reminder_scheduler,
     stop_payment_reminder_scheduler,
+)
+from .services.scheduler_monitor import (
+    JOB_BACKUPS,
+    JOB_OVERDUE_MONITOR,
+    JOB_PAYMENT_REMINDERS,
+    SchedulerMonitor,
 )
 
 LOCAL_DEVELOPMENT_ORIGIN = "http://localhost:5174"
@@ -99,6 +105,22 @@ def _resolve_allowed_origins() -> list[str]:
     return origins
 
 
+def _read_bool_env(name: str, default: bool = True) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _maybe_start_job(env_flag: str, job_name: str, starter: Callable[[], None]) -> None:
+    enabled = _read_bool_env(env_flag, True)
+    SchedulerMonitor.set_job_enabled(job_name, enabled)
+    if not enabled:
+        LOGGER.info("%s disabled via %s", job_name, env_flag)
+        return
+    starter()
+
+
 app = FastAPI(title="Red-Link Backoffice API")
 
 LOGGER = logging.getLogger(__name__)
@@ -145,9 +167,21 @@ def ensure_database_is_ready() -> None:
 def start_background_jobs() -> None:
     """Start background tasks required by the service."""
 
-    start_overdue_monitor()
-    start_payment_reminder_scheduler()
-    start_backup_scheduler()
+    _maybe_start_job(
+        env_flag="ENABLE_OVERDUE_MONITOR",
+        job_name=JOB_OVERDUE_MONITOR,
+        starter=start_overdue_monitor,
+    )
+    _maybe_start_job(
+        env_flag="ENABLE_PAYMENT_REMINDERS",
+        job_name=JOB_PAYMENT_REMINDERS,
+        starter=start_payment_reminder_scheduler,
+    )
+    _maybe_start_job(
+        env_flag="ENABLE_BACKUPS",
+        job_name=JOB_BACKUPS,
+        starter=start_backup_scheduler,
+    )
 
 
 @app.get("/", tags=["health"])

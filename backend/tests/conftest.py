@@ -37,6 +37,9 @@ def security_settings(tmp_path_factory) -> dict:
     os.environ["ACCESS_TOKEN_EXPIRE_MINUTES"] = "60"
     os.environ["DATABASE_BACKUP_DIR"] = str(backup_dir)
     os.environ["DATABASE_BACKUP_FREQUENCY"] = "24h"
+    os.environ.setdefault("ENABLE_OVERDUE_MONITOR", "0")
+    os.environ.setdefault("ENABLE_PAYMENT_REMINDERS", "0")
+    os.environ.setdefault("ENABLE_BACKUPS", "0")
 
     os.environ["ADMIN_PASSWORD_HASH"] = generate_password_hash(password)
 

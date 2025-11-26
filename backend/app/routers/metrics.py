@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from .. import schemas
 from ..database import get_db
 from ..services import MetricsService, OperatingCostService
+from ..services.scheduler_monitor import SchedulerMonitor
 from ..security import require_admin
 
 router = APIRouter(dependencies=[Depends(require_admin)])
@@ -61,3 +62,10 @@ def update_base_costs(
         costs=payload.costs,
     )
     return schemas.BaseCostUpdateResponse(period_key=period_key, costs=costs)
+
+
+@router.get("/scheduler", response_model=schemas.SchedulerHealthResponse)
+def get_scheduler_health() -> schemas.SchedulerHealthResponse:
+    """Expose the health and error history for background schedulers."""
+
+    return schemas.SchedulerHealthResponse(jobs=SchedulerMonitor.snapshot())

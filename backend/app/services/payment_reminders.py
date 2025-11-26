@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from .. import models
 from ..database import session_scope
+from .scheduler_monitor import JOB_PAYMENT_REMINDERS, SchedulerMonitor
 
 LOGGER = logging.getLogger(__name__)
 
@@ -506,13 +507,19 @@ def _execute_reminder_cycle(days_ahead: int) -> None:
         LOGGER.error("No fue posible configurar el proveedor de notificaciones: %s", exc)
         return
 
-    with session_scope() as session:
-        service = PaymentReminderService(session, client)
-        summary = service.send_reminders(days_ahead=days_ahead)
-        if summary.total_attempts:
-            LOGGER.info("Recordatorios enviados: %s", summary.to_dict())
-        else:
-            LOGGER.info("No se encontraron cuentas para notificar en esta ejecución.")
+    try:
+        with session_scope() as session:
+            service = PaymentReminderService(session, client)
+            summary = service.send_reminders(days_ahead=days_ahead)
+            if summary.total_attempts:
+                LOGGER.info("Recordatorios enviados: %s", summary.to_dict())
+            else:
+                LOGGER.info("No se encontraron cuentas para notificar en esta ejecución.")
+    except Exception as exc:  # pragma: no cover - defensive logging
+        LOGGER.exception("Error al ejecutar el ciclo de recordatorios: %s", exc)
+        SchedulerMonitor.record_error(JOB_PAYMENT_REMINDERS, str(exc))
+    finally:
+        SchedulerMonitor.record_tick(JOB_PAYMENT_REMINDERS)
 
 
 def _reminder_worker() -> None:
@@ -539,6 +546,7 @@ def start_payment_reminder_scheduler() -> None:
         LOGGER.info(
             "El programador de recordatorios está deshabilitado. Establece PAYMENT_REMINDER_SCHEDULER_ENABLED=1 para activarlo."
         )
+        SchedulerMonitor.set_job_enabled(JOB_PAYMENT_REMINDERS, False)
         return
 
     global _reminder_thread

@@ -20,6 +20,7 @@ from .client_contracts import ClientContractError, ClientContractService
 from ..models.audit import ClientAccountSecurityAction
 from ..database import session_scope
 from ..security import AdminIdentity
+from .scheduler_monitor import JOB_OVERDUE_MONITOR, SchedulerMonitor
 
 LOGGER = logging.getLogger(__name__)
 
@@ -493,8 +494,10 @@ def _overdue_worker() -> None:
                     LOGGER.info("Updated %s client account statuses due to overdue payments", updated)
         except Exception as exc:  # pragma: no cover - defensive logging
             LOGGER.exception("Failed to process overdue client accounts: %s", exc)
+            SchedulerMonitor.record_error(JOB_OVERDUE_MONITOR, str(exc))
         now = datetime.now(timezone.utc)
         wait_time = _seconds_until_next_run(now)
+        SchedulerMonitor.record_tick(JOB_OVERDUE_MONITOR)
         _overdue_monitor_stop.wait(wait_time)
 
 
