@@ -1,32 +1,48 @@
-import React from 'react'
+import React, { Suspense } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
-import BackofficeLayout from './layouts/BackofficeLayout.jsx'
-import DashboardPage from './pages/Dashboard.jsx'
-import ClientsPage from './pages/Clients.jsx'
-import ResellersPage from './pages/Resellers.jsx'
-import PaymentsPage from './pages/Payments.jsx'
-import ExpensesPage from './pages/Expenses.jsx'
-import SettingsPage from './pages/Settings.jsx'
-import ReportsPage from './pages/Reports.jsx'
-import InventoryPage from './pages/Inventory.jsx'
-import PointOfSalePage from './pages/PointOfSale.jsx'
+import PageSkeleton from './components/layout/PageSkeleton.jsx'
+import {
+  loadBackofficeLayout,
+  loadClientsPage,
+  loadDashboardPage,
+  loadExpensesPage,
+  loadInventoryPage,
+  loadPaymentsPage,
+  loadPointOfSalePage,
+  loadReportsPage,
+  loadResellersPage,
+  loadSettingsPage,
+} from './routes/routeLoaders.js'
+
+const BackofficeLayout = React.lazy(loadBackofficeLayout)
+const DashboardPage = React.lazy(loadDashboardPage)
+const ClientsPage = React.lazy(loadClientsPage)
+const ResellersPage = React.lazy(loadResellersPage)
+const PaymentsPage = React.lazy(loadPaymentsPage)
+const ExpensesPage = React.lazy(loadExpensesPage)
+const SettingsPage = React.lazy(loadSettingsPage)
+const ReportsPage = React.lazy(loadReportsPage)
+const InventoryPage = React.lazy(loadInventoryPage)
+const PointOfSalePage = React.lazy(loadPointOfSalePage)
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/" element={<BackofficeLayout />}>
-        <Route index element={<Navigate to="dashboard" replace />} />
-        <Route path="dashboard" element={<DashboardPage />} />
-        <Route path="clients" element={<ClientsPage />} />
-        <Route path="resellers" element={<ResellersPage />} />
-        <Route path="payments" element={<PaymentsPage />} />
-        <Route path="expenses" element={<ExpensesPage />} />
-        <Route path="reports" element={<ReportsPage />} />
-        <Route path="inventory" element={<InventoryPage />} />
-        <Route path="ventas" element={<PointOfSalePage />} />
-        <Route path="settings" element={<SettingsPage />} />
-      </Route>
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
-    </Routes>
+    <Suspense fallback={<PageSkeleton />}> 
+      <Routes>
+        <Route path="/" element={<BackofficeLayout />}>
+          <Route index element={<Navigate to="dashboard" replace />} />
+          <Route path="dashboard" element={<DashboardPage />} />
+          <Route path="clients" element={<ClientsPage />} />
+          <Route path="resellers" element={<ResellersPage />} />
+          <Route path="payments" element={<PaymentsPage />} />
+          <Route path="expenses" element={<ExpensesPage />} />
+          <Route path="reports" element={<ReportsPage />} />
+          <Route path="inventory" element={<InventoryPage />} />
+          <Route path="ventas" element={<PointOfSalePage />} />
+          <Route path="settings" element={<SettingsPage />} />
+        </Route>
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      </Routes>
+    </Suspense>
   )
 }

@@ -13,6 +13,8 @@ import {
   Wifi,
 } from 'lucide-react'
 import { formatDate } from '../../utils/formatters.js'
+import { useRoutePrefetch } from '../../hooks/useRoutePrefetch.js'
+import { loadClientsPage, loadDashboardPage } from '../../routes/routeLoaders.js'
 
 const clsx = (...classes) => classes.filter(Boolean).join(' ')
 
@@ -28,11 +30,17 @@ const navItems = [
   { to: '/settings', label: 'Configuración', icon: Settings },
 ]
 
+const prefetchRoutes = {
+  '/dashboard': loadDashboardPage,
+  '/clients': loadClientsPage,
+}
+
 const linkBaseClasses =
   'group flex items-center gap-3 rounded-2xl px-3.5 py-2.5 text-sm font-medium transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/30'
 
 export function AppSidebar() {
   const todayLabel = formatDate(new Date())
+  const prefetch = useRoutePrefetch()
 
   return (
     <aside aria-label="Menú principal" className="hidden w-72 shrink-0 md:flex">
@@ -63,6 +71,8 @@ export function AppSidebar() {
               <NavLink
                 key={to}
                 to={to}
+                onMouseEnter={() => prefetch(prefetchRoutes[to], to)}
+                onFocus={() => prefetch(prefetchRoutes[to], to)}
                 className={({ isActive }) =>
                   clsx(
                     linkBaseClasses,
