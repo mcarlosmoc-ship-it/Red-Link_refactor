@@ -62,6 +62,7 @@ export const createInitialServiceState = (zoneId) => ({
   displayName: '',
   serviceType: 'internet',
   price: '',
+  customPrice: '',
   billingDay: '1',
   baseId: zoneId ? String(zoneId) : '',
   useClientBase: Boolean(zoneId),

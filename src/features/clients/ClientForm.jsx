@@ -28,9 +28,17 @@ export default function ClientForm({ servicePlans, onSubmit, isSubmitting }) {
   const [serviceState, setServiceState] = useState(createInitialServiceState())
   const [error, setError] = useState('')
 
-  const internetPlans = useMemo(
-    () => servicePlans.filter((plan) => (plan.serviceType ?? plan.category) === 'internet'),
+  const availablePlans = useMemo(
+    () =>
+      servicePlans.filter(
+        (plan) => (plan.serviceType ?? plan.category) !== 'token' && plan.isActive !== false,
+      ),
     [servicePlans],
+  )
+
+  const selectedPlan = useMemo(
+    () => availablePlans.find((plan) => String(plan.id) === String(serviceState.servicePlanId)),
+    [availablePlans, serviceState.servicePlanId],
   )
 
   const handleChange = (key, value) => {
@@ -41,6 +49,28 @@ export default function ClientForm({ servicePlans, onSubmit, isSubmitting }) {
     if (!serviceState.useClientBase) return
     setServiceState((prev) => ({ ...prev, baseId: formState.zoneId }))
   }, [formState.zoneId, serviceState.useClientBase])
+  const handlePlanChange = (event) => {
+    const planId = event.target.value
+    const plan = availablePlans.find((item) => String(item.id) === String(planId))
+    setServiceState((prev) => ({
+      ...prev,
+      servicePlanId: planId,
+      serviceType: plan?.serviceType ?? plan?.category ?? prev.serviceType,
+      customPrice: plan ? plan.defaultMonthlyFee : '',
+      ipAddress: plan?.requiresIp ? prev.ipAddress : '',
+      antennaIp: plan?.requiresIp ? prev.antennaIp : '',
+      modemIp: plan?.requiresIp ? prev.modemIp : '',
+    }))
+  }
+
+  const handleServiceStateChange = (key, value) => {
+    setServiceState((prev) => ({ ...prev, [key]: value }))
+  }
+
+  const normalizedCustomPrice = useMemo(() => {
+    const parsed = Number(serviceState.customPrice)
+    return Number.isFinite(parsed) ? parsed : ''
+  }, [serviceState.customPrice])
 
   const handleSubmit = async (event) => {
     event.preventDefault()
@@ -84,6 +114,13 @@ export default function ClientForm({ servicePlans, onSubmit, isSubmitting }) {
               customPrice: serviceState.isCustomPriceEnabled
                 ? Number(serviceState.price) || 0
                 : undefined,
+              ipAddress: serviceState.ipAddress?.trim() || undefined,
+              antennaIp: serviceState.antennaIp?.trim() || undefined,
+              modemIp: serviceState.modemIp?.trim() || undefined,
+              antennaModel: serviceState.antennaModel?.trim() || undefined,
+              modemModel: serviceState.modemModel?.trim() || undefined,
+              customPrice:
+                normalizedCustomPrice === '' ? undefined : Number(serviceState.customPrice),
               status: 'active',
             }
           : null,
@@ -182,12 +219,10 @@ export default function ClientForm({ servicePlans, onSubmit, isSubmitting }) {
                 className="rounded border border-slate-200 p-2"
                 data-testid="service-plan"
                 value={serviceState.servicePlanId}
-                onChange={(event) =>
-                  setServiceState((prev) => ({ ...prev, servicePlanId: event.target.value }))
-                }
+                onChange={handlePlanChange}
               >
                 <option value="">Sin asignar</option>
-                {internetPlans.map((plan) => (
+                {availablePlans.map((plan) => (
                   <option key={plan.id} value={plan.id}>
                     {plan.name}
                   </option>
@@ -200,9 +235,7 @@ export default function ClientForm({ servicePlans, onSubmit, isSubmitting }) {
                 max="31"
                 data-testid="service-billing-day"
                 value={serviceState.billingDay}
-                onChange={(event) =>
-                  setServiceState((prev) => ({ ...prev, billingDay: event.target.value }))
-                }
+                onChange={(event) => handleServiceStateChange('billingDay', event.target.value)}
               />
             </div>
 
@@ -360,6 +393,110 @@ export default function ClientForm({ servicePlans, onSubmit, isSubmitting }) {
               })()}
             </div>
           )}
+            {selectedPlan && (
+              <div className="mt-2 space-y-2">
+                <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                  <div>
+                    <label className="text-sm font-medium" htmlFor="service-price">
+                      Precio del plan
+                    </label>
+                    <input
+                      id="service-price"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      className="mt-1 w-full rounded border border-slate-200 p-2"
+                      value={serviceState.customPrice}
+                      onChange={(event) =>
+                        handleServiceStateChange('customPrice', event.target.value)
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium" htmlFor="service-notes">
+                      Notas del servicio
+                    </label>
+                    <input
+                      id="service-notes"
+                      className="mt-1 w-full rounded border border-slate-200 p-2"
+                      value={serviceState.notes}
+                      onChange={(event) => handleServiceStateChange('notes', event.target.value)}
+                    />
+                  </div>
+                </div>
+
+                {selectedPlan.requiresIp && (
+                  <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                    <div>
+                      <label className="text-sm font-medium" htmlFor="service-ip">
+                        Dirección IP
+                      </label>
+                      <input
+                        id="service-ip"
+                        className="mt-1 w-full rounded border border-slate-200 p-2"
+                        placeholder="000.000.000.000"
+                        value={serviceState.ipAddress}
+                        onChange={(event) =>
+                          handleServiceStateChange('ipAddress', event.target.value)
+                        }
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium" htmlFor="service-modem-ip">
+                        IP del módem
+                      </label>
+                      <input
+                        id="service-modem-ip"
+                        className="mt-1 w-full rounded border border-slate-200 p-2"
+                        value={serviceState.modemIp}
+                        onChange={(event) =>
+                          handleServiceStateChange('modemIp', event.target.value)
+                        }
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium" htmlFor="service-antenna-ip">
+                        IP de antena
+                      </label>
+                      <input
+                        id="service-antenna-ip"
+                        className="mt-1 w-full rounded border border-slate-200 p-2"
+                        value={serviceState.antennaIp}
+                        onChange={(event) =>
+                          handleServiceStateChange('antennaIp', event.target.value)
+                        }
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium" htmlFor="service-modem-model">
+                        Modelo de módem/ont
+                      </label>
+                      <input
+                        id="service-modem-model"
+                        className="mt-1 w-full rounded border border-slate-200 p-2"
+                        value={serviceState.modemModel}
+                        onChange={(event) =>
+                          handleServiceStateChange('modemModel', event.target.value)
+                        }
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium" htmlFor="service-antenna-model">
+                        Modelo de antena
+                      </label>
+                      <input
+                        id="service-antenna-model"
+                        className="mt-1 w-full rounded border border-slate-200 p-2"
+                        value={serviceState.antennaModel}
+                        onChange={(event) =>
+                          handleServiceStateChange('antennaModel', event.target.value)
+                        }
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {error && <p className="text-sm text-red-600">{error}</p>}
