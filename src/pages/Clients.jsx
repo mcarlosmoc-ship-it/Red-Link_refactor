@@ -5,6 +5,7 @@ import ClientsList from '../features/clients/ClientsList.jsx'
 import ClientForm from '../features/clients/ClientForm.jsx'
 import ClientDetailTabs from '../features/clients/ClientDetailTabs.jsx'
 import ServicesAssignments from '../features/clients/ServicesAssignments.jsx'
+import ImportClientsModal from '../components/clients/ImportClientsModal.jsx'
 import { useBackofficeStore } from '../store/useBackofficeStore.js'
 import { useClients } from '../hooks/useClients.js'
 import { useServicePlans } from '../hooks/useServicePlans.js'
@@ -42,6 +43,7 @@ export default function ClientsPage() {
     bulkAssignClientServices,
     updateClientServiceStatus,
     deleteClient,
+    importClients,
   } = useClients()
   const { deleteClientService } = useClientServices({ autoLoad: false })
   const { servicePlans, status: servicePlansStatus } = useServicePlans()
@@ -51,6 +53,9 @@ export default function ClientsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isProcessingService, setIsProcessingService] = useState(false)
   const [isProcessingSelection, setIsProcessingSelection] = useState(false)
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false)
+  const [importSummary, setImportSummary] = useState(null)
+  const [isImporting, setIsImporting] = useState(false)
 
   useEffect(() => {
     if (location.hash?.includes('services')) {
@@ -294,6 +299,33 @@ export default function ClientsPage() {
     }
   }
 
+  const handleImportSubmit = async (file) => {
+    setIsImporting(true)
+    try {
+      const summary = await importClients(file)
+      setImportSummary(summary)
+      showToast({
+        type: 'success',
+        title: 'Importación completada',
+        description: 'Se procesó el archivo de clientes.',
+      })
+    } catch (error) {
+      showToast({
+        type: 'error',
+        title: 'No se pudo importar',
+        description: resolveApiErrorMessage(error, 'Revisa el archivo e inténtalo nuevamente.'),
+      })
+    } finally {
+      setIsImporting(false)
+    }
+  }
+
+  const handleCloseImport = () => {
+    if (isImporting) return
+    setIsImportModalOpen(false)
+    setImportSummary(null)
+  }
+
   if (initializeStatus?.isLoading || isRefreshing) {
     return <ClientsSkeleton />
   }
@@ -335,6 +367,7 @@ export default function ClientsPage() {
               onBulkChangeStatus={handleBulkServiceStatus}
               onBulkDeleteClients={handleBulkDeleteClients}
               isProcessingSelection={isProcessingSelection}
+              onOpenImport={() => setIsImportModalOpen(true)}
             />
             {selectedClient && <ClientDetailTabs client={selectedClient} />}
           </div>
@@ -355,6 +388,15 @@ export default function ClientsPage() {
           </div>
         </div>
       )}
+      <ImportClientsModal
+        isOpen={isImportModalOpen}
+        onClose={handleCloseImport}
+        onSubmit={handleImportSubmit}
+        isProcessing={isImporting}
+        summary={importSummary}
+        requiresConfirmation={Boolean(importSummary && importSummary.failed_count > 0)}
+        onConfirmSummary={handleCloseImport}
+      />
     </div>
   )
 }
