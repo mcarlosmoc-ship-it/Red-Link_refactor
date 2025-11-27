@@ -190,6 +190,13 @@ export default function DashboardPage() {
     Boolean(dashboardStatus.metrics?.error) ||
     Boolean(dashboardStatus.resellers?.error) ||
     Boolean(dashboardStatus.expenses?.error)
+  const hasFiltersApplied = statusFilter !== 'all' || searchTerm.trim() !== ''
+  const dataErrorMessage =
+    clientsStatus?.error?.message ??
+    dashboardStatus.metrics?.error?.message ??
+    dashboardStatus.resellers?.error?.message ??
+    dashboardStatus.expenses?.error?.message ??
+    'No pudimos cargar la información.'
   const shouldShowSkeleton = Boolean(initializeStatus?.isLoading) || isRefreshing
 
   useEffect(() => {
@@ -1070,28 +1077,73 @@ export default function DashboardPage() {
             </div>
           )}
 
-          <div className="overflow-x-auto">
+            <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-slate-200 text-left text-sm" role="grid">
-              <thead className="bg-slate-50 text-slate-600">
-                <tr>
-                  <th scope="col" className="px-3 py-2 font-medium">
-                    Nombre
-                  </th>
-                  <th scope="col" className="px-3 py-2 font-medium">
-                    Localidad
-                  </th>
-                  <th scope="col" className="px-3 py-2 font-medium">
-                    Pago mensual
-                  </th>
-                  <th scope="col" className="px-3 py-2 font-medium">
-                    Estado
-                  </th>
-                  <th scope="col" className="px-3 py-2 font-medium text-right">
-                    Acciones
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
+                <thead className="bg-slate-50 text-slate-600">
+                  <tr>
+                    <th scope="col" className="px-3 py-2 font-medium">
+                      Nombre
+                    </th>
+                    <th scope="col" className="px-3 py-2 font-medium">
+                      Localidad
+                    </th>
+                    <th scope="col" className="px-3 py-2 font-medium">
+                      Pago mensual
+                    </th>
+                    <th scope="col" className="px-3 py-2 font-medium">
+                      Estado
+                    </th>
+                    <th scope="col" className="px-3 py-2 font-medium text-right">
+                      Acciones
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                {hasDataError && !isDataLoading && (
+                  <tr>
+                    <td colSpan={5} className="px-3 py-6 text-sm text-red-700">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="space-y-1">
+                          <p className="font-semibold">No pudimos mostrar los clientes.</p>
+                          <p className="text-red-600">{dataErrorMessage}</p>
+                        </div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="border border-red-200 bg-white text-red-700 hover:border-red-300"
+                          onClick={handleRetrySync}
+                          disabled={isRetryingSync}
+                        >
+                          {isRetryingSync ? 'Reintentando…' : 'Reintentar'}
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                {!hasDataError && !isDataLoading && filteredClients.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="px-3 py-6 text-center text-sm text-slate-500">
+                      <div className="space-y-2">
+                        <p className="font-semibold text-slate-700">No hay clientes para mostrar.</p>
+                        <p>
+                          {hasFiltersApplied
+                            ? 'Prueba ajustar los filtros o limpiar la búsqueda para ver más resultados.'
+                            : 'Aún no hay clientes cargados para este periodo.'}
+                        </p>
+                        <div className="flex justify-center gap-2">
+                          {hasFiltersApplied && (
+                            <Button type="button" size="sm" variant="ghost" onClick={() => setSearchTerm('')}>
+                              Limpiar búsqueda
+                            </Button>
+                          )}
+                          <Button type="button" size="sm" onClick={reloadClients}>
+                            Recargar clientes
+                          </Button>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                )}
                 {filteredClients.map((client) => {
                   const primaryService = getPrimaryService(client)
                   const statusLabel = primaryService
@@ -1310,13 +1362,6 @@ export default function DashboardPage() {
                     </React.Fragment>
                   )
                 })}
-                {filteredClients.length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="px-3 py-6 text-center text-sm text-slate-500">
-                      No hay clientes que coincidan con la búsqueda.
-                    </td>
-                  </tr>
-                )}
               </tbody>
             </table>
           </div>
