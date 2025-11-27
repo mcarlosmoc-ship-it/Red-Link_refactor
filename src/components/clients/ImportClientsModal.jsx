@@ -11,6 +11,28 @@ const OPTIONAL_COLUMNS = [
   'debt_months',
   'service_status',
 ]
+const SERVICE_REQUIRED_COLUMNS = [
+  'service_1_plan_id',
+  'service_1_status',
+  'service_1_billing_day',
+  'service_1_zone_id',
+  'service_1_ip_address',
+  'service_1_custom_price',
+]
+const SERVICE_OPTIONAL_COLUMNS = [
+  'service_1_antenna_ip',
+  'service_1_modem_ip',
+  'service_1_antenna_model',
+  'service_1_modem_model',
+  'service_2_plan_id',
+  'service_2_status',
+  'service_2_billing_day',
+  'service_2_zone_id',
+  'service_2_ip_address',
+  'service_2_custom_price',
+  'service_3_plan_id',
+  'service_3_status',
+]
 
 const templateUrl = buildApiUrl('/clients/import/template')
 
@@ -41,8 +63,13 @@ export default function ImportClientsModal({
 
   const columnList = useMemo(
     () => [
-      { title: 'Obligatorias', items: REQUIRED_COLUMNS },
-      { title: 'Opcionales', items: OPTIONAL_COLUMNS },
+      { title: 'Datos del cliente (obligatorias)', items: REQUIRED_COLUMNS },
+      { title: 'Datos del cliente (opcionales)', items: OPTIONAL_COLUMNS },
+      { title: 'Servicio principal', items: SERVICE_REQUIRED_COLUMNS },
+      {
+        title: 'Servicios adicionales (repetir service_{n}_...)',
+        items: SERVICE_OPTIONAL_COLUMNS,
+      },
     ],
     [],
   )
@@ -69,6 +96,33 @@ export default function ImportClientsModal({
 
   const isSummarySuccess = Boolean(summary && summary.failed_count === 0 && summary.created_count > 0)
   const shouldShowConfirmation = Boolean(requiresConfirmation && summary)
+  const rowSummaries = Array.isArray(summary?.row_summaries) ? summary.row_summaries : []
+
+  const handleDownloadErrors = () => {
+    if (!summary?.errors?.length) return
+    const header = ['row_number', 'message', 'field', 'detail']
+    const rows = summary.errors.flatMap((error) => {
+      const hasFields = error.field_errors && Object.keys(error.field_errors).length > 0
+      if (!hasFields) {
+        return [[error.row_number, error.message, '', '']]
+      }
+      return Object.entries(error.field_errors).map(([field, detail]) => [
+        error.row_number,
+        error.message,
+        field,
+        detail,
+      ])
+    })
+
+    const csv = [header.join(','), ...rows.map((cells) => cells.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))].join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'errores_importacion.csv'
+    link.click()
+    URL.revokeObjectURL(url)
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4 py-6">
@@ -109,6 +163,13 @@ export default function ImportClientsModal({
                   y ábrela en Excel o Google Sheets.
                 </li>
                 <li>Completa las columnas obligatorias y revisa la ortografía de los datos.</li>
+                <li>
+                  Cada fila debe incluir al menos un servicio usando las columnas <code>service_1_*</code>
+                  (plan, estado, día de cobro, base y IP si aplica, precio personalizado).
+                </li>
+                <li>
+                  Para servicios adicionales repite el bloque <code>service_2_*</code>, <code>service_3_*</code>, etc.
+                </li>
                 <li>Exporta el archivo como CSV con codificación UTF-8.</li>
               </ol>
             </div>
@@ -175,12 +236,51 @@ export default function ImportClientsModal({
                 <ul className="mt-2 space-y-1">
                   <li>Total de filas procesadas: {summary.total_rows}</li>
                   <li>Clientes creados: {summary.created_count}</li>
+                  <li>Servicios creados: {summary.service_created_count ?? 0}</li>
                   <li>Filas con errores: {summary.failed_count}</li>
                 </ul>
 
+                {rowSummaries.length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    <p className="text-sm font-medium">Detalle por fila</p>
+                    <div className="divide-y divide-slate-200 rounded-md border border-slate-200 bg-white/70">
+                      {rowSummaries.map((row) => (
+                        <div key={`${row.row_number}-${row.status}`} className="p-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-sm font-semibold">
+                              Fila {row.row_number}
+                              {row.client_name ? ` • ${row.client_name}` : ''}
+                            </p>
+                            <span
+                              className={`text-xs font-semibold uppercase tracking-wide ${
+                                row.status === 'created'
+                                  ? 'text-emerald-700'
+                                  : 'text-amber-700'
+                              }`}
+                            >
+                              {row.status === 'created' ? 'creada' : 'con error'}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-sm text-slate-700">
+                            Servicios creados: {row.services_created}
+                          </p>
+                          {row.error_message && (
+                            <p className="mt-1 text-xs text-amber-800">Error: {row.error_message}</p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {Array.isArray(summary.errors) && summary.errors.length > 0 && (
                   <div className="mt-3 space-y-2">
-                    <p className="text-sm font-medium">Detalles de errores</p>
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-medium">Detalles de errores</p>
+                      <Button type="button" variant="ghost" onClick={handleDownloadErrors}>
+                        Descargar CSV
+                      </Button>
+                    </div>
                     <ul className="space-y-2">
                       {summary.errors.map((error) => (
                         <li key={error.row_number} className="rounded border border-amber-200 bg-white/70 p-3 text-amber-900">

@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Ca
 import { getPrimaryService, normalizeId } from './utils.js'
 
 const LOCATION_FILTER_NONE = '__none__'
+const PAGE_SIZE = 10
 
 const filtersInitialState = {
   term: '',
@@ -13,6 +14,7 @@ const filtersInitialState = {
 
 export default function ClientsList({
   clients,
+  servicePlans = [],
   status,
   onReload,
   onSelectClient,
@@ -28,6 +30,16 @@ export default function ClientsList({
   const [selectedClientIds, setSelectedClientIds] = useState([])
   const [selectedPlanId, setSelectedPlanId] = useState('')
   const [isBulkActionRunning, setIsBulkActionRunning] = useState(false)
+  onBulkAssignPlan,
+  onBulkChangeStatus,
+  onBulkDeleteClients,
+  isProcessingSelection = false,
+  onOpenImport,
+}) {
+  const [filters, setFilters] = useState(filtersInitialState)
+  const [selectedClientIds, setSelectedClientIds] = useState([])
+  const [currentPage, setCurrentPage] = useState(1)
+  const [selectedPlanId, setSelectedPlanId] = useState('')
 
   const availableLocations = useMemo(() => {
     const unique = new Set()
@@ -40,6 +52,11 @@ export default function ClientsList({
   }, [clients])
 
   const normalizedSearchTerm = filters.term.trim().toLowerCase()
+
+  const availablePlans = useMemo(
+    () => servicePlans.filter((plan) => (plan.serviceType ?? plan.category) !== 'token'),
+    [servicePlans],
+  )
 
   const filteredClients = useMemo(() => {
     return clients.filter((client) => {
@@ -132,6 +149,95 @@ export default function ClientsList({
   const handleBulkDelete = () => {
     if (!onBulkDeleteServices) return
     return runBulkAction(() => onBulkDeleteServices(selectedClientIds))
+  useEffect(() => {
+    setCurrentPage(1)
+    setSelectedClientIds([])
+  }, [filters.location, filters.status, filters.term])
+
+  useEffect(() => {
+    setSelectedClientIds([])
+  }, [currentPage])
+
+  const totalPages = useMemo(
+    () => Math.max(1, Math.ceil(filteredClients.length / PAGE_SIZE)),
+    [filteredClients.length],
+  )
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages)
+    }
+  }, [currentPage, totalPages])
+
+  const paginatedClients = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE
+    return filteredClients.slice(start, start + PAGE_SIZE)
+  }, [currentPage, filteredClients])
+
+  const toggleClientSelection = (clientId) => {
+    setSelectedClientIds((prev) =>
+      prev.includes(clientId) ? prev.filter((id) => id !== clientId) : [...prev, clientId],
+    )
+  }
+
+  const currentPageClientIds = useMemo(
+    () => paginatedClients.map((client) => normalizeId(client.id)).filter(Boolean),
+    [paginatedClients],
+  )
+
+  const isAllPageSelected =
+    currentPageClientIds.length > 0 && currentPageClientIds.every((id) => selectedClientIds.includes(id))
+
+  const toggleSelectAll = (checked) => {
+    if (checked) {
+      setSelectedClientIds((prev) => Array.from(new Set([...prev, ...currentPageClientIds])))
+      return
+    }
+    setSelectedClientIds((prev) => prev.filter((id) => !currentPageClientIds.includes(id)))
+  }
+
+  const runSelectionAction = async (action) => {
+    if (!action || selectedClientIds.length === 0) return
+    try {
+      await action()
+    } catch (error) {
+      // el contenedor de acciones maneja los mensajes de error
+      throw error
+    }
+  }
+
+  const handleBulkAssignPlan = async () => {
+    if (!selectedPlanId || !onBulkAssignPlan) return
+    try {
+      await runSelectionAction(() => onBulkAssignPlan({
+        clientIds: selectedClientIds,
+        servicePlanId: selectedPlanId,
+      }))
+      setSelectedPlanId('')
+      setSelectedClientIds([])
+    } catch (error) {
+      // el manejador padre muestra el error
+    }
+  }
+
+  const handleBulkStatusChange = async (status) => {
+    if (!onBulkChangeStatus) return
+    try {
+      await runSelectionAction(() => onBulkChangeStatus(selectedClientIds, status))
+      setSelectedClientIds([])
+    } catch (error) {
+      // el manejador padre muestra el error
+    }
+  }
+
+  const handleBulkDelete = async () => {
+    if (!onBulkDeleteClients) return
+    try {
+      await runSelectionAction(() => onBulkDeleteClients(selectedClientIds))
+      setSelectedClientIds([])
+    } catch (error) {
+      // el manejador padre muestra el error
+    }
   }
 
   const isLoading = Boolean(status?.isLoading)
@@ -147,12 +253,19 @@ export default function ClientsList({
 
   const isBulkDisabled =
     isLoading || isMutating || isProcessing || isBulkActionRunning || filteredClients.length === 0 || !hasSelection
+  const isSelectionDisabled =
+    isProcessingSelection || isLoading || Boolean(status?.isMutating) || selectedClientIds.length === 0
 
   return (
     <Card data-testid="clients-list">
       <CardHeader className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <CardTitle>Listado de clientes</CardTitle>
         <div className="flex items-center gap-2">
+          {typeof onOpenImport === 'function' && (
+            <Button variant="ghost" onClick={onOpenImport} data-testid="import-clients">
+              Importar CSV
+            </Button>
+          )}
           <Button disabled={isLoading} onClick={() => onReload?.()}>Recargar</Button>
         </div>
       </CardHeader>
@@ -247,6 +360,62 @@ export default function ClientsList({
             <Button size="sm" variant="danger" onClick={handleBulkDelete} disabled={isBulkDisabled}>
               Eliminar servicios
             </Button>
+        <div className="flex flex-col gap-2 rounded border border-slate-200 p-3">
+          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <p className="text-sm text-slate-700">
+              {selectedClientIds.length} clientes seleccionados (página {currentPage} de {totalPages})
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <select
+                className="rounded border border-slate-200 p-2"
+                data-testid="bulk-plan"
+                value={selectedPlanId}
+                onChange={(event) => setSelectedPlanId(event.target.value)}
+              >
+                <option value="">Asignar plan...</option>
+                {availablePlans.map((plan) => (
+                  <option key={plan.id} value={plan.id}>
+                    {plan.name}
+                  </option>
+                ))}
+              </select>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={isSelectionDisabled || !selectedPlanId}
+                onClick={handleBulkAssignPlan}
+                data-testid="bulk-assign"
+              >
+                Asignar plan
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={isSelectionDisabled}
+                onClick={() => handleBulkStatusChange('suspended')}
+                data-testid="bulk-suspend"
+              >
+                Suspender
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={isSelectionDisabled}
+                onClick={() => handleBulkStatusChange('active')}
+                data-testid="bulk-activate"
+              >
+                Activar
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={isSelectionDisabled}
+                onClick={handleBulkDelete}
+                data-testid="bulk-delete"
+              >
+                Eliminar
+              </Button>
+            </div>
           </div>
         </div>
 
@@ -265,6 +434,9 @@ export default function ClientsList({
                     onChange={toggleSelectAll}
                     disabled={isLoading || isMutating || isProcessing || filteredClients.length === 0}
                     aria-label="Seleccionar todos los clientes visibles"
+                    aria-label="Seleccionar todos"
+                    checked={isAllPageSelected}
+                    onChange={(event) => toggleSelectAll(event.target.checked)}
                   />
                 </th>
                 <th className="px-3 py-2">Nombre</th>
@@ -274,9 +446,10 @@ export default function ClientsList({
               </tr>
             </thead>
             <tbody>
-              {filteredClients.map((client) => {
+              {paginatedClients.map((client) => {
                 const id = normalizeId(client.id)
                 const isSelected = id && id === selectedClientId
+                const isChecked = id ? selectedClientIds.includes(id) : false
                 const primaryService = getPrimaryService(client)
                 return (
                   <tr
@@ -292,6 +465,9 @@ export default function ClientsList({
                         onChange={() => toggleClientSelection(id)}
                         aria-label={`Seleccionar cliente ${client.name}`}
                         disabled={isLoading || isMutating || isProcessing}
+                        aria-label={`Seleccionar cliente ${client.name}`}
+                        checked={isChecked}
+                        onChange={() => toggleClientSelection(id)}
                       />
                     </td>
                     <td className="px-3 py-2 font-medium">{client.name}</td>
@@ -299,16 +475,16 @@ export default function ClientsList({
                     <td className="px-3 py-2">
                       {primaryService?.status === 'suspended' ? 'Suspendido' : 'Activo'}
                     </td>
-                <td className="px-3 py-2">
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      data-testid={`select-${id}`}
-                      onClick={() => onSelectClient?.(id)}
-                    >
-                      Ver detalles
-                    </Button>
+                    <td className="px-3 py-2">
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          data-testid={`select-${id}`}
+                          onClick={() => onSelectClient?.(id)}
+                        >
+                          Ver detalles
+                        </Button>
                         <Button
                           size="sm"
                           variant="ghost"
@@ -322,7 +498,7 @@ export default function ClientsList({
                   </tr>
                 )
               })}
-              {filteredClients.length === 0 && (
+              {paginatedClients.length === 0 && (
                 <tr>
                   <td className="px-3 py-4 text-center text-slate-500" colSpan={5}>
                     No se encontraron clientes con los filtros actuales.
@@ -331,6 +507,30 @@ export default function ClientsList({
               )}
             </tbody>
           </table>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-slate-600">
+            Página {currentPage} de {totalPages}
+          </p>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={currentPage === 1}
+              onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+            >
+              Anterior
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={currentPage >= totalPages}
+              onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+            >
+              Siguiente
+            </Button>
+          </div>
         </div>
       </CardContent>
     </Card>
