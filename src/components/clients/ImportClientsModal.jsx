@@ -29,9 +29,21 @@ const SERVICE_OPTIONAL_COLUMNS = [
   'service_2_billing_day',
   'service_2_zone_id',
   'service_2_ip_address',
+  'service_2_antenna_ip',
+  'service_2_modem_ip',
+  'service_2_antenna_model',
+  'service_2_modem_model',
   'service_2_custom_price',
   'service_3_plan_id',
   'service_3_status',
+  'service_3_billing_day',
+  'service_3_zone_id',
+  'service_3_ip_address',
+  'service_3_antenna_ip',
+  'service_3_modem_ip',
+  'service_3_antenna_model',
+  'service_3_modem_model',
+  'service_3_custom_price',
 ]
 
 const templateUrl = buildApiUrl('/clients/import/template')
@@ -165,10 +177,11 @@ export default function ImportClientsModal({
                 <li>Completa las columnas obligatorias y revisa la ortografía de los datos.</li>
                 <li>
                   Cada fila debe incluir al menos un servicio usando las columnas <code>service_1_*</code>
-                  (plan, estado, día de cobro, base y IP si aplica, precio personalizado).
+                  (plan, estado, día de cobro, base y IP si aplica, equipo y precio personalizado).
                 </li>
                 <li>
-                  Para servicios adicionales repite el bloque <code>service_2_*</code>, <code>service_3_*</code>, etc.
+                  Para servicios adicionales repite el bloque <code>service_2_*</code>, <code>service_3_*</code>
+                  con sus datos completos.
                 </li>
                 <li>Exporta el archivo como CSV con codificación UTF-8.</li>
               </ol>
