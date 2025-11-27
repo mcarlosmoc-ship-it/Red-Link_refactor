@@ -95,6 +95,16 @@ class ClientImportError(BaseModel):
     field_errors: dict[str, str] = Field(default_factory=dict)
 
 
+class ClientImportRowSummary(BaseModel):
+    """Row-level feedback about the import process."""
+
+    row_number: int = Field(..., ge=1)
+    client_name: Optional[str] = None
+    services_created: int = Field(default=0, ge=0)
+    status: str = Field(pattern="^(created|error)$")
+    error_message: Optional[str] = None
+
+
 class ClientImportRequest(BaseModel):
     """Request payload expected when importing clients in bulk."""
 
@@ -107,5 +117,7 @@ class ClientImportSummary(BaseModel):
 
     total_rows: int = Field(..., ge=0)
     created_count: int = Field(..., ge=0)
+    service_created_count: int = Field(..., ge=0)
     failed_count: int = Field(..., ge=0)
+    row_summaries: list[ClientImportRowSummary] = Field(default_factory=list)
     errors: list[ClientImportError] = Field(default_factory=list)
