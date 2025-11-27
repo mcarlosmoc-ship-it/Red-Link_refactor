@@ -65,6 +65,7 @@ export const createInitialServiceState = (zoneId) => ({
   customPrice: '',
   billingDay: '1',
   baseId: zoneId ? String(zoneId) : '',
+  useClientBase: Boolean(zoneId),
   status: 'active',
   notes: '',
   isCustomPriceEnabled: false,
