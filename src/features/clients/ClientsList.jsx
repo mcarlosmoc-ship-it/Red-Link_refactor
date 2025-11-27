@@ -18,6 +18,7 @@ export default function ClientsList({
   onSelectClient,
   selectedClientId,
   onDeleteClient,
+  onOpenImport,
 }) {
   const [filters, setFilters] = useState(filtersInitialState)
 
@@ -80,6 +81,11 @@ export default function ClientsList({
       <CardHeader className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <CardTitle>Listado de clientes</CardTitle>
         <div className="flex items-center gap-2">
+          {typeof onOpenImport === 'function' && (
+            <Button variant="ghost" onClick={onOpenImport} data-testid="import-clients">
+              Importar CSV
+            </Button>
+          )}
           <Button disabled={isLoading} onClick={() => onReload?.()}>Recargar</Button>
         </div>
       </CardHeader>

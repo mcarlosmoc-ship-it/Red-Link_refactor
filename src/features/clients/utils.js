@@ -62,11 +62,17 @@ export const createInitialServiceState = (zoneId) => ({
   displayName: '',
   serviceType: 'internet',
   price: '',
+  customPrice: '',
   billingDay: '1',
   baseId: zoneId ? String(zoneId) : '',
   status: 'active',
   notes: '',
   isCustomPriceEnabled: false,
+  ipAddress: '',
+  antennaIp: '',
+  modemIp: '',
+  antennaModel: '',
+  modemModel: '',
 })
 
 export const getPrimaryService = (client) => {
