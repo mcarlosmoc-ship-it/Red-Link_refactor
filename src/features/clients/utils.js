@@ -64,9 +64,15 @@ export const createInitialServiceState = (zoneId) => ({
   price: '',
   billingDay: '1',
   baseId: zoneId ? String(zoneId) : '',
+  useClientBase: Boolean(zoneId),
   status: 'active',
   notes: '',
   isCustomPriceEnabled: false,
+  ipAddress: '',
+  antennaIp: '',
+  modemIp: '',
+  antennaModel: '',
+  modemModel: '',
 })
 
 export const getPrimaryService = (client) => {

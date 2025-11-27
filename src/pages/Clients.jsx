@@ -42,7 +42,7 @@ export default function ClientsPage() {
     updateClientServiceStatus,
     deleteClient,
   } = useClients()
-  const { deleteClientService } = useClientServices({ autoLoad: false })
+  const { deleteClientService, updateClientService } = useClientServices({ autoLoad: false })
   const { servicePlans, status: servicePlansStatus } = useServicePlans()
   const { showToast } = useToast()
   const [activeMainTab, setActiveMainTab] = useState('clients')
@@ -154,6 +154,27 @@ export default function ClientsPage() {
     }
   }
 
+  const handleUpdateServiceMetadata = async (serviceId, payload) => {
+    if (!serviceId) return
+    setIsProcessingService(true)
+    try {
+      await updateClientService(serviceId, payload)
+      showToast({
+        type: 'success',
+        title: 'Servicio actualizado',
+        description: 'Se guardaron los cambios del servicio.',
+      })
+    } catch (error) {
+      showToast({
+        type: 'error',
+        title: 'No se pudo actualizar',
+        description: resolveApiErrorMessage(error),
+      })
+    } finally {
+      setIsProcessingService(false)
+    }
+  }
+
   const handleDeleteService = async (serviceId) => {
     if (!serviceId) return
     setIsProcessingService(true)
@@ -225,6 +246,7 @@ export default function ClientsPage() {
               servicePlans={servicePlans}
               onAssign={handleAssignService}
               onChangeStatus={handleUpdateServiceStatus}
+              onUpdateService={handleUpdateServiceMetadata}
               onDeleteService={handleDeleteService}
               isProcessing={isProcessingService || servicePlansStatus?.isLoading}
             />

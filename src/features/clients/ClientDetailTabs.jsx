@@ -63,6 +63,16 @@ export default function ClientDetailTabs({ client, initialTab = 'summary' }) {
                 <div key={service.id} className="rounded border border-slate-200 p-2">
                   <p className="font-medium">{service.name || 'Servicio'}</p>
                   <p className="text-slate-600">Estado: {service.status || 'N/D'}</p>
+                  <p className="text-slate-600">
+                    Tarifa: {service.customPrice ?? service.price ?? 'N/D'}
+                  </p>
+                  <div className="mt-1 grid grid-cols-1 gap-1 text-xs text-slate-600 md:grid-cols-2">
+                    {service.ipAddress && <span>IP: {service.ipAddress}</span>}
+                    {service.antennaIp && <span>IP antena: {service.antennaIp}</span>}
+                    {service.modemIp && <span>IP módem: {service.modemIp}</span>}
+                    {service.antennaModel && <span>Antena: {service.antennaModel}</span>}
+                    {service.modemModel && <span>Módem: {service.modemModel}</span>}
+                  </div>
                 </div>
               ))
             ) : (
