@@ -20,6 +20,16 @@ export default function ClientsList({
   onSelectClient,
   selectedClientId,
   onDeleteClient,
+  onBulkAssignServices,
+  onBulkChangeServiceStatus,
+  onBulkDeleteServices,
+  servicePlans = [],
+  isProcessing = false,
+}) {
+  const [filters, setFilters] = useState(filtersInitialState)
+  const [selectedClientIds, setSelectedClientIds] = useState([])
+  const [selectedPlanId, setSelectedPlanId] = useState('')
+  const [isBulkActionRunning, setIsBulkActionRunning] = useState(false)
   onBulkAssignPlan,
   onBulkChangeStatus,
   onBulkDeleteClients,
@@ -76,10 +86,69 @@ export default function ClientsList({
     })
   }, [clients, filters.location, filters.status, normalizedSearchTerm])
 
+  useEffect(() => {
+    setSelectedClientIds((prev) =>
+      prev.filter((id) => filteredClients.some((client) => normalizeId(client.id) === id)),
+    )
+  }, [filteredClients])
+
+  const hasSelection = selectedClientIds.length > 0
+  const allFilteredSelected =
+    filteredClients.length > 0 &&
+    filteredClients.every((client) => selectedClientIds.includes(normalizeId(client.id)))
+
   const handleChangeFilter = (key, value) => {
     setFilters((prev) => ({ ...prev, [key]: value }))
   }
 
+  const toggleClientSelection = (clientId) => {
+    const normalizedId = normalizeId(clientId)
+    if (!normalizedId) return
+
+    setSelectedClientIds((prev) =>
+      prev.includes(normalizedId)
+        ? prev.filter((id) => id !== normalizedId)
+        : [...prev, normalizedId],
+    )
+  }
+
+  const toggleSelectAll = () => {
+    if (allFilteredSelected) {
+      setSelectedClientIds((prev) =>
+        prev.filter((id) => !filteredClients.some((client) => normalizeId(client.id) === id)),
+      )
+      return
+    }
+    const allIds = filteredClients.map((client) => normalizeId(client.id)).filter(Boolean)
+    setSelectedClientIds((prev) => Array.from(new Set([...prev, ...allIds])))
+  }
+
+  const runBulkAction = async (fn) => {
+    if (!fn || !hasSelection) return
+    setIsBulkActionRunning(true)
+    try {
+      await fn()
+      setSelectedClientIds([])
+    } catch (error) {
+      // la retroalimentación se maneja en el nivel superior
+    } finally {
+      setIsBulkActionRunning(false)
+    }
+  }
+
+  const handleBulkAssign = () => {
+    if (!onBulkAssignServices || !selectedPlanId) return
+    return runBulkAction(() => onBulkAssignServices({ clientIds: selectedClientIds, servicePlanId: selectedPlanId }))
+  }
+
+  const handleBulkChangeStatus = (nextStatus) => {
+    if (!onBulkChangeServiceStatus) return
+    return runBulkAction(() => onBulkChangeServiceStatus({ clientIds: selectedClientIds, status: nextStatus }))
+  }
+
+  const handleBulkDelete = () => {
+    if (!onBulkDeleteServices) return
+    return runBulkAction(() => onBulkDeleteServices(selectedClientIds))
   useEffect(() => {
     setCurrentPage(1)
     setSelectedClientIds([])
@@ -172,6 +241,7 @@ export default function ClientsList({
   }
 
   const isLoading = Boolean(status?.isLoading)
+  const isMutating = Boolean(status?.isMutating)
   const hasError = Boolean(status?.error)
   const isDirty = useMemo(
     () =>
@@ -181,6 +251,8 @@ export default function ClientsList({
     [filters.location, filters.status, filters.term],
   )
 
+  const isBulkDisabled =
+    isLoading || isMutating || isProcessing || isBulkActionRunning || filteredClients.length === 0 || !hasSelection
   const isSelectionDisabled =
     isProcessingSelection || isLoading || Boolean(status?.isMutating) || selectedClientIds.length === 0
 
@@ -238,6 +310,56 @@ export default function ClientsList({
           </Button>
         </div>
 
+        <div className="space-y-3 rounded border border-slate-200 bg-slate-50 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-slate-700">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-slate-300"
+                checked={allFilteredSelected}
+                onChange={toggleSelectAll}
+                disabled={isLoading || isMutating || isProcessing || filteredClients.length === 0}
+              />
+              <span>
+                Seleccionar clientes visibles ({selectedClientIds.length}/{filteredClients.length})
+              </span>
+            </label>
+            <span className="text-xs text-slate-500">
+              Usa los filtros y la búsqueda para delimitar el lote.
+            </span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={selectedPlanId}
+              onChange={(event) => setSelectedPlanId(event.target.value)}
+              className="min-w-[180px] rounded border border-slate-200 p-2 text-sm"
+              disabled={isBulkDisabled}
+            >
+              <option value="">Selecciona plan</option>
+              {servicePlans.map((plan) => (
+                <option key={plan.id} value={plan.id}>
+                  {plan.name}
+                </option>
+              ))}
+            </select>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={handleBulkAssign}
+              disabled={isBulkDisabled || !selectedPlanId}
+            >
+              Asignar plan
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => handleBulkChangeStatus('suspended')} disabled={isBulkDisabled}>
+              Suspender servicios
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => handleBulkChangeStatus('active')} disabled={isBulkDisabled}>
+              Activar servicios
+            </Button>
+            <Button size="sm" variant="danger" onClick={handleBulkDelete} disabled={isBulkDisabled}>
+              Eliminar servicios
+            </Button>
         <div className="flex flex-col gap-2 rounded border border-slate-200 p-3">
           <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
             <p className="text-sm text-slate-700">
@@ -307,6 +429,11 @@ export default function ClientsList({
                 <th className="px-3 py-2">
                   <input
                     type="checkbox"
+                    className="h-4 w-4 rounded border-slate-300"
+                    checked={allFilteredSelected && filteredClients.length > 0}
+                    onChange={toggleSelectAll}
+                    disabled={isLoading || isMutating || isProcessing || filteredClients.length === 0}
+                    aria-label="Seleccionar todos los clientes visibles"
                     aria-label="Seleccionar todos"
                     checked={isAllPageSelected}
                     onChange={(event) => toggleSelectAll(event.target.checked)}
@@ -333,6 +460,11 @@ export default function ClientsList({
                     <td className="px-3 py-2">
                       <input
                         type="checkbox"
+                        className="h-4 w-4 rounded border-slate-300"
+                        checked={selectedClientIds.includes(id)}
+                        onChange={() => toggleClientSelection(id)}
+                        aria-label={`Seleccionar cliente ${client.name}`}
+                        disabled={isLoading || isMutating || isProcessing}
                         aria-label={`Seleccionar cliente ${client.name}`}
                         checked={isChecked}
                         onChange={() => toggleClientSelection(id)}
