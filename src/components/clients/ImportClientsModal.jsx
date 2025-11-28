@@ -11,19 +11,17 @@ const OPTIONAL_COLUMNS = [
   'debt_months',
   'service_status',
 ]
-const SERVICE_REQUIRED_COLUMNS = [
-  'service_1_plan_id',
+const SERVICE_REQUIRED_COLUMNS = ['service_1_plan_id']
+const SERVICE_OPTIONAL_COLUMNS = [
   'service_1_status',
   'service_1_billing_day',
   'service_1_zone_id',
   'service_1_ip_address',
-  'service_1_custom_price',
-]
-const SERVICE_OPTIONAL_COLUMNS = [
   'service_1_antenna_ip',
   'service_1_modem_ip',
   'service_1_antenna_model',
   'service_1_modem_model',
+  'service_1_custom_price',
   'service_2_plan_id',
   'service_2_status',
   'service_2_billing_day',
