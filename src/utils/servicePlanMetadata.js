@@ -3,6 +3,61 @@ import { peso } from './formatters.js'
 
 const NORMALIZED_CATEGORIES = new Set(['internet', 'streaming', 'hotspot', 'other'])
 
+const DEFAULT_PLAN_REQUIREMENTS = {
+  internet: {
+    requiresIp: true,
+    requiresBase: true,
+    requiresCredentials: false,
+    requiresEquipment: true,
+  },
+  hotspot: {
+    requiresIp: true,
+    requiresBase: true,
+    requiresCredentials: false,
+    requiresEquipment: true,
+  },
+  streaming: {
+    requiresIp: false,
+    requiresBase: false,
+    requiresCredentials: true,
+    requiresEquipment: false,
+  },
+  other: {
+    requiresIp: false,
+    requiresBase: false,
+    requiresCredentials: false,
+    requiresEquipment: false,
+  },
+}
+
+const FLAG_KEYS = {
+  requiresIp: ['requiresIp', 'requires_ip'],
+  requiresBase: ['requiresBase', 'requires_base'],
+  requiresCredentials: ['requiresCredentials', 'requireCredentials', 'requires_credentials'],
+  requiresEquipment: ['requiresEquipment', 'requireEquipment', 'requires_equipment'],
+}
+
+const resolvePlanMetadata = (plan) => {
+  if (!plan || typeof plan !== 'object') return {}
+  if (plan.metadata && typeof plan.metadata === 'object') return plan.metadata
+  if (plan.serviceMetadata && typeof plan.serviceMetadata === 'object') return plan.serviceMetadata
+  return {}
+}
+
+const resolveFlag = (plan, flag) => {
+  if (!FLAG_KEYS[flag]) return false
+  const metadata = resolvePlanMetadata(plan)
+  for (const key of FLAG_KEYS[flag]) {
+    if (plan && plan[key] !== undefined) {
+      return Boolean(plan[key])
+    }
+    if (metadata[key] !== undefined) {
+      return Boolean(metadata[key])
+    }
+  }
+  return undefined
+}
+
 const coerceCategory = (raw) => {
   const normalized = String(raw ?? '').toLowerCase()
   if (NORMALIZED_CATEGORIES.has(normalized)) {
@@ -32,22 +87,40 @@ export const isInternetLikeCategory = (planOrCategory) => {
   return category === 'internet' || category === 'hotspot'
 }
 
-export const planRequiresIp = (planOrCategory) => {
-  if (!planOrCategory) {
-    return false
+export const resolvePlanRequirements = (planOrCategory) => {
+  const category = resolveServiceCategory(planOrCategory)
+  const defaults = DEFAULT_PLAN_REQUIREMENTS[category] ?? DEFAULT_PLAN_REQUIREMENTS.other
+
+  const requiresIp = resolveFlag(planOrCategory, 'requiresIp')
+  const requiresBase = resolveFlag(planOrCategory, 'requiresBase')
+  const requiresCredentials = resolveFlag(planOrCategory, 'requiresCredentials')
+  const requiresEquipment = resolveFlag(planOrCategory, 'requiresEquipment')
+
+  return {
+    requiresIp: requiresIp ?? defaults.requiresIp,
+    requiresBase: requiresBase ?? defaults.requiresBase,
+    requiresCredentials: requiresCredentials ?? defaults.requiresCredentials,
+    requiresEquipment: requiresEquipment ?? defaults.requiresEquipment,
   }
-  if (planOrCategory.requiresIp !== undefined || planOrCategory.requires_ip !== undefined) {
-    return Boolean(planOrCategory.requiresIp ?? planOrCategory.requires_ip)
-  }
-  return isInternetLikeCategory(planOrCategory)
 }
 
+export const planRequiresIp = (planOrCategory) => resolvePlanRequirements(planOrCategory).requiresIp
+
+export const planRequiresBase = (planOrCategory) =>
+  resolvePlanRequirements(planOrCategory).requiresBase
+
+export const planRequiresCredentials = (planOrCategory) =>
+  resolvePlanRequirements(planOrCategory).requiresCredentials
+
+export const planRequiresEquipment = (planOrCategory) =>
+  resolvePlanRequirements(planOrCategory).requiresEquipment
+
 export const planRequiresBillingDay = (planOrCategory) => {
+  const requirements = resolvePlanRequirements(planOrCategory)
   if (!planOrCategory) {
     return false
   }
-  const requiresBase = Boolean(planOrCategory.requiresBase ?? planOrCategory.requires_base)
-  return requiresBase || planRequiresIp(planOrCategory)
+  return requirements.requiresBase || requirements.requiresIp
 }
 
 export const formatServicePlanLabel = (plan) => {

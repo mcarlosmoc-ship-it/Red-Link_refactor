@@ -1,5 +1,11 @@
 import { SERVICE_STATUS_OPTIONS } from '../constants/serviceTypes.js'
-import { planRequiresBillingDay, planRequiresIp } from './servicePlanMetadata.js'
+import {
+  planRequiresBillingDay,
+  planRequiresCredentials,
+  planRequiresEquipment,
+  planRequiresIp,
+  resolvePlanRequirements,
+} from './servicePlanMetadata.js'
 
 const SERVICE_STATUS_VALUES = new Set(SERVICE_STATUS_OPTIONS.map((option) => option.value))
 
@@ -112,10 +118,12 @@ export const computeServiceFormErrors = (
     }
   }
 
+  const requirements = resolvePlanRequirements(plan)
+
   const shouldUseClientBase = Boolean(state?.useClientBase ?? state?.shouldUseClientBase)
   const baseIdValue = state?.baseId
   if (validateBase) {
-    if (plan?.requiresBase && !shouldUseClientBase) {
+    if (requirements.requiresBase && !shouldUseClientBase) {
       const parsedBase = Number(baseIdValue)
       if (!Number.isInteger(parsedBase) || parsedBase < 1) {
         errors.baseId = 'Selecciona una base válida.'
@@ -157,7 +165,30 @@ export const computeServiceFormErrors = (
     }
   }
 
-  const shouldValidateTechnicalFields = validateTechnicalFields && planRequiresIp(plan)
+  const requiresCredentials = planRequiresCredentials(plan)
+  if (requiresCredentials) {
+    if (!String(state?.notes ?? '').trim()) {
+      errors.notes = 'Agrega las credenciales o notas de acceso del servicio.'
+    }
+  }
+
+  const requiresEquipment = planRequiresEquipment(plan)
+  if (requiresEquipment) {
+    const antennaModel = state?.antennaModel ?? ''
+    const modemModel = state?.modemModel ?? ''
+    if (!String(antennaModel).trim() && !String(modemModel).trim()) {
+      errors.antennaModel = 'Registra el modelo del equipo instalado en el servicio.'
+    }
+  }
+
+  const requiresIp = planRequiresIp(plan)
+  if (requiresIp) {
+    if (!String(state?.ipAddress ?? state?.ip ?? '').trim()) {
+      errors.ipAddress = 'Asigna una IP disponible para este servicio.'
+    }
+  }
+
+  const shouldValidateTechnicalFields = validateTechnicalFields && requiresIp
 
   if (shouldValidateTechnicalFields) {
     const ipAddress = state?.ipAddress ?? state?.ip ?? ''
