@@ -31,6 +31,7 @@ export default function ClientsList({
   const [selectedClientIds, setSelectedClientIds] = useState([])
   const [currentPage, setCurrentPage] = useState(1)
   const [selectedPlanId, setSelectedPlanId] = useState('')
+  const [isRunningSelectionAction, setIsRunningSelectionAction] = useState(false)
 
   const availableLocations = useMemo(() => {
     const unique = new Set()
@@ -150,50 +151,44 @@ export default function ClientsList({
     })
   }
 
-  const runSelectionAction = async (action) => {
-    if (!action || selectedClientIds.length === 0) return
+  const runBulkAction = async (actionCallback, { resetPlan = false } = {}) => {
+    if (!actionCallback || selectedClientIds.length === 0) return
+
+    setIsRunningSelectionAction(true)
     try {
-      await action()
-    } catch (error) {
-      // el contenedor de acciones maneja los mensajes de error
-      throw error
+      await actionCallback(selectedClientIds)
+    } finally {
+      if (resetPlan) {
+        setSelectedPlanId('')
+      }
+      setSelectedClientIds([])
+      setIsRunningSelectionAction(false)
     }
   }
 
   const handleBulkAssignPlan = async () => {
     if (!selectedPlanId || !onBulkAssignPlan) return
-    try {
-      await runSelectionAction(() =>
+
+    await runBulkAction(
+      (clientIds) =>
         onBulkAssignPlan({
-          clientIds: selectedClientIds,
+          clientIds,
           servicePlanId: selectedPlanId,
         }),
-      )
-      setSelectedPlanId('')
-      setSelectedClientIds([])
-    } catch (error) {
-      // el manejador padre muestra el error
-    }
+      { resetPlan: true },
+    )
   }
 
   const handleBulkStatusChange = async (nextStatus) => {
     if (!onBulkChangeStatus) return
-    try {
-      await runSelectionAction(() => onBulkChangeStatus(selectedClientIds, nextStatus))
-      setSelectedClientIds([])
-    } catch (error) {
-      // el manejador padre muestra el error
-    }
+
+    await runBulkAction((clientIds) => onBulkChangeStatus(clientIds, nextStatus))
   }
 
   const handleBulkDelete = async () => {
     if (!onBulkDeleteClients) return
-    try {
-      await runSelectionAction(() => onBulkDeleteClients(selectedClientIds))
-      setSelectedClientIds([])
-    } catch (error) {
-      // el manejador padre muestra el error
-    }
+
+    await runBulkAction((clientIds) => onBulkDeleteClients(clientIds))
   }
 
   const isLoading = Boolean(status?.isLoading)
@@ -207,7 +202,9 @@ export default function ClientsList({
     [filters.location, filters.status, filters.term],
   )
 
-  const isSelectionLocked = isProcessingSelection || isLoading || isMutating || isProcessing
+  const isSelectionActionRunning = isProcessingSelection || isRunningSelectionAction
+  const isSelectionLocked =
+    isSelectionActionRunning || isLoading || isMutating || isProcessing
   const isSelectionDisabled =
     isSelectionLocked || selectedClientIds.length === 0
 
