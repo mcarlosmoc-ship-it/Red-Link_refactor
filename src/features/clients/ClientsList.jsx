@@ -19,6 +19,8 @@ export default function ClientsList({
   onReload,
   onSelectClient,
   selectedClientId,
+  selectedClientIds: controlledSelectedIds,
+  onSelectionChange,
   onDeleteClient,
   onBulkAssignPlan,
   onBulkChangeStatus,
@@ -28,10 +30,25 @@ export default function ClientsList({
   isProcessingSelection = false,
 }) {
   const [filters, setFilters] = useState(filtersInitialState)
-  const [selectedClientIds, setSelectedClientIds] = useState([])
   const [currentPage, setCurrentPage] = useState(1)
   const [selectedPlanId, setSelectedPlanId] = useState('')
   const [isRunningSelectionAction, setIsRunningSelectionAction] = useState(false)
+
+  const [internalSelection, setInternalSelection] = useState(controlledSelectedIds ?? [])
+
+  const selectedClientIds = controlledSelectedIds ?? internalSelection
+
+  const updateSelection = (updater) => {
+    const nextSelection = typeof updater === 'function' ? updater(selectedClientIds) : updater
+    setInternalSelection(nextSelection)
+    onSelectionChange?.(nextSelection)
+  }
+
+  useEffect(() => {
+    if (Array.isArray(controlledSelectedIds)) {
+      setInternalSelection(controlledSelectedIds)
+    }
+  }, [controlledSelectedIds])
 
   const availableLocations = useMemo(() => {
     const unique = new Set()
@@ -79,18 +96,18 @@ export default function ClientsList({
   }, [clients, filters.location, filters.status, normalizedSearchTerm])
 
   useEffect(() => {
-    setSelectedClientIds((prev) =>
+    updateSelection((prev) =>
       prev.filter((id) => filteredClients.some((client) => normalizeId(client.id) === id)),
     )
   }, [filteredClients])
 
   useEffect(() => {
     setCurrentPage(1)
-    setSelectedClientIds([])
+    updateSelection([])
   }, [filters.location, filters.status, filters.term])
 
   useEffect(() => {
-    setSelectedClientIds([])
+    updateSelection([])
   }, [currentPage])
 
   const totalPages = useMemo(
@@ -127,7 +144,7 @@ export default function ClientsList({
   }
 
   const toggleSelection = (targetIds, checked) => {
-    setSelectedClientIds((prev) => {
+    updateSelection((prev) => {
       const ids = targetIds.map((id) => normalizeId(id)).filter(Boolean)
       if (ids.length === 0) return prev
 
@@ -161,7 +178,7 @@ export default function ClientsList({
       if (resetPlan) {
         setSelectedPlanId('')
       }
-      setSelectedClientIds([])
+      updateSelection([])
       setIsRunningSelectionAction(false)
     }
   }
@@ -265,12 +282,18 @@ export default function ClientsList({
         </div>
 
         <div className="flex flex-col gap-2 rounded border border-slate-200 p-3">
-          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-            <p className="text-sm text-slate-700">
-              {selectedClientsOnPage} seleccionados / {currentPageClientIds.length} visibles (página{' '}
-              {currentPage} de {totalPages})
-            </p>
-            <div className="flex flex-wrap gap-2">
+        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <p className="text-sm text-slate-700">
+            {selectedClientsOnPage} seleccionados / {currentPageClientIds.length} visibles (página{' '}
+            {currentPage} de {totalPages})
+          </p>
+          <p
+            className="text-xs text-slate-500"
+            title="Funciona como Wisphub: selecciona clientes en la página visible y aplica acciones masivas desde esta barra."
+          >
+            Selección por página + barra de acciones (modo Wisphub)
+          </p>
+          <div className="flex flex-wrap gap-2">
               <select
                 className="rounded border border-slate-200 p-2"
                 data-testid="bulk-plan"
