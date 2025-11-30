@@ -41,6 +41,31 @@ export default function ClientForm({ servicePlans, onSubmit, isSubmitting }) {
     [availablePlans, serviceState.servicePlanId],
   )
 
+  const selectedPlanMetadata = useMemo(
+    () => selectedPlan?.metadata ?? selectedPlan?.serviceMetadata ?? {},
+    [selectedPlan],
+  )
+
+  const requiresIp = planRequiresIp(selectedPlan)
+  const requiresBase = Boolean(selectedPlan?.requiresBase)
+  const requiresCredentials = Boolean(
+    selectedPlanMetadata.requiresCredentials ??
+      selectedPlanMetadata.requireCredentials ??
+      selectedPlanMetadata.requires_credentials,
+  )
+
+  const basePlanPrice = useMemo(() => {
+    const parsed = Number(selectedPlan?.monthlyPrice ?? selectedPlan?.defaultMonthlyFee)
+    return Number.isFinite(parsed) ? parsed : null
+  }, [selectedPlan])
+
+  const formattedBasePrice = useMemo(() => {
+    if (basePlanPrice === null) return ''
+    return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(
+      basePlanPrice,
+    )
+  }, [basePlanPrice])
+
   const handleChange = (key, value) => {
     setFormState((prev) => ({ ...prev, [key]: value }))
   }
@@ -56,7 +81,7 @@ export default function ClientForm({ servicePlans, onSubmit, isSubmitting }) {
       ...prev,
       servicePlanId: planId,
       serviceType: plan?.serviceType ?? plan?.category ?? prev.serviceType,
-      customPrice: plan ? plan.defaultMonthlyFee : '',
+      customPrice: plan ? plan.monthlyPrice ?? plan.defaultMonthlyFee : '',
       ipAddress: plan?.requiresIp ? prev.ipAddress : '',
       antennaIp: plan?.requiresIp ? prev.antennaIp : '',
       modemIp: plan?.requiresIp ? prev.modemIp : '',
@@ -76,18 +101,29 @@ export default function ClientForm({ servicePlans, onSubmit, isSubmitting }) {
     event.preventDefault()
     setError('')
 
-    const selectedPlan = internetPlans.find(
+    const selectedPlan = availablePlans.find(
       (plan) => String(plan.id) === String(serviceState.servicePlanId),
     )
 
     if (serviceState.servicePlanId) {
+      const requiresIp = planRequiresIp(selectedPlan)
+      const requiresCredentials = Boolean(
+        selectedPlanMetadata.requiresCredentials ??
+          selectedPlanMetadata.requireCredentials ??
+          selectedPlanMetadata.requires_credentials,
+      )
+
       const errors = computeServiceFormErrors(serviceState, {
         plan: selectedPlan,
         validateTechnicalFields: false,
       })
 
-      if (planRequiresIp(selectedPlan) && !serviceState.ipAddress) {
+      if (requiresIp && !serviceState.ipAddress?.trim()) {
         errors.ipAddress = 'Asigna una IP disponible para este servicio.'
+      }
+
+      if (requiresCredentials && !serviceState.notes?.trim()) {
+        errors.notes = 'Agrega las credenciales o notas de acceso del servicio.'
       }
 
       const firstError = Object.values(errors)[0]
@@ -98,6 +134,18 @@ export default function ClientForm({ servicePlans, onSubmit, isSubmitting }) {
     }
 
     try {
+      const trimmedIpAddress = serviceState.ipAddress?.trim() || undefined
+      const trimmedAntennaIp = serviceState.antennaIp?.trim() || undefined
+      const trimmedModemIp = serviceState.modemIp?.trim() || undefined
+      const trimmedAntennaModel = serviceState.antennaModel?.trim() || undefined
+      const trimmedModemModel = serviceState.modemModel?.trim() || undefined
+
+      const resolvedCustomPrice = serviceState.isCustomPriceEnabled
+        ? Number(serviceState.price) || 0
+        : normalizedCustomPrice === ''
+          ? undefined
+          : Number(serviceState.customPrice)
+
       await onSubmit({
         client: formState,
         service: serviceState.servicePlanId
@@ -106,21 +154,12 @@ export default function ClientForm({ servicePlans, onSubmit, isSubmitting }) {
               servicePlanId: serviceState.servicePlanId,
               billingDay: Number(serviceState.billingDay) || 1,
               baseId: serviceState.baseId ? Number(serviceState.baseId) : null,
-              ipAddress: serviceState.ipAddress || null,
-              antennaIp: serviceState.antennaIp || null,
-              modemIp: serviceState.modemIp || null,
-              antennaModel: serviceState.antennaModel || null,
-              modemModel: serviceState.modemModel || null,
-              customPrice: serviceState.isCustomPriceEnabled
-                ? Number(serviceState.price) || 0
-                : undefined,
-              ipAddress: serviceState.ipAddress?.trim() || undefined,
-              antennaIp: serviceState.antennaIp?.trim() || undefined,
-              modemIp: serviceState.modemIp?.trim() || undefined,
-              antennaModel: serviceState.antennaModel?.trim() || undefined,
-              modemModel: serviceState.modemModel?.trim() || undefined,
-              customPrice:
-                normalizedCustomPrice === '' ? undefined : Number(serviceState.customPrice),
+              ipAddress: trimmedIpAddress,
+              antennaIp: trimmedAntennaIp,
+              modemIp: trimmedModemIp,
+              antennaModel: trimmedAntennaModel,
+              modemModel: trimmedModemModel,
+              customPrice: resolvedCustomPrice,
               status: 'active',
             }
           : null,
@@ -214,6 +253,10 @@ export default function ClientForm({ servicePlans, onSubmit, isSubmitting }) {
               <span className="font-medium">Servicio inicial</span>
               <InfoTooltip text="Opcional: asigna el plan principal del cliente" />
             </div>
+            <p className="mt-1 text-xs text-slate-600">
+              Este servicio es opcional y el precio sugerido se toma del plan seleccionado.
+              Puedes ajustarlo cuando sea necesario.
+            </p>
             <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
               <select
                 className="rounded border border-slate-200 p-2"
@@ -239,160 +282,171 @@ export default function ClientForm({ servicePlans, onSubmit, isSubmitting }) {
               />
             </div>
 
-          {serviceState.servicePlanId && (
-            <div className="mt-2 space-y-3">
-              {(() => {
-                const selectedPlan = internetPlans.find(
-                  (plan) => String(plan.id) === String(serviceState.servicePlanId),
-                )
+            {selectedPlan && (
+              <div className="mt-2 space-y-1 text-xs text-slate-700">
+                {formattedBasePrice && (
+                  <p>
+                    Precio base del plan{' '}
+                    <span className="font-medium">{formattedBasePrice}</span>
+                  </p>
+                )}
+                {(requiresBase || requiresIp || requiresCredentials) && (
+                  <ul className="list-disc space-y-1 pl-4 text-slate-600">
+                    {requiresBase && <li>Requiere una base/torre asignada.</li>}
+                    {requiresIp && <li>Necesita IP de servicio y datos técnicos.</li>}
+                    {requiresCredentials && (
+                      <li>Captura las credenciales o notas de acceso en notas del servicio.</li>
+                    )}
+                  </ul>
+                )}
+              </div>
+            )}
 
-                const requiresIp = planRequiresIp(selectedPlan)
+            {serviceState.servicePlanId && (
+              <div className="mt-2 space-y-3">
+                <>
+                  <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                    <div className="flex items-center gap-2">
+                      <input
+                        id="customPrice"
+                        type="checkbox"
+                        checked={serviceState.isCustomPriceEnabled}
+                        onChange={(event) =>
+                          setServiceState((prev) => ({
+                            ...prev,
+                            isCustomPriceEnabled: event.target.checked,
+                            price: event.target.checked ? prev.price : '',
+                          }))
+                        }
+                        className="h-4 w-4 rounded border-slate-300 text-blue-600 focus-visible:ring-blue-500"
+                      />
+                      <label className="text-sm font-medium" htmlFor="customPrice">
+                        Tarifa personalizada
+                      </label>
+                    </div>
+                    <input
+                      type="number"
+                      min="0"
+                      className="rounded border border-slate-200 p-2"
+                      value={serviceState.price}
+                      onChange={(event) =>
+                        setServiceState((prev) => ({ ...prev, price: event.target.value }))
+                      }
+                      disabled={!serviceState.isCustomPriceEnabled}
+                      placeholder="Monto personalizado"
+                    />
+                  </div>
 
-                return (
-                  <>
+                  {requiresBase && (
                     <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                      <div className="flex items-center gap-2">
+                      <label className="flex items-center gap-2 text-sm font-medium">
                         <input
-                          id="customPrice"
                           type="checkbox"
-                          checked={serviceState.isCustomPriceEnabled}
-                          onChange={(event) =>
+                          checked={serviceState.useClientBase}
+                          onChange={(event) => {
+                            const shouldUseClientBase = event.target.checked
                             setServiceState((prev) => ({
                               ...prev,
-                              isCustomPriceEnabled: event.target.checked,
-                              price: event.target.checked ? prev.price : '',
+                              useClientBase: shouldUseClientBase,
+                              baseId: shouldUseClientBase ? formState.zoneId : prev.baseId,
                             }))
-                          }
+                          }}
                           className="h-4 w-4 rounded border-slate-300 text-blue-600 focus-visible:ring-blue-500"
                         />
-                        <label className="text-sm font-medium" htmlFor="customPrice">
-                          Tarifa personalizada
-                        </label>
-                      </div>
+                        Usar zona del cliente como base
+                      </label>
                       <input
                         type="number"
-                        min="0"
+                        min="1"
                         className="rounded border border-slate-200 p-2"
-                        value={serviceState.price}
+                        value={serviceState.baseId}
                         onChange={(event) =>
-                          setServiceState((prev) => ({ ...prev, price: event.target.value }))
+                          setServiceState((prev) => ({ ...prev, baseId: event.target.value }))
                         }
-                        disabled={!serviceState.isCustomPriceEnabled}
-                        placeholder="Monto personalizado"
+                        disabled={serviceState.useClientBase}
+                        placeholder="ID de base/torre"
                       />
                     </div>
+                  )}
 
-                    {selectedPlan?.requiresBase && (
-                      <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                        <label className="flex items-center gap-2 text-sm font-medium">
-                          <input
-                            type="checkbox"
-                            checked={serviceState.useClientBase}
-                            onChange={(event) => {
-                              const shouldUseClientBase = event.target.checked
-                              setServiceState((prev) => ({
-                                ...prev,
-                                useClientBase: shouldUseClientBase,
-                                baseId: shouldUseClientBase ? formState.zoneId : prev.baseId,
-                              }))
-                            }}
-                            className="h-4 w-4 rounded border-slate-300 text-blue-600 focus-visible:ring-blue-500"
-                          />
-                          Usar zona del cliente como base
+                  {requiresIp && (
+                    <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                      <div>
+                        <label className="text-sm font-medium" htmlFor="ipAddress">
+                          IP de servicio
                         </label>
                         <input
-                          type="number"
-                          min="1"
-                          className="rounded border border-slate-200 p-2"
-                          value={serviceState.baseId}
+                          id="ipAddress"
+                          className="mt-1 w-full rounded border border-slate-200 p-2"
+                          value={serviceState.ipAddress}
                           onChange={(event) =>
-                            setServiceState((prev) => ({ ...prev, baseId: event.target.value }))
+                            setServiceState((prev) => ({ ...prev, ipAddress: event.target.value }))
                           }
-                          disabled={serviceState.useClientBase}
-                          placeholder="ID de base/torre"
+                          placeholder="192.168.0.10"
                         />
                       </div>
-                    )}
-
-                    {requiresIp && (
-                      <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                        <div>
-                          <label className="text-sm font-medium" htmlFor="ipAddress">
-                            IP de servicio
-                          </label>
-                          <input
-                            id="ipAddress"
-                            className="mt-1 w-full rounded border border-slate-200 p-2"
-                            value={serviceState.ipAddress}
-                            onChange={(event) =>
-                              setServiceState((prev) => ({ ...prev, ipAddress: event.target.value }))
-                            }
-                            placeholder="192.168.0.10"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-sm font-medium" htmlFor="antennaIp">
-                            IP de antena
-                          </label>
-                          <input
-                            id="antennaIp"
-                            className="mt-1 w-full rounded border border-slate-200 p-2"
-                            value={serviceState.antennaIp}
-                            onChange={(event) =>
-                              setServiceState((prev) => ({ ...prev, antennaIp: event.target.value }))
-                            }
-                            placeholder="192.168.0.11"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-sm font-medium" htmlFor="modemIp">
-                            IP de módem
-                          </label>
-                          <input
-                            id="modemIp"
-                            className="mt-1 w-full rounded border border-slate-200 p-2"
-                            value={serviceState.modemIp}
-                            onChange={(event) =>
-                              setServiceState((prev) => ({ ...prev, modemIp: event.target.value }))
-                            }
-                            placeholder="192.168.0.12"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-sm font-medium" htmlFor="antennaModel">
-                            Modelo de antena
-                          </label>
-                          <input
-                            id="antennaModel"
-                            className="mt-1 w-full rounded border border-slate-200 p-2"
-                            value={serviceState.antennaModel}
-                            onChange={(event) =>
-                              setServiceState((prev) => ({ ...prev, antennaModel: event.target.value }))
-                            }
-                            placeholder="Modelo antena"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-sm font-medium" htmlFor="modemModel">
-                            Modelo de módem
-                          </label>
-                          <input
-                            id="modemModel"
-                            className="mt-1 w-full rounded border border-slate-200 p-2"
-                            value={serviceState.modemModel}
-                            onChange={(event) =>
-                              setServiceState((prev) => ({ ...prev, modemModel: event.target.value }))
-                            }
-                            placeholder="Modelo módem"
-                          />
-                        </div>
+                      <div>
+                        <label className="text-sm font-medium" htmlFor="antennaIp">
+                          IP de antena
+                        </label>
+                        <input
+                          id="antennaIp"
+                          className="mt-1 w-full rounded border border-slate-200 p-2"
+                          value={serviceState.antennaIp}
+                          onChange={(event) =>
+                            setServiceState((prev) => ({ ...prev, antennaIp: event.target.value }))
+                          }
+                          placeholder="192.168.0.11"
+                        />
                       </div>
-                    )}
-                  </>
-                )
-              })()}
-            </div>
-          )}
+                      <div>
+                        <label className="text-sm font-medium" htmlFor="modemIp">
+                          IP de módem
+                        </label>
+                        <input
+                          id="modemIp"
+                          className="mt-1 w-full rounded border border-slate-200 p-2"
+                          value={serviceState.modemIp}
+                          onChange={(event) =>
+                            setServiceState((prev) => ({ ...prev, modemIp: event.target.value }))
+                          }
+                          placeholder="192.168.0.12"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium" htmlFor="antennaModel">
+                          Modelo de antena
+                        </label>
+                        <input
+                          id="antennaModel"
+                          className="mt-1 w-full rounded border border-slate-200 p-2"
+                          value={serviceState.antennaModel}
+                          onChange={(event) =>
+                            setServiceState((prev) => ({ ...prev, antennaModel: event.target.value }))
+                          }
+                          placeholder="Modelo antena"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium" htmlFor="modemModel">
+                          Modelo de módem
+                        </label>
+                        <input
+                          id="modemModel"
+                          className="mt-1 w-full rounded border border-slate-200 p-2"
+                          value={serviceState.modemModel}
+                          onChange={(event) =>
+                            setServiceState((prev) => ({ ...prev, modemModel: event.target.value }))
+                          }
+                          placeholder="Modelo módem"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </>
+              </div>
+            )}
+
             {selectedPlan && (
               <div className="mt-2 space-y-2">
                 <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
@@ -407,9 +461,7 @@ export default function ClientForm({ servicePlans, onSubmit, isSubmitting }) {
                       step="0.01"
                       className="mt-1 w-full rounded border border-slate-200 p-2"
                       value={serviceState.customPrice}
-                      onChange={(event) =>
-                        handleServiceStateChange('customPrice', event.target.value)
-                      }
+                      onChange={(event) => handleServiceStateChange('customPrice', event.target.value)}
                     />
                   </div>
                   <div>
@@ -436,9 +488,7 @@ export default function ClientForm({ servicePlans, onSubmit, isSubmitting }) {
                         className="mt-1 w-full rounded border border-slate-200 p-2"
                         placeholder="000.000.000.000"
                         value={serviceState.ipAddress}
-                        onChange={(event) =>
-                          handleServiceStateChange('ipAddress', event.target.value)
-                        }
+                        onChange={(event) => handleServiceStateChange('ipAddress', event.target.value)}
                       />
                     </div>
                     <div>
@@ -449,9 +499,7 @@ export default function ClientForm({ servicePlans, onSubmit, isSubmitting }) {
                         id="service-modem-ip"
                         className="mt-1 w-full rounded border border-slate-200 p-2"
                         value={serviceState.modemIp}
-                        onChange={(event) =>
-                          handleServiceStateChange('modemIp', event.target.value)
-                        }
+                        onChange={(event) => handleServiceStateChange('modemIp', event.target.value)}
                       />
                     </div>
                     <div>
@@ -462,9 +510,7 @@ export default function ClientForm({ servicePlans, onSubmit, isSubmitting }) {
                         id="service-antenna-ip"
                         className="mt-1 w-full rounded border border-slate-200 p-2"
                         value={serviceState.antennaIp}
-                        onChange={(event) =>
-                          handleServiceStateChange('antennaIp', event.target.value)
-                        }
+                        onChange={(event) => handleServiceStateChange('antennaIp', event.target.value)}
                       />
                     </div>
                     <div>
@@ -475,9 +521,7 @@ export default function ClientForm({ servicePlans, onSubmit, isSubmitting }) {
                         id="service-modem-model"
                         className="mt-1 w-full rounded border border-slate-200 p-2"
                         value={serviceState.modemModel}
-                        onChange={(event) =>
-                          handleServiceStateChange('modemModel', event.target.value)
-                        }
+                        onChange={(event) => handleServiceStateChange('modemModel', event.target.value)}
                       />
                     </div>
                     <div>
@@ -488,9 +532,7 @@ export default function ClientForm({ servicePlans, onSubmit, isSubmitting }) {
                         id="service-antenna-model"
                         className="mt-1 w-full rounded border border-slate-200 p-2"
                         value={serviceState.antennaModel}
-                        onChange={(event) =>
-                          handleServiceStateChange('antennaModel', event.target.value)
-                        }
+                        onChange={(event) => handleServiceStateChange('antennaModel', event.target.value)}
                       />
                     </div>
                   </div>
@@ -498,7 +540,6 @@ export default function ClientForm({ servicePlans, onSubmit, isSubmitting }) {
               </div>
             )}
           </div>
-
           {error && <p className="text-sm text-red-600">{error}</p>}
 
           <div className="flex justify-end">
