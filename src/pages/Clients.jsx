@@ -50,6 +50,7 @@ export default function ClientsPage() {
   const { showToast } = useToast()
   const [activeMainTab, setActiveMainTab] = useState('clients')
   const [selectedClientId, setSelectedClientId] = useState(null)
+  const [selectedClientIds, setSelectedClientIds] = useState([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isProcessingService, setIsProcessingService] = useState(false)
   const [isProcessingSelection, setIsProcessingSelection] = useState(false)
@@ -318,24 +319,6 @@ export default function ClientsPage() {
         type: 'success',
         title: 'Servicio actualizado',
         description: 'Se guardaron los cambios del servicio.',
-  const resolveSelectedClients = (selectedIds) =>
-    clients.filter((client) => selectedIds.includes(normalizeId(client.id)))
-
-  const handleBulkAssignPlan = async ({ clientIds, servicePlanId }) => {
-    if (!clientIds?.length || !servicePlanId) return
-    const targetClients = resolveSelectedClients(clientIds)
-    if (targetClients.length === 0) return
-
-    setIsProcessingSelection(true)
-    const payloadIds = targetClients.map((client) => client.id)
-    const selectedPlan = servicePlans.find((plan) => normalizeId(plan.id) === normalizeId(servicePlanId))
-
-    try {
-      await bulkAssignClientServices({ clientIds: payloadIds, servicePlanId })
-      showToast({
-        type: 'success',
-        title: 'Plan asignado',
-        description: `Se asignó ${selectedPlan?.name ?? 'el plan seleccionado'} a ${payloadIds.length} clientes.`,
       })
     } catch (error) {
       showToast({
@@ -345,6 +328,46 @@ export default function ClientsPage() {
       })
     } finally {
       setIsProcessingService(false)
+    }
+  }
+
+  const resolveSelectedClients = (selectedIds = []) =>
+    clients.filter((client) => selectedIds.includes(normalizeId(client.id)))
+
+  const resolveTargetIds = (clientIds) => (clientIds?.length ? clientIds : selectedClientIds)
+
+  const handleBulkAssignPlan = async ({ clientIds, servicePlanId }) => {
+    const targetIds = resolveTargetIds(clientIds)
+    if (!targetIds?.length || !servicePlanId) return
+
+    const normalizedIds = targetIds.map(normalizeId).filter(Boolean)
+    const targetClients = resolveSelectedClients(normalizedIds)
+    if (targetClients.length === 0) return
+
+    setIsProcessingSelection(true)
+    const selectedPlan = servicePlans.find((plan) => normalizeId(plan.id) === normalizeId(servicePlanId))
+
+    try {
+      const createdServices = await bulkAssignClientServices({
+        clientIds: targetClients.map((client) => client.id),
+        servicePlanId,
+        status: 'active',
+      })
+
+      const successCount = Array.isArray(createdServices) ? createdServices.length : 0
+      const failureCount = Math.max(normalizedIds.length - successCount, 0)
+
+      buildBulkSummaryToast({
+        title: 'Asignación de plan',
+        action: `Plan ${selectedPlan?.name ?? 'seleccionado'} asignado`,
+        successCount,
+        failureCount,
+        total: normalizedIds.length,
+        errorMessage: 'No se pudieron asignar los planes seleccionados.',
+      })
+    } catch (error) {
+      showToast({
+        type: 'error',
         title: 'No se pudo asignar el plan',
         description: resolveApiErrorMessage(error),
       })
@@ -355,53 +378,52 @@ export default function ClientsPage() {
   }
 
   const handleBulkServiceStatus = async (clientIds, nextStatus) => {
-    if (!clientIds?.length || !nextStatus) return
-    const targetClients = resolveSelectedClients(clientIds)
+    const targetIds = resolveTargetIds(clientIds)
+    if (!targetIds?.length || !nextStatus) return
+
+    const normalizedIds = targetIds.map(normalizeId).filter(Boolean)
+    const targetClients = resolveSelectedClients(normalizedIds)
     if (targetClients.length === 0) return
 
     setIsProcessingSelection(true)
+    let successCount = 0
+    let failureCount = 0
+    let firstError = null
 
-    try {
-      const results = await Promise.allSettled(
-        targetClients.map((client) => {
-          const primaryService = getPrimaryService(client)
-          if (!primaryService?.id) {
-            return Promise.reject(new Error('El cliente no tiene servicios asociados'))
-          }
-          return updateClientServiceStatus(client.id, primaryService.id, nextStatus)
-        }),
-      )
-
-      const successCount = results.filter((result) => result.status === 'fulfilled').length
-      const errors = results.filter((result) => result.status === 'rejected')
-
-      if (successCount > 0) {
-        showToast({
-          type: 'success',
-          title: nextStatus === 'active' ? 'Clientes activados' : 'Clientes suspendidos',
-          description: `${successCount} clientes fueron actualizados correctamente.`,
-        })
+    for (const client of targetClients) {
+      const primaryService = getPrimaryService(client)
+      if (!primaryService?.id) {
+        failureCount += 1
+        continue
       }
 
-      if (errors.length > 0) {
-        const firstError = errors[0].reason
-        showToast({
-          type: 'error',
-          title: 'Algunos clientes no pudieron actualizarse',
-          description: resolveApiErrorMessage(firstError, 'Revisa que tengan servicios disponibles.'),
-        })
-        if (successCount === 0) {
-          throw firstError
+      try {
+        await updateClientServiceStatus(client.id, primaryService.id, nextStatus)
+        successCount += 1
+      } catch (error) {
+        failureCount += 1
+        if (!firstError) {
+          firstError = error
         }
       }
-    } finally {
-      setIsProcessingSelection(false)
     }
+
+    buildBulkSummaryToast({
+      title: 'Actualización masiva',
+      action: `Estado ${nextStatus === 'suspended' ? 'suspendido' : 'activado'}`,
+      successCount,
+      failureCount,
+      total: normalizedIds.length,
+      errorMessage: resolveApiErrorMessage(firstError, 'No se pudieron actualizar los servicios.'),
+    })
+
+    setIsProcessingSelection(false)
   }
 
   const handleBulkDeleteClients = async (clientIds) => {
-    if (!clientIds?.length) return
-    const targetClients = resolveSelectedClients(clientIds)
+    const targetIds = resolveTargetIds(clientIds)
+    if (!targetIds?.length) return
+    const targetClients = resolveSelectedClients(targetIds)
     if (targetClients.length === 0) return
 
     setIsProcessingSelection(true)
@@ -414,32 +436,28 @@ export default function ClientsPage() {
       )
 
       const successCount = results.filter((result) => result.status === 'fulfilled').length
-      const errors = results.filter((result) => result.status === 'rejected')
+      const failureCount = results.length - successCount
+      const firstError = results.find((result) => result.status === 'rejected')?.reason
 
-      if (successCount > 0) {
-        showToast({
-          type: 'success',
-          title: 'Clientes eliminados',
-          description: `${successCount} clientes fueron eliminados.`,
-        })
-      }
+      buildBulkSummaryToast({
+        title: 'Eliminación masiva',
+        action: 'Cliente eliminado',
+        successCount,
+        failureCount,
+        total: results.length,
+        errorMessage: resolveApiErrorMessage(
+          firstError,
+          'No se pudieron eliminar los clientes seleccionados.',
+        ),
+      })
 
-      if (errors.length > 0) {
-        const firstError = errors[0].reason
-        showToast({
-          type: 'error',
-          title: 'Algunos clientes no se eliminaron',
-          description: resolveApiErrorMessage(firstError),
-        })
-        if (successCount === 0) {
-          throw firstError
-        }
+      if (failureCount === results.length && firstError) {
+        throw firstError
       }
     } finally {
       setIsProcessingSelection(false)
     }
   }
-
   const handleDeleteService = async (serviceId) => {
     if (!serviceId) return
     setIsProcessingService(true)
@@ -519,15 +537,13 @@ export default function ClientsPage() {
           <div className="space-y-4 lg:col-span-2">
             <ClientsList
               clients={clients}
-              servicePlans={servicePlans}
               status={clientsStatus}
               onReload={reloadClients}
               onSelectClient={setSelectedClientId}
               selectedClientId={selectedClientId}
+              selectedClientIds={selectedClientIds}
+              onSelectionChange={setSelectedClientIds}
               onDeleteClient={handleDeleteClient}
-              onBulkAssignServices={handleBulkAssignServices}
-              onBulkChangeServiceStatus={handleBulkChangeServiceStatus}
-              onBulkDeleteServices={handleBulkDeleteServices}
               servicePlans={servicePlans}
               isProcessing={isProcessingService || clientsStatus?.isMutating}
               onBulkAssignPlan={handleBulkAssignPlan}
