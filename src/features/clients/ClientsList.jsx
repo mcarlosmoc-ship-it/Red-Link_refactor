@@ -116,27 +116,38 @@ export default function ClientsList({
   const isAllPageSelected =
     currentPageClientIds.length > 0 && currentPageClientIds.every((id) => selectedClientIds.includes(id))
 
+  const selectedClientsOnPage = useMemo(
+    () => selectedClientIds.filter((id) => currentPageClientIds.includes(id)).length,
+    [currentPageClientIds, selectedClientIds],
+  )
+
   const handleChangeFilter = (key, value) => {
     setFilters((prev) => ({ ...prev, [key]: value }))
   }
 
-  const toggleClientSelection = (clientId) => {
-    const normalizedId = normalizeId(clientId)
-    if (!normalizedId) return
+  const toggleSelection = (targetIds, checked) => {
+    setSelectedClientIds((prev) => {
+      const ids = targetIds.map((id) => normalizeId(id)).filter(Boolean)
+      if (ids.length === 0) return prev
 
-    setSelectedClientIds((prev) =>
-      prev.includes(normalizedId)
-        ? prev.filter((id) => id !== normalizedId)
-        : [...prev, normalizedId],
-    )
-  }
+      const nextSelection = new Set(prev)
 
-  const toggleSelectAll = (checked) => {
-    if (checked) {
-      setSelectedClientIds((prev) => Array.from(new Set([...prev, ...currentPageClientIds])))
-      return
-    }
-    setSelectedClientIds((prev) => prev.filter((id) => !currentPageClientIds.includes(id)))
+      if (checked === true) {
+        ids.forEach((id) => nextSelection.add(id))
+      } else if (checked === false) {
+        ids.forEach((id) => nextSelection.delete(id))
+      } else {
+        ids.forEach((id) => {
+          if (nextSelection.has(id)) {
+            nextSelection.delete(id)
+          } else {
+            nextSelection.add(id)
+          }
+        })
+      }
+
+      return Array.from(nextSelection)
+    })
   }
 
   const runSelectionAction = async (action) => {
@@ -196,8 +207,9 @@ export default function ClientsList({
     [filters.location, filters.status, filters.term],
   )
 
+  const isSelectionLocked = isProcessingSelection || isLoading || isMutating || isProcessing
   const isSelectionDisabled =
-    isProcessingSelection || isLoading || Boolean(status?.isMutating) || selectedClientIds.length === 0
+    isSelectionLocked || selectedClientIds.length === 0
 
   return (
     <Card data-testid="clients-list">
@@ -258,7 +270,8 @@ export default function ClientsList({
         <div className="flex flex-col gap-2 rounded border border-slate-200 p-3">
           <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
             <p className="text-sm text-slate-700">
-              {selectedClientIds.length} clientes seleccionados (página {currentPage} de {totalPages})
+              {selectedClientsOnPage} seleccionados / {currentPageClientIds.length} visibles (página{' '}
+              {currentPage} de {totalPages})
             </p>
             <div className="flex flex-wrap gap-2">
               <select
@@ -266,6 +279,7 @@ export default function ClientsList({
                 data-testid="bulk-plan"
                 value={selectedPlanId}
                 onChange={(event) => setSelectedPlanId(event.target.value)}
+                disabled={isSelectionLocked}
               >
                 <option value="">Asignar plan...</option>
                 {availablePlans.map((plan) => (
@@ -326,8 +340,8 @@ export default function ClientsList({
                     type="checkbox"
                     className="h-4 w-4 rounded border-slate-300"
                     checked={isAllPageSelected}
-                    onChange={(event) => toggleSelectAll(event.target.checked)}
-                    disabled={isLoading || isMutating || isProcessing || paginatedClients.length === 0}
+                    onChange={(event) => toggleSelection(currentPageClientIds, event.target.checked)}
+                    disabled={isSelectionLocked || paginatedClients.length === 0}
                     aria-label="Seleccionar todos"
                   />
                 </th>
@@ -354,9 +368,9 @@ export default function ClientsList({
                         type="checkbox"
                         className="h-4 w-4 rounded border-slate-300"
                         checked={isChecked}
-                        onChange={() => toggleClientSelection(id)}
+                        onChange={() => toggleSelection([id])}
                         aria-label={`Seleccionar cliente ${client.name}`}
-                        disabled={isLoading || isMutating || isProcessing}
+                        disabled={isSelectionLocked}
                       />
                     </td>
                     <td className="px-3 py-2 font-medium">{client.name}</td>
