@@ -20,14 +20,6 @@
 
 2) **Campos dinámicos según el plan elegido**
 - Extender `servicePlans` con metadatos de requerimientos (ej. `{ requiresIp: true, requiresBase: true, requiresCredentials: false }`) o derivarlos por `serviceType`, igual que Wisphub marca los servicios de internet con `requires_ip` y `requires_onu`.
-## Tareas a implementar
-
-1) **Seleccionar cualquier plan activo al crear cliente**
-- Eliminar el filtro por tipo "internet" en `ClientForm` y usar el catálogo completo (excluyendo sólo planes técnicos como `token` si aplica).
-- Añadir texto de ayuda que explique que el servicio inicial es opcional y que su precio proviene del plan elegido, no de la tarifa mensual del cliente.
-
-2) **Campos dinámicos según el plan elegido**
-- Extender `servicePlans` con metadatos de requerimientos (ej. `{ requiresIp: true, requiresBase: true, requiresCredentials: false }`) o derivarlos por `serviceType`.
 - Actualizar el estado `serviceState`/`createInitialServiceState` para incluir campos condicionales (`ip`, `antennaIp`, `modemModel`, `price`, etc.).
 - Renderizar inputs dinámicos en `ClientForm` y `ServicesAssignments` según el plan seleccionado; validar antes de enviar y mapear al payload de `client_services`.
 
@@ -37,7 +29,6 @@
 
 4) **Importación masiva al estilo Wisphub (clientes + servicios)**
 - Extender la plantilla CSV para admitir columnas de servicio principal (plan, precio, IP/base, estado) y múltiples servicios opcionales en filas adicionales o en columnas numeradas (`service_1_*`), siguiendo el layout de importación de Wisphub (cliente + servicios hijos en la misma plantilla).
-- Extender la plantilla CSV para admitir columnas de servicio principal (plan, precio, IP/base, estado) y múltiples servicios opcionales en filas adicionales o en columnas numeradas (`service_1_*`).
 - Actualizar `ImportClientsModal` para describir el nuevo formato, validar CSV y mostrar un resumen de servicios creados/errores por fila.
 - Adaptar el endpoint `/clients/import` y la acción `importClients` para crear primero clientes y luego sus servicios asociados dentro de la misma carga, manteniendo la lógica de refresco de clientes y métricas.
 
