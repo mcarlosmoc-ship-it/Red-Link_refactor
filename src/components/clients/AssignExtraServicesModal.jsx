@@ -87,7 +87,7 @@ export default function AssignExtraServicesModal({
     const normalizedSearch = searchTerm.trim().toLowerCase()
     return activePlans.filter((plan) => {
       const planId = String(plan.id)
-      if (selectedPlanIds.has(planId) || excludedIdsSet.has(planId)) {
+      if (excludedIdsSet.has(planId)) {
         return false
       }
       const category = resolveCategory(plan)
@@ -114,10 +114,14 @@ export default function AssignExtraServicesModal({
     return null
   }
 
-  const handleAddPlan = (planId) => {
+  const handleTogglePlan = (planId) => {
     setSelectedPlanIds((prev) => {
       const next = new Set(prev)
-      next.add(planId)
+      if (next.has(planId)) {
+        next.delete(planId)
+      } else {
+        next.add(planId)
+      }
       return next
     })
   }
@@ -229,8 +233,8 @@ export default function AssignExtraServicesModal({
                       <label className="flex cursor-pointer items-start gap-3">
                         <input
                           type="checkbox"
-                          checked={false}
-                          onChange={() => handleAddPlan(planId)}
+                          checked={selectedPlanIds.has(planId)}
+                          onChange={() => handleTogglePlan(planId)}
                           className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                         />
                         <div className="space-y-1">
