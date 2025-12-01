@@ -73,7 +73,7 @@ export default function ImportClientsModal({
 
   const columnList = useMemo(
     () => [
-      { title: 'Datos del cliente (obligatorias)', items: REQUIRED_COLUMNS },
+      { title: 'Datos del cliente (obligatorios)', items: REQUIRED_COLUMNS },
       { title: 'Datos del cliente (opcionales)', items: OPTIONAL_COLUMNS },
       { title: 'Servicio principal', items: SERVICE_REQUIRED_COLUMNS },
       {
