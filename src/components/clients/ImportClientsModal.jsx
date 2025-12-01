@@ -181,6 +181,10 @@ export default function ImportClientsModal({
                   Para servicios adicionales repite el bloque <code>service_2_*</code>, <code>service_3_*</code>
                   con sus datos completos.
                 </li>
+                <li>
+                  Evita repetir IPs (principal, antena o módem): si la IP ya existe en el sistema o en otra fila
+                  del archivo, la importación marcará error.
+                </li>
                 <li>Exporta el archivo como CSV con codificación UTF-8.</li>
               </ol>
             </div>

@@ -388,6 +388,8 @@ class ClientService:
         if not service_plans:
             raise ValueError("No hay planes de servicio activos para asignar.")
 
+        ip_catalog = ClientService._collect_existing_ips(db)
+
         summary = _ImportAccumulator()
 
         for index, raw_row in enumerate(reader, start=2):
@@ -404,11 +406,15 @@ class ClientService:
                 payload = ClientService._map_import_row(
                     normalized_row, service_plans, zone_ids
                 )
+                ip_reservations = ClientService._validate_ip_uniqueness(
+                    payload["services"], ip_catalog
+                )
                 zone_id = payload["zone_id"]
                 if zone_id not in zone_ids:
                     raise _RowProcessingError(f"La zona con ID {zone_id} no existe.")
                 client_in = schemas.ClientCreate.model_validate(payload)
                 ClientService.create_client(db, client_in)
+                ClientService._reserve_ips(ip_catalog, ip_reservations)
                 summary.register_row_success(
                     index,
                     payload.get("full_name"),
@@ -614,6 +620,62 @@ class ClientService:
             services.append(service_payload)
 
         return services
+
+    @staticmethod
+    def _collect_existing_ips(db: Session) -> dict[str, set[str]]:
+        def _fetch(column) -> set[str]:
+            return {
+                str(value)
+                for (value,) in db.query(column)
+                .filter(column.isnot(None))
+                .all()
+                if value is not None
+            }
+
+        return {
+            "ip_address": _fetch(models.ClientService.ip_address),
+            "antenna_ip": _fetch(models.ClientService.antenna_ip),
+            "modem_ip": _fetch(models.ClientService.modem_ip),
+        }
+
+    @staticmethod
+    def _validate_ip_uniqueness(
+        services: list[dict[str, object]],
+        known_ips: dict[str, set[str]],
+    ) -> dict[str, set[str]]:
+        row_reservations: dict[str, set[str]] = {
+            "ip_address": set(),
+            "antenna_ip": set(),
+            "modem_ip": set(),
+        }
+
+        for service in services:
+            for field in row_reservations.keys():
+                ip_value = service.get(field)
+                if ip_value is None:
+                    continue
+                ip_text = str(ip_value)
+                if ip_text in known_ips.get(field, set()):
+                    raise _RowProcessingError(
+                        f"La IP {ip_text} ya está asignada a otro servicio ({field})."
+                    )
+                if ip_text in row_reservations[field]:
+                    raise _RowProcessingError(
+                        f"La IP {ip_text} se repite en varios servicios del archivo ({field})."
+                    )
+                row_reservations[field].add(ip_text)
+
+        return row_reservations
+
+    @staticmethod
+    def _reserve_ips(
+        known_ips: dict[str, set[str]],
+        reservations: dict[str, set[str]],
+    ) -> None:
+        for field, values in reservations.items():
+            if field not in known_ips:
+                known_ips[field] = set()
+            known_ips[field].update(values)
 
     @staticmethod
     def _format_validation_errors(exc: ValidationError) -> dict[str, str]:
