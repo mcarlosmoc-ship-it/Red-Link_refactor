@@ -107,3 +107,69 @@ def test_import_clients_reports_errors(client, db_session):
 
     remaining = db_session.query(models.Client).count()
     assert remaining == 0
+
+
+def test_import_clients_rejects_duplicate_ips_against_existing(client, db_session):
+    zone = models.Zone(code="Z1", name="Zona 1", location="Centro")
+    plan = models.ServicePlan(
+        name="Internet 50", monthly_price=350, requires_ip=True, requires_base=True
+    )
+    existing_client = models.Client(
+        client_type=models.ClientType.RESIDENTIAL,
+        full_name="Existente",
+        location="Centro",
+        zone=zone,
+    )
+    existing_service = models.ClientService(
+        client=existing_client,
+        service_plan=plan,
+        zone_id=zone.id,
+        ip_address="10.0.0.10",
+    )
+    db_session.add_all([zone, plan, existing_client, existing_service])
+    db_session.commit()
+
+    csv_content = (
+        "client_type,full_name,location,zone_id,service_1_plan_id,service_1_ip_address\n"
+        f"residential,Cliente Nuevo,Centro,{zone.id},{plan.id},10.0.0.10\n"
+    )
+
+    response = client.post(
+        "/clients/import",
+        json={"filename": "clientes.csv", "content": csv_content},
+    )
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["total_rows"] == 1
+    assert payload["created_count"] == 0
+    assert payload["failed_count"] == 1
+    assert "asignada a otro servicio" in payload["errors"][0]["message"]
+    assert db_session.query(models.Client).count() == 1
+
+
+def test_import_clients_rejects_duplicate_ips_within_file(client, db_session):
+    zone = models.Zone(code="Z1", name="Zona 1", location="Centro")
+    plan = models.ServicePlan(
+        name="Internet 50", monthly_price=350, requires_ip=True, requires_base=True
+    )
+    db_session.add_all([zone, plan])
+    db_session.commit()
+
+    csv_content = (
+        "client_type,full_name,location,zone_id,service_1_plan_id,service_1_ip_address\n"
+        f"residential,Cliente 1,Centro,{zone.id},{plan.id},10.0.0.10\n"
+        f"residential,Cliente 2,Centro,{zone.id},{plan.id},10.0.0.10\n"
+    )
+
+    response = client.post(
+        "/clients/import",
+        json={"filename": "clientes.csv", "content": csv_content},
+    )
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["total_rows"] == 2
+    assert payload["created_count"] == 1
+    assert payload["failed_count"] == 1
+    assert "ya está asignada" in payload["errors"][0]["message"]
