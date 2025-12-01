@@ -1,7 +1,7 @@
 import React from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
-import { render, screen } from '@testing-library/react'
+import { render } from '@testing-library/react'
 import ClientsPage from '../src/pages/Clients.jsx'
 import { BackofficeRefreshProvider } from '../src/contexts/BackofficeRefreshContext.jsx'
 
@@ -15,6 +15,7 @@ const mockDeleteService = vi.fn()
 const mockReload = vi.fn()
 const mockImport = vi.fn()
 let lastClientsListHandlers = {}
+let lastImportModalProps = {}
 
 vi.mock('../src/store/useBackofficeStore.js', () => ({
   CLIENT_PRICE: 300,
@@ -80,8 +81,23 @@ vi.mock('../src/features/clients/ClientsList.jsx', () => ({
       onBulkChangeStatus: props.onBulkChangeStatus,
       onBulkDeleteClients: props.onBulkDeleteClients,
       servicePlans: props.servicePlans,
+      onOpenImport: props.onOpenImport,
     }
-    return <div data-testid="clients-list-mock">Listado de clientes</div>
+    return (
+      <div data-testid="clients-list-mock">
+        Listado de clientes
+        <button type="button" onClick={props.onOpenImport}>
+          Importar CSV
+        </button>
+      </div>
+    )
+  },
+}))
+
+vi.mock('../src/components/clients/ImportClientsModal.jsx', () => ({
+  default: (props) => {
+    lastImportModalProps = props
+    return <div data-testid="import-clients-modal">{props.isOpen ? 'Abierto' : 'Cerrado'}</div>
   },
 }))
 
@@ -92,6 +108,7 @@ vi.mock('../src/hooks/useToast.js', () => ({
 beforeEach(() => {
   vi.clearAllMocks()
   lastClientsListHandlers = {}
+  lastImportModalProps = {}
 })
 
 describe('ClientsPage layout', () => {
@@ -167,5 +184,55 @@ describe('ClientsPage bulk actions', () => {
     expect(toastCall?.[0].description).toContain('1 de 2 clientes')
     expect(toastCall?.[0].description).toContain('1 con errores')
     expect(toastCall?.[0].type).toBe('warning')
+  })
+})
+
+describe('ClientsPage import flow', () => {
+  const renderPage = () =>
+    render(
+      <BackofficeRefreshProvider value={{ isRefreshing: false }}>
+        <MemoryRouter>
+          <ClientsPage />
+        </MemoryRouter>
+      </BackofficeRefreshProvider>,
+    )
+
+  it('abre el modal de importación al disparar onOpenImport', async () => {
+    renderPage()
+
+    expect(typeof lastClientsListHandlers.onOpenImport).toBe('function')
+
+    expect(() => lastClientsListHandlers.onOpenImport?.()).not.toThrow()
+  })
+
+  it('envía el archivo seleccionado y muestra el resumen de éxito', async () => {
+    const file = new File(['id,name'], 'clientes.csv', { type: 'text/csv' })
+    const summary = { total_rows: 2, created_count: 2, failed_count: 0, service_created_count: 2 }
+    mockImport.mockResolvedValueOnce(summary)
+    renderPage()
+
+    await lastClientsListHandlers.onOpenImport?.()
+    await lastImportModalProps.onSubmit(file)
+
+    expect(mockImport).toHaveBeenCalledWith(file)
+
+    const toastCall = mockShowToast.mock.calls.find(([payload]) => payload.title === 'Importación completada')
+    expect(toastCall?.[0].type).toBe('success')
+    await expect(mockImport.mock.results[0].value).resolves.toEqual(summary)
+  })
+
+  it('muestra el toast de error cuando la importación falla', async () => {
+    const file = new File(['id,name'], 'clientes.csv', { type: 'text/csv' })
+    mockImport.mockRejectedValueOnce(new Error('falló la importación'))
+    renderPage()
+
+    await lastClientsListHandlers.onOpenImport?.()
+    await lastImportModalProps.onSubmit(file)
+
+    expect(mockImport).toHaveBeenCalledWith(file)
+
+    const toastCall = mockShowToast.mock.calls.find(([payload]) => payload.title === 'No se pudo importar')
+    expect(toastCall?.[0].type).toBe('error')
+    expect(lastImportModalProps.summary).toBeNull()
   })
 })
