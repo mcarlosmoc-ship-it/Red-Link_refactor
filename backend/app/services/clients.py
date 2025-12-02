@@ -6,7 +6,6 @@ import csv
 import io
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
-import re
 from typing import Iterable, Optional, Tuple
 
 from pydantic import ValidationError
@@ -20,89 +19,102 @@ from .. import models, schemas
 class ClientService:
     """Encapsulates CRUD operations for clients."""
 
-    IMPORT_REQUIRED_COLUMNS = {
+    CLIENT_REQUIRED_COLUMNS = {
         "client_type",
         "full_name",
         "location",
         "zone_id",
-        "service_1_plan_id",
     }
-    IMPORT_OPTIONAL_COLUMNS = {
+    CLIENT_OPTIONAL_COLUMNS = {
         "external_code",
         "monthly_fee",
         "paid_months_ahead",
         "debt_months",
-        "service_status",
+        "client_service_status",
     }
+    SERVICE_OPTIONAL_COLUMNS = {
+        "service_plan_price",
+        "service_status",
+        "service_billing_day",
+        "service_zone_id",
+        "service_ip_address",
+        "service_antenna_ip",
+        "service_modem_ip",
+        "service_antenna_model",
+        "service_modem_model",
+        "service_custom_price",
+    }
+    SERVICE_REQUIRED_COLUMNS = {"service_plan"}
     IMPORT_DECIMAL_COLUMNS = {
         "monthly_fee",
         "paid_months_ahead",
         "debt_months",
-        "service_1_custom_price",
-        "service_2_custom_price",
-        "service_3_custom_price",
+        "service_plan_price",
+        "service_custom_price",
     }
-    IMPORT_SERVICE_FIELDS = {
-        "plan_id",
-        "status",
-        "billing_day",
+    IMPORT_TEMPLATE_ORDER = [
+        "client_type",
+        "full_name",
+        "external_code",
+        "location",
         "zone_id",
-        "ip_address",
-        "antenna_ip",
-        "modem_ip",
-        "antenna_model",
-        "modem_model",
-        "custom_price",
-    }
-    IMPORT_SERVICE_PREFIX = "service_"
+        "monthly_fee",
+        "paid_months_ahead",
+        "debt_months",
+        "client_service_status",
+        "service_plan",
+        "service_plan_price",
+        "service_status",
+        "service_billing_day",
+        "service_zone_id",
+        "service_ip_address",
+        "service_antenna_ip",
+        "service_modem_ip",
+        "service_antenna_model",
+        "service_modem_model",
+        "service_custom_price",
+    ]
     IMPORT_TEMPLATE_ROWS = [
         {
             "client_type": "residential",
             "full_name": "Juan Pérez",
+            "external_code": "CLI-001",
             "location": "Centro",
             "zone_id": 1,
-            "service_1_plan_id": 1,
-            "service_1_status": models.ClientServiceStatus.ACTIVE.value,
-            "service_1_billing_day": 1,
-            "service_1_zone_id": 1,
-            "service_1_ip_address": "10.0.0.10",
-            "service_1_antenna_ip": "10.0.0.11",
-            "service_1_modem_ip": "10.0.0.12",
-            "service_1_antenna_model": "Modelo A",
-            "service_1_modem_model": "Router B",
-            "service_1_custom_price": "350",
+            "service_plan": "Plan Básico",
+            "service_plan_price": "350",
+            "service_status": models.ClientServiceStatus.ACTIVE.value,
+            "service_billing_day": 1,
+            "service_zone_id": 1,
+            "service_ip_address": "10.0.0.10",
+            "service_antenna_ip": "10.0.0.11",
+            "service_modem_ip": "10.0.0.12",
+        },
+        {
+            "client_type": "residential",
+            "full_name": "Juan Pérez",
+            "external_code": "CLI-001",
+            "location": "Centro",
+            "zone_id": 1,
+            "service_plan": "Plan Fibra",
+            "service_plan_price": "480",
+            "service_status": models.ClientServiceStatus.ACTIVE.value,
+            "service_billing_day": 15,
+            "service_zone_id": 1,
         },
         {
             "client_type": "token",
             "full_name": "Plaza Principal",
+            "external_code": "CLI-002",
             "location": "Centro",
-            "zone_id": 1,
-            "service_1_plan_id": 2,
-            "service_1_status": models.ClientServiceStatus.ACTIVE.value,
-            "service_1_billing_day": 15,
-            "service_1_zone_id": 1,
-            "service_1_ip_address": "10.0.0.20",
-            "service_1_custom_price": "450",
-            "service_2_plan_id": 3,
-            "service_2_status": models.ClientServiceStatus.PENDING.value,
-            "service_2_billing_day": 20,
-            "service_2_zone_id": 2,
-            "service_2_ip_address": "10.0.1.5",
-            "service_2_antenna_ip": "10.0.1.6",
-            "service_2_modem_ip": "10.0.1.7",
-            "service_2_antenna_model": "Sectorial B",
-            "service_2_modem_model": "Router C",
-            "service_2_custom_price": "300",
-            "service_3_plan_id": 4,
-            "service_3_status": models.ClientServiceStatus.ACTIVE.value,
-            "service_3_billing_day": 5,
-            "service_3_zone_id": 3,
-            "service_3_ip_address": "10.0.2.9",
-            "service_3_antenna_ip": "10.0.2.10",
-            "service_3_modem_ip": "10.0.2.11",
-            "service_3_antenna_model": "Sectorial C",
-            "service_3_modem_model": "Router D",
-            "service_3_custom_price": "280",
+            "zone_id": 2,
+            "client_service_status": models.ServiceStatus.ACTIVE.value,
+            "service_plan": "Hotspot diario",
+            "service_plan_price": "120",
+            "service_status": models.ClientServiceStatus.PENDING.value,
+            "service_billing_day": 20,
+            "service_zone_id": 2,
+            "service_ip_address": "10.0.1.5",
         },
     ]
 
@@ -289,57 +301,22 @@ class ClientService:
         )
 
     @staticmethod
-    def build_import_template() -> str:
+    def build_import_template(columns: Iterable[str] | None = None) -> str:
         """Return a CSV template that can be offered to end-users."""
 
-        headers = list(
-            ClientService.IMPORT_REQUIRED_COLUMNS
-            | ClientService.IMPORT_OPTIONAL_COLUMNS
-        )
-        # Keep the headers ordered for usability.
-        ordered_headers = [
-            "client_type",
-            "full_name",
-            "location",
-            "zone_id",
-            "external_code",
-            "monthly_fee",
-            "paid_months_ahead",
-            "debt_months",
-            "service_status",
-            "service_1_plan_id",
-            "service_1_status",
-            "service_1_billing_day",
-            "service_1_zone_id",
-            "service_1_ip_address",
-            "service_1_antenna_ip",
-            "service_1_modem_ip",
-            "service_1_antenna_model",
-            "service_1_modem_model",
-            "service_1_custom_price",
-            "service_2_plan_id",
-            "service_2_status",
-            "service_2_billing_day",
-            "service_2_zone_id",
-            "service_2_ip_address",
-            "service_2_antenna_ip",
-            "service_2_modem_ip",
-            "service_2_antenna_model",
-            "service_2_modem_model",
-            "service_2_custom_price",
-            "service_3_plan_id",
-            "service_3_status",
-            "service_3_billing_day",
-            "service_3_zone_id",
-            "service_3_ip_address",
-            "service_3_antenna_ip",
-            "service_3_modem_ip",
-            "service_3_antenna_model",
-            "service_3_modem_model",
-            "service_3_custom_price",
+        allowed_columns = set(ClientService.IMPORT_TEMPLATE_ORDER)
+        selected_columns = {
+            (column or "").strip().lower()
+            for column in columns or allowed_columns
+            if (column or "").strip()
+        }
+        headers = [
+            column
+            for column in ClientService.IMPORT_TEMPLATE_ORDER
+            if column in selected_columns or column in ClientService.CLIENT_REQUIRED_COLUMNS
         ]
         buffer = io.StringIO()
-        writer = csv.DictWriter(buffer, fieldnames=ordered_headers, extrasaction="ignore")
+        writer = csv.DictWriter(buffer, fieldnames=headers, extrasaction="ignore")
         writer.writeheader()
         for row in ClientService.IMPORT_TEMPLATE_ROWS:
             writer.writerow(row)
@@ -359,20 +336,13 @@ class ClientService:
         header_aliases = set(normalized_headers)
         if "base_id" in normalized_headers:
             header_aliases.add("zone_id")
-        for header in normalized_headers:
-            match = re.match(rf"{ClientService.IMPORT_SERVICE_PREFIX}(\d+)_(.+)", header)
-            if not match:
-                continue
-            service_index, field_name = match.groups()
-            if field_name == "base_id":
-                header_aliases.add(
-                    f"{ClientService.IMPORT_SERVICE_PREFIX}{service_index}_zone_id"
-                )
-            if field_name in {"service_plan_id", "service_id"}:
-                header_aliases.add(
-                    f"{ClientService.IMPORT_SERVICE_PREFIX}{service_index}_plan_id"
-                )
-        missing = ClientService.IMPORT_REQUIRED_COLUMNS - header_aliases
+        if "service_base_id" in normalized_headers:
+            header_aliases.add("service_zone_id")
+
+        required_columns = (
+            ClientService.CLIENT_REQUIRED_COLUMNS | ClientService.SERVICE_REQUIRED_COLUMNS
+        )
+        missing = required_columns - header_aliases
         if missing:
             raise ValueError(
                 "Faltan columnas obligatorias: " + ", ".join(sorted(missing))
@@ -380,17 +350,16 @@ class ClientService:
 
         zone_ids = {zone_id for (zone_id,) in db.query(models.Zone.id).all()}
         service_plans = {
-            plan.id: plan
+            (plan.name or "").strip().lower(): plan
             for plan in db.query(models.ServicePlan)
             .filter(models.ServicePlan.status == models.ServicePlanStatus.ACTIVE)
             .all()
         }
-        if not service_plans:
-            raise ValueError("No hay planes de servicio activos para asignar.")
-
         ip_catalog = ClientService._collect_existing_ips(db)
 
         summary = _ImportAccumulator()
+        pending_reservations: dict[str, set[str]] = {}
+        parsed_rows: list[dict] = []
 
         for index, raw_row in enumerate(reader, start=2):
             normalized_row = {
@@ -403,67 +372,135 @@ class ClientService:
             summary.increment_total_rows()
 
             try:
-                payload = ClientService._map_import_row(
-                    normalized_row, service_plans, zone_ids
+                row_payload, reservations = ClientService._map_flat_import_row(
+                    db,
+                    normalized_row,
+                    service_plans,
+                    zone_ids,
+                    ClientService._merge_ip_sets(ip_catalog, pending_reservations),
                 )
-                ip_reservations = ClientService._validate_ip_uniqueness(
-                    payload["services"], ip_catalog
-                )
-                zone_id = payload["zone_id"]
-                if zone_id not in zone_ids:
-                    raise _RowProcessingError(f"La zona con ID {zone_id} no existe.")
-                client_in = schemas.ClientCreate.model_validate(payload)
-                ClientService.create_client(db, client_in)
-                ClientService._reserve_ips(ip_catalog, ip_reservations)
-                summary.register_row_success(
-                    index,
-                    payload.get("full_name"),
-                    len(payload.get("services", [])),
-                )
+                row_payload["row_number"] = index
+                row_payload["reservations"] = reservations
+                parsed_rows.append(row_payload)
             except _RowProcessingError as exc:
                 summary.register_error(
                     index,
                     str(exc),
-                    client_name=payload.get("full_name") if "payload" in locals() else None,
+                    client_name=_normalize_string(normalized_row.get("full_name")),
                 )
             except ValidationError as exc:
                 summary.register_error(
                     index,
                     "Datos inválidos en el registro.",
                     ClientService._format_validation_errors(exc),
-                    client_name=payload.get("full_name") if "payload" in locals() else None,
+                    client_name=_normalize_string(normalized_row.get("full_name")),
                 )
             except IntegrityError as exc:
                 db.rollback()
                 summary.register_error(
                     index,
                     ClientService._describe_integrity_error(exc),
-                    client_name=payload.get("full_name") if "payload" in locals() else None,
+                    client_name=_normalize_string(normalized_row.get("full_name")),
                 )
             except Exception as exc:  # pragma: no cover - defensive programming
                 db.rollback()
                 summary.register_error(
                     index,
                     f"Error inesperado: {exc}",
-                    client_name=payload.get("full_name") if "payload" in locals() else None,
+                    client_name=_normalize_string(normalized_row.get("full_name")),
+                )
+
+        clients_by_key: dict[str, dict] = {}
+        for row in parsed_rows:
+            try:
+                key = ClientService._build_client_key(row["client_payload"])
+                bucket = clients_by_key.setdefault(
+                    key,
+                    {
+                        "client_payload": row["client_payload"],
+                        "services": [],
+                        "row_numbers": [],
+                        "reservations": {},
+                    },
+                )
+                ClientService._assert_consistent_client_data(
+                    bucket["client_payload"], row["client_payload"]
+                )
+                bucket["services"].append(row["service_payload"])
+                bucket["row_numbers"].append(row["row_number"])
+                ClientService._reserve_ips(bucket["reservations"], row["reservations"])
+                ClientService._reserve_ips(pending_reservations, row["reservations"])
+            except _RowProcessingError as exc:
+                summary.register_error(
+                    row["row_number"],
+                    str(exc),
+                    client_name=row["client_payload"].get("full_name"),
+                )
+
+        for bucket in clients_by_key.values():
+            payload = dict(bucket["client_payload"])
+            payload["services"] = bucket["services"]
+            try:
+                client_in = schemas.ClientCreate.model_validate(payload)
+                ClientService.create_client(db, client_in)
+                ClientService._reserve_ips(ip_catalog, bucket["reservations"])
+                summary.register_client_success(
+                    bucket["row_numbers"],
+                    bucket["client_payload"].get("full_name"),
+                    len(bucket["services"]),
+                )
+            except ValidationError as exc:
+                summary.register_group_error(
+                    bucket["row_numbers"],
+                    "Datos inválidos en el registro.",
+                    ClientService._format_validation_errors(exc),
+                    client_name=bucket["client_payload"].get("full_name"),
+                )
+            except IntegrityError as exc:
+                db.rollback()
+                summary.register_group_error(
+                    bucket["row_numbers"],
+                    ClientService._describe_integrity_error(exc),
+                    client_name=bucket["client_payload"].get("full_name"),
+                )
+            except Exception as exc:  # pragma: no cover - defensive programming
+                db.rollback()
+                summary.register_group_error(
+                    bucket["row_numbers"],
+                    f"Error inesperado: {exc}",
+                    client_name=bucket["client_payload"].get("full_name"),
                 )
 
         return summary.build()
 
     @staticmethod
-    def _map_import_row(
+    def _map_flat_import_row(
+        db: Session,
         row: dict[str, Optional[str]],
-        service_plans: dict[int, models.ServicePlan],
+        service_plans: dict[str, models.ServicePlan],
         zone_ids: set[int],
+        known_ips: dict[str, set[str]],
+    ) -> tuple[dict, dict[str, set[str]]]:
+        client_payload = ClientService._extract_client_fields(row, zone_ids)
+        service_payload = ClientService._extract_service_row(
+            db, row, client_payload, service_plans, zone_ids
+        )
+        ip_reservations = ClientService._validate_ip_uniqueness(
+            [service_payload], known_ips
+        )
+        return {
+            "client_payload": client_payload,
+            "service_payload": service_payload,
+        }, ip_reservations
+
+    @staticmethod
+    def _extract_client_fields(
+        row: dict[str, Optional[str]], zone_ids: set[int]
     ) -> dict:
         payload: dict[str, object] = {}
 
-        for column in ClientService.IMPORT_REQUIRED_COLUMNS:
-            if column == "zone_id":
-                raw_value = _normalize_string(row.get("zone_id") or row.get("base_id"))
-            else:
-                raw_value = _normalize_string(row.get(column))
-
+        for column in ClientService.CLIENT_REQUIRED_COLUMNS:
+            raw_value = _normalize_string(row.get(column) or row.get("base_id"))
             if raw_value is None:
                 raise _RowProcessingError(
                     f"La columna '{column}' es obligatoria y no puede quedar vacía."
@@ -471,155 +508,172 @@ class ClientService:
             if column == "zone_id":
                 try:
                     payload[column] = int(raw_value)
-                except ValueError as exc:  # pragma: no cover - validated below
+                except ValueError as exc:
                     raise _RowProcessingError("El ID de la zona debe ser un número entero.") from exc
             else:
                 payload[column] = raw_value
 
-        for column in ClientService.IMPORT_OPTIONAL_COLUMNS:
+        if payload["zone_id"] not in zone_ids:
+            raise _RowProcessingError(
+                f"La zona con ID {payload['zone_id']} no existe."
+            )
+
+        for column in ClientService.CLIENT_OPTIONAL_COLUMNS:
             raw_value = _normalize_string(row.get(column))
             if raw_value is None:
                 continue
             if column in ClientService.IMPORT_DECIMAL_COLUMNS:
                 payload[column] = _parse_decimal(raw_value)
+            elif column == "client_service_status":
+                try:
+                    payload["service_status"] = models.ServiceStatus(raw_value)
+                except ValueError as exc:
+                    valid_statuses = ", ".join(status.value for status in models.ServiceStatus)
+                    raise _RowProcessingError(
+                        f"El estado del cliente debe ser uno de: {valid_statuses}."
+                    ) from exc
             else:
                 payload[column] = raw_value
-
-        services = ClientService._extract_services(row, payload["zone_id"], service_plans, zone_ids)
-        if not services:
-            raise _RowProcessingError(
-                "Debes definir al menos un servicio usando las columnas service_1_plan_id y relacionadas."
-            )
-        payload["services"] = services
 
         return payload
 
     @staticmethod
-    def _extract_services(
+    def _extract_service_row(
+        db: Session,
         row: dict[str, Optional[str]],
-        default_zone_id: int,
-        service_plans: dict[int, models.ServicePlan],
+        client_payload: dict[str, object],
+        service_plans: dict[str, models.ServicePlan],
         zone_ids: set[int],
-    ) -> list[dict[str, object]]:
-        services: list[dict[str, object]] = []
-        service_numbers = sorted(
-            {
-                int(match.group(1))
-                for key in row.keys()
-                if (match := re.match(r"service_(\d+)_", key))
-            }
-        )
+    ) -> dict[str, object]:
+        plan_name = _normalize_string(row.get("service_plan"))
+        if not plan_name:
+            raise _RowProcessingError("La columna 'service_plan' es obligatoria.")
 
-        for number in service_numbers:
-            prefix = f"{ClientService.IMPORT_SERVICE_PREFIX}{number}_"
-            raw_plan_id = _normalize_string(
-                row.get(f"{prefix}plan_id")
-                or row.get(f"{prefix}service_plan_id")
-                or row.get(f"{prefix}service_id")
-            )
-            related_values = [
-                _normalize_string(value)
-                for key, value in row.items()
-                if key.startswith(prefix)
-            ]
-            if raw_plan_id is None:
-                if any(value is not None for value in related_values):
-                    raise _RowProcessingError(
-                        f"El servicio {number} no tiene plan asignado (columna {prefix}plan_id)."
-                    )
-                continue
+        price_raw = _normalize_string(row.get("service_plan_price"))
+        plan_price = _parse_decimal(price_raw) if price_raw is not None else Decimal("0")
+        plan = ClientService._resolve_or_create_plan(db, service_plans, plan_name, plan_price)
 
+        status_raw = _normalize_string(row.get("service_status"))
+        status = models.ClientServiceStatus.ACTIVE
+        if status_raw:
             try:
-                plan_id = int(raw_plan_id)
+                status = models.ClientServiceStatus(status_raw)
             except ValueError as exc:
+                valid_statuses = ", ".join(status.value for status in models.ClientServiceStatus)
                 raise _RowProcessingError(
-                    f"El plan del servicio {number} debe ser un número entero."
+                    f"El estado del servicio debe ser uno de: {valid_statuses}."
                 ) from exc
 
-            plan = service_plans.get(plan_id)
-            if plan is None:
+        billing_day_raw = _normalize_string(row.get("service_billing_day"))
+        billing_day = None
+        if billing_day_raw is not None:
+            try:
+                billing_day = int(billing_day_raw)
+            except ValueError as exc:
                 raise _RowProcessingError(
-                    f"El plan de servicio {plan_id} no existe o está inactivo."
+                    "El día de cobro del servicio debe ser un número entero."
+                ) from exc
+            if not 1 <= billing_day <= 31:
+                raise _RowProcessingError(
+                    "El día de cobro del servicio debe estar entre 1 y 31."
                 )
 
-            status_raw = _normalize_string(row.get(f"{prefix}status"))
-            status = models.ClientServiceStatus.ACTIVE
-            if status_raw:
-                try:
-                    status = models.ClientServiceStatus(status_raw)
-                except ValueError as exc:
-                    valid_statuses = ", ".join(
-                        status.value for status in models.ClientServiceStatus
-                    )
-                    raise _RowProcessingError(
-                        f"El estado del servicio {number} debe ser uno de: {valid_statuses}."
-                    ) from exc
-
-            billing_day_raw = _normalize_string(row.get(f"{prefix}billing_day"))
-            billing_day = None
-            if billing_day_raw is not None:
-                try:
-                    billing_day = int(billing_day_raw)
-                except ValueError as exc:
-                    raise _RowProcessingError(
-                        f"El día de cobro del servicio {number} debe ser un número entero."
-                    ) from exc
-                if not 1 <= billing_day <= 31:
-                    raise _RowProcessingError(
-                        f"El día de cobro del servicio {number} debe estar entre 1 y 31."
-                    )
-
-            zone_raw = _normalize_string(
-                row.get(f"{prefix}zone_id") or row.get(f"{prefix}base_id")
-            )
-            zone_id = default_zone_id
-            if zone_raw is not None:
-                try:
-                    zone_id = int(zone_raw)
-                except ValueError as exc:
-                    raise _RowProcessingError(
-                        f"La base del servicio {number} debe ser un número entero."
-                    ) from exc
-            if zone_id is not None and zone_id not in zone_ids:
+        zone_raw = _normalize_string(row.get("service_zone_id") or row.get("service_base_id"))
+        zone_id = client_payload.get("zone_id")
+        if zone_raw is not None:
+            try:
+                zone_id = int(zone_raw)
+            except ValueError as exc:
                 raise _RowProcessingError(
-                    f"La base/zona del servicio {number} no existe (ID {zone_id})."
-                )
-
-            ip_address = _normalize_string(row.get(f"{prefix}ip_address"))
-            antenna_ip = _normalize_string(row.get(f"{prefix}antenna_ip"))
-            modem_ip = _normalize_string(row.get(f"{prefix}modem_ip"))
-            antenna_model = _normalize_string(row.get(f"{prefix}antenna_model"))
-            modem_model = _normalize_string(row.get(f"{prefix}modem_model"))
-            custom_price_raw = _normalize_string(row.get(f"{prefix}custom_price"))
-            custom_price = (
-                _parse_decimal(custom_price_raw) if custom_price_raw is not None else None
+                    "La base/zona del servicio debe ser un número entero."
+                ) from exc
+        if zone_id is not None and zone_id not in zone_ids:
+            raise _RowProcessingError(
+                f"La base/zona del servicio no existe (ID {zone_id})."
             )
 
-            if plan.requires_ip and ip_address is None:
+        ip_address = _normalize_string(row.get("service_ip_address"))
+        antenna_ip = _normalize_string(row.get("service_antenna_ip"))
+        modem_ip = _normalize_string(row.get("service_modem_ip"))
+        antenna_model = _normalize_string(row.get("service_antenna_model"))
+        modem_model = _normalize_string(row.get("service_modem_model"))
+        custom_price_raw = _normalize_string(row.get("service_custom_price"))
+        custom_price = (
+            _parse_decimal(custom_price_raw) if custom_price_raw is not None else None
+        )
+
+        if plan.requires_ip and ip_address is None:
+            raise _RowProcessingError(
+                f"El plan '{plan.name}' requiere IP asignada para el servicio."
+            )
+        if plan.requires_base and zone_id is None:
+            raise _RowProcessingError(
+                f"El plan '{plan.name}' requiere una base/zona para el servicio."
+            )
+
+        return {
+            "service_id": plan.id,
+            "status": status,
+            "billing_day": billing_day,
+            "zone_id": zone_id,
+            "ip_address": ip_address,
+            "antenna_ip": antenna_ip,
+            "modem_ip": modem_ip,
+            "antenna_model": antenna_model,
+            "modem_model": modem_model,
+            "custom_price": custom_price,
+        }
+
+    @staticmethod
+    def _resolve_or_create_plan(
+        db: Session,
+        service_plans: dict[str, models.ServicePlan],
+        plan_name: str,
+        plan_price: Decimal,
+    ) -> models.ServicePlan:
+        key = plan_name.lower()
+        plan = service_plans.get(key)
+        if plan is None:
+            plan = models.ServicePlan(
+                name=plan_name,
+                monthly_price=plan_price,
+                status=models.ServicePlanStatus.ACTIVE,
+                category=models.ClientServiceType.INTERNET,
+            )
+            db.add(plan)
+            db.flush()
+            service_plans[key] = plan
+        elif plan.status != models.ServicePlanStatus.ACTIVE:
+            raise _RowProcessingError(
+                f"El plan '{plan_name}' existe pero está inactivo."
+            )
+        return plan
+
+    @staticmethod
+    def _build_client_key(payload: dict[str, object]) -> str:
+        if payload.get("external_code"):
+            return f"external:{str(payload['external_code']).lower()}"
+        return f"name:{str(payload.get('full_name', '')).lower()}|{str(payload.get('location', '')).lower()}"
+
+    @staticmethod
+    def _assert_consistent_client_data(existing: dict, incoming: dict) -> None:
+        for key, value in incoming.items():
+            if key == "services":
+                continue
+            if existing.get(key) is None and value is not None:
+                existing[key] = value
+            elif value is not None and existing.get(key) != value:
                 raise _RowProcessingError(
-                    f"El plan '{plan.name}' requiere IP asignada para el servicio {number}."
-                )
-            if plan.requires_base and zone_id is None:
-                raise _RowProcessingError(
-                    f"El plan '{plan.name}' requiere una base/zona para el servicio {number}."
+                    f"Los datos del cliente no coinciden con filas anteriores (columna {key})."
                 )
 
-            service_payload = {
-                "service_id": plan_id,
-                "status": status,
-                "billing_day": billing_day,
-                "zone_id": zone_id,
-                "ip_address": ip_address,
-                "antenna_ip": antenna_ip,
-                "modem_ip": modem_ip,
-                "antenna_model": antenna_model,
-                "modem_model": modem_model,
-                "custom_price": custom_price,
-            }
-
-            services.append(service_payload)
-
-        return services
+    @staticmethod
+    def _merge_ip_sets(*catalogs: dict[str, set[str]]) -> dict[str, set[str]]:
+        merged: dict[str, set[str]] = {}
+        for catalog in catalogs:
+            for field, values in (catalog or {}).items():
+                merged.setdefault(field, set()).update(values)
+        return merged
 
     @staticmethod
     def _collect_existing_ips(db: Session) -> dict[str, set[str]]:
@@ -712,19 +766,23 @@ class _ImportAccumulator:
     def increment_total_rows(self) -> None:
         self.total_rows += 1
 
-    def register_row_success(
-        self, row_number: int, client_name: Optional[str], services_created: int
+    def register_client_success(
+        self,
+        row_numbers: list[int],
+        client_name: Optional[str],
+        services_created: int,
     ) -> None:
         self.created_count += 1
         self.service_created_count += services_created
-        self.row_summaries.append(
-            schemas.ClientImportRowSummary(
-                row_number=row_number,
-                client_name=client_name,
-                services_created=services_created,
-                status="created",
+        for row_number in row_numbers:
+            self.row_summaries.append(
+                schemas.ClientImportRowSummary(
+                    row_number=row_number,
+                    client_name=client_name,
+                    services_created=1,
+                    status="created",
+                )
             )
-        )
 
     def register_error(
         self,
@@ -749,6 +807,16 @@ class _ImportAccumulator:
                 error_message=message,
             )
         )
+
+    def register_group_error(
+        self,
+        row_numbers: list[int],
+        message: str,
+        field_errors: Optional[dict[str, str]] = None,
+        client_name: Optional[str] = None,
+    ) -> None:
+        for row_number in row_numbers:
+            self.register_error(row_number, message, field_errors, client_name)
 
     def build(self) -> schemas.ClientImportSummary:
         return schemas.ClientImportSummary(

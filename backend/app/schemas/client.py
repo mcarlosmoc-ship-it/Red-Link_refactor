@@ -112,6 +112,12 @@ class ClientImportRequest(BaseModel):
     content: str = Field(..., min_length=1)
 
 
+class ClientImportTemplateRequest(BaseModel):
+    """Optional filters to generate a slimmed-down client import template."""
+
+    columns: Optional[list[str]] = None
+
+
 class ClientImportSummary(BaseModel):
     """Summary returned after processing a bulk import."""
 
