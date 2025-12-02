@@ -160,11 +160,13 @@ def update_client(
     return ClientService.update_client(db, client, client_in)
 
 
-@router.get("/import/template", response_class=StreamingResponse)
-def download_client_import_template() -> StreamingResponse:
+@router.post("/import/template", response_class=StreamingResponse)
+def download_client_import_template(
+    payload: schemas.ClientImportTemplateRequest | None = None,
+) -> StreamingResponse:
     """Provide a CSV template with the expected client columns."""
 
-    csv_content = ClientService.build_import_template()
+    csv_content = ClientService.build_import_template(payload.columns if payload else None)
     headers = {
         "Content-Disposition": "attachment; filename=client_import_template.csv",
         "Cache-Control": "no-store",
