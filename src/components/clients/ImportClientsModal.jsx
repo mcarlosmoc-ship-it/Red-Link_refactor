@@ -4,33 +4,29 @@ import Button from '../ui/Button.jsx'
 import { apiClient } from '../../services/apiClient.js'
 
 const CLIENT_REQUIRED_COLUMNS = [
-  { key: 'client_type', label: 'Tipo de cliente' },
-  { key: 'full_name', label: 'Nombre / Razón social' },
-  { key: 'location', label: 'Dirección / Referencia' },
-  { key: 'zone_id', label: 'Base o zona' },
+  { key: 'external_code', label: 'external_code' },
+  { key: 'nombre', label: 'nombre' },
+  { key: 'direccion', label: 'direccion' },
+  { key: 'telefono', label: 'telefono' },
+  { key: 'zona', label: 'zona' },
+  { key: 'tipo_cliente', label: 'tipo_cliente' },
 ]
 
-const CLIENT_OPTIONAL_COLUMNS = [
-  { key: 'external_code', label: 'Código externo (cliente)' },
-  { key: 'monthly_fee', label: 'Cuota mensual manual' },
-  { key: 'paid_months_ahead', label: 'Meses pagados por adelantado' },
-  { key: 'debt_months', label: 'Meses en deuda' },
-  { key: 'client_service_status', label: 'Estado de cliente' },
+const SERVICE_REQUIRED_COLUMNS = [
+  { key: 'service_plan', label: 'service_plan' },
+  { key: 'custom_price', label: 'custom_price' },
+  { key: 'dia_corte', label: 'dia_corte' },
+  { key: 'estado_servicio', label: 'estado_servicio' },
+  { key: 'ip_principal', label: 'ip_principal' },
+  { key: 'ip_antena', label: 'ip_antena' },
+  { key: 'ip_modem', label: 'ip_modem' },
+  { key: 'router_model', label: 'router_model' },
 ]
 
-const SERVICE_REQUIRED_COLUMNS = [{ key: 'service_plan', label: 'Plan del servicio' }]
-
-const SERVICE_OPTIONAL_COLUMNS = [
-  { key: 'service_plan_price', label: 'Precio del plan (crea si no existe)' },
-  { key: 'service_status', label: 'Estado del servicio' },
-  { key: 'service_billing_day', label: 'Día de cobro' },
-  { key: 'service_zone_id', label: 'Base / zona del servicio' },
-  { key: 'service_ip_address', label: 'IP principal' },
-  { key: 'service_antenna_ip', label: 'IP antena' },
-  { key: 'service_modem_ip', label: 'IP módem' },
-  { key: 'service_antenna_model', label: 'Modelo antena' },
-  { key: 'service_modem_model', label: 'Modelo módem' },
-  { key: 'service_custom_price', label: 'Precio personalizado' },
+const OPTIONAL_COLUMNS = [
+  { key: 'email', label: 'email' },
+  { key: 'coordenadas', label: 'coordenadas' },
+  { key: 'comentarios', label: 'comentarios' },
 ]
 
 export default function ImportClientsModal({
@@ -44,10 +40,7 @@ export default function ImportClientsModal({
 }) {
   const [selectedFile, setSelectedFile] = useState(null)
   const [localError, setLocalError] = useState('')
-  const optionalColumns = useMemo(
-    () => [...CLIENT_OPTIONAL_COLUMNS, ...SERVICE_OPTIONAL_COLUMNS],
-    [],
-  )
+  const optionalColumns = useMemo(() => OPTIONAL_COLUMNS, [])
   const [selectedColumns, setSelectedColumns] = useState(
     () => new Set(optionalColumns.map((column) => column.key)),
   )
@@ -113,8 +106,12 @@ export default function ImportClientsModal({
         ...SERVICE_REQUIRED_COLUMNS.map((column) => column.key),
         ...Array.from(selectedColumns),
       ]
-      const { data } = await apiClient.post('/clients/import/template', { columns })
-      const blob = new Blob([data], { type: 'text/csv;charset=utf-8;' })
+      const { data } = await apiClient.post(
+        '/clients/import/template',
+        { columns },
+        { responseType: 'blob' },
+      )
+      const blob = data instanceof Blob ? data : new Blob([data])
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
@@ -183,7 +180,7 @@ export default function ImportClientsModal({
           </button>
         </header>
 
-        <form onSubmit={handleSubmit} className="flex h-full flex-col">
+        <form onSubmit={handleSubmit} className="flex h-full min-h-0 flex-col overflow-hidden">
           <div className="flex-1 overflow-y-auto px-6 py-5">
             <section className="space-y-4">
               <div className="rounded-md border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
@@ -199,12 +196,12 @@ export default function ImportClientsModal({
                         filas distintas.
                       </li>
                       <li>
-                        La importación agrupa automáticamente las filas que comparten cliente (por código externo o nombre
-                        y dirección).
+                        La importación agrupa automáticamente las filas que comparten cliente (por código externo o por
+                        nombre y dirección).
                       </li>
                       <li>
-                        Si el plan indicado no existe, se crea con el precio proporcionado. Puedes ocultar columnas opcionales
-                        antes de generar la plantilla.
+                        Las columnas opcionales (email, coordenadas y comentarios) puedes mostrarlas u ocultarlas al
+                        generar la plantilla.
                       </li>
                       <li>
                         Evita repetir IPs (principal, antena o módem): si la IP ya existe en el sistema o en otra fila del
@@ -243,37 +240,18 @@ export default function ImportClientsModal({
                       </label>
                     </div>
                     <div className="mt-3 space-y-3 text-sm text-slate-700">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Cliente</p>
-                        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                          {CLIENT_OPTIONAL_COLUMNS.map((column) => (
-                            <label key={column.key} className="flex items-center gap-2">
-                              <input
-                                type="checkbox"
-                                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                                checked={selectedColumns.has(column.key)}
-                                onChange={() => handleToggleColumn(column.key)}
-                              />
-                              <span>{column.label}</span>
-                            </label>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="border-t border-slate-200 pt-3">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Servicio</p>
-                        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                          {SERVICE_OPTIONAL_COLUMNS.map((column) => (
-                            <label key={column.key} className="flex items-center gap-2">
-                              <input
-                                type="checkbox"
-                                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                                checked={selectedColumns.has(column.key)}
-                                onChange={() => handleToggleColumn(column.key)}
-                              />
-                              <span>{column.label}</span>
-                            </label>
-                          ))}
-                        </div>
+                      <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        {optionalColumns.map((column) => (
+                          <label key={column.key} className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                              checked={selectedColumns.has(column.key)}
+                              onChange={() => handleToggleColumn(column.key)}
+                            />
+                            <span>{column.label}</span>
+                          </label>
+                        ))}
                       </div>
                     </div>
                   </div>
@@ -281,10 +259,10 @@ export default function ImportClientsModal({
               </div>
 
               <div className="rounded-md border border-slate-200 p-4 text-sm text-slate-700">
-                <p className="font-medium text-slate-800">Columnas obligatorias</p>
+                <p className="font-medium text-slate-800">Columnas fijas de la plantilla</p>
                 <div className="mt-3 grid gap-4 md:grid-cols-2">
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Cliente</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Datos del cliente</p>
                     <div className="mt-2 flex flex-wrap gap-2">
                       {CLIENT_REQUIRED_COLUMNS.map((column) => (
                         <span
@@ -297,9 +275,7 @@ export default function ImportClientsModal({
                     </div>
                   </div>
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Servicio (una fila por servicio)
-                    </p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Datos del servicio</p>
                     <div className="mt-2 flex flex-wrap gap-2">
                       {SERVICE_REQUIRED_COLUMNS.map((column) => (
                         <span
@@ -441,7 +417,7 @@ export default function ImportClientsModal({
             </section>
           </div>
 
-          <div className="border-t border-slate-200 bg-white px-6 py-4">
+          <div className="sticky bottom-0 border-t border-slate-200 bg-white px-6 py-4">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-end">
               <Button type="button" variant="ghost" onClick={onClose} disabled={isProcessing}>
                 Cancelar

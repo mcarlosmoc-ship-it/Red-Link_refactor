@@ -19,6 +19,31 @@ from .. import models, schemas
 class ClientService:
     """Encapsulates CRUD operations for clients."""
 
+    COLUMN_ALIASES = {
+        "nombre": "full_name",
+        "name": "full_name",
+        "direccion": "location",
+        "zona": "zone_id",
+        "base": "zone_id",
+        "tipo_cliente": "client_type",
+        "codigo_externo": "external_code",
+        "custom_price": "service_custom_price",
+        "precio_personalizado": "service_custom_price",
+        "dia_corte": "service_billing_day",
+        "estado_servicio": "service_status",
+        "ip_principal": "service_ip_address",
+        "ip_antena": "service_antenna_ip",
+        "ip_modem": "service_modem_ip",
+        "router_model": "service_modem_model",
+        "comentarios": "service_notes",
+        "coordenadas": "coordinates",
+        "telefono": "contact_phone",
+        "email": "contact_email",
+        "service_plan_id": "service_plan",
+        "service_base_id": "service_zone_id",
+        "base_id": "zone_id",
+    }
+
     CLIENT_REQUIRED_COLUMNS = {
         "client_type",
         "full_name",
@@ -43,6 +68,7 @@ class ClientService:
         "service_antenna_model",
         "service_modem_model",
         "service_custom_price",
+        "service_notes",
     }
     SERVICE_REQUIRED_COLUMNS = {"service_plan"}
     IMPORT_DECIMAL_COLUMNS = {
@@ -53,68 +79,70 @@ class ClientService:
         "service_custom_price",
     }
     IMPORT_TEMPLATE_ORDER = [
-        "client_type",
-        "full_name",
         "external_code",
-        "location",
-        "zone_id",
-        "monthly_fee",
-        "paid_months_ahead",
-        "debt_months",
-        "client_service_status",
+        "nombre",
+        "direccion",
+        "telefono",
+        "zona",
+        "tipo_cliente",
         "service_plan",
-        "service_plan_price",
-        "service_status",
-        "service_billing_day",
-        "service_zone_id",
-        "service_ip_address",
-        "service_antenna_ip",
-        "service_modem_ip",
-        "service_antenna_model",
-        "service_modem_model",
-        "service_custom_price",
+        "custom_price",
+        "dia_corte",
+        "estado_servicio",
+        "ip_principal",
+        "ip_antena",
+        "ip_modem",
+        "router_model",
+        "email",
+        "coordenadas",
+        "comentarios",
     ]
+    OPTIONAL_TEMPLATE_COLUMNS = {"email", "coordenadas", "comentarios"}
     IMPORT_TEMPLATE_ROWS = [
         {
-            "client_type": "residential",
-            "full_name": "Juan Pérez",
             "external_code": "CLI-001",
-            "location": "Centro",
-            "zone_id": 1,
+            "nombre": "Juan Pérez",
+            "direccion": "Centro",
+            "telefono": "555-1234",
+            "zona": 1,
+            "tipo_cliente": "residential",
             "service_plan": "Plan Básico",
-            "service_plan_price": "350",
-            "service_status": models.ClientServiceStatus.ACTIVE.value,
-            "service_billing_day": 1,
-            "service_zone_id": 1,
-            "service_ip_address": "10.0.0.10",
-            "service_antenna_ip": "10.0.0.11",
-            "service_modem_ip": "10.0.0.12",
+            "custom_price": "350",
+            "estado_servicio": models.ClientServiceStatus.ACTIVE.value,
+            "dia_corte": 1,
+            "ip_principal": "10.0.0.10",
+            "ip_antena": "10.0.0.11",
+            "ip_modem": "10.0.0.12",
+            "router_model": "Router AC",
+            "email": "juan@example.com",
+            "comentarios": "Cliente residencial con IP fija",
         },
         {
-            "client_type": "residential",
-            "full_name": "Juan Pérez",
             "external_code": "CLI-001",
-            "location": "Centro",
-            "zone_id": 1,
+            "nombre": "Juan Pérez",
+            "direccion": "Centro",
+            "telefono": "555-1234",
+            "zona": 1,
+            "tipo_cliente": "residential",
             "service_plan": "Plan Fibra",
-            "service_plan_price": "480",
-            "service_status": models.ClientServiceStatus.ACTIVE.value,
-            "service_billing_day": 15,
-            "service_zone_id": 1,
+            "custom_price": "480",
+            "estado_servicio": models.ClientServiceStatus.ACTIVE.value,
+            "dia_corte": 15,
+            "router_model": "ONT",
         },
         {
-            "client_type": "token",
-            "full_name": "Plaza Principal",
             "external_code": "CLI-002",
-            "location": "Centro",
-            "zone_id": 2,
-            "client_service_status": models.ServiceStatus.ACTIVE.value,
+            "nombre": "Plaza Principal",
+            "direccion": "Centro",
+            "telefono": "555-5678",
+            "zona": 2,
+            "tipo_cliente": "token",
             "service_plan": "Hotspot diario",
-            "service_plan_price": "120",
-            "service_status": models.ClientServiceStatus.PENDING.value,
-            "service_billing_day": 20,
-            "service_zone_id": 2,
-            "service_ip_address": "10.0.1.5",
+            "custom_price": "120",
+            "estado_servicio": models.ClientServiceStatus.PENDING.value,
+            "dia_corte": 20,
+            "ip_principal": "10.0.1.5",
+            "coordenadas": "-16.5,-68.15",
         },
     ]
 
@@ -156,6 +184,11 @@ class ClientService:
             .all()
         )
         return items, total
+
+    @staticmethod
+    def _normalize_header(header: Optional[str]) -> str:
+        normalized = (header or "").strip().lower()
+        return ClientService.COLUMN_ALIASES.get(normalized, normalized)
 
     @staticmethod
     def get_client(db: Session, client_id: str) -> Optional[models.Client]:
@@ -313,7 +346,8 @@ class ClientService:
         headers = [
             column
             for column in ClientService.IMPORT_TEMPLATE_ORDER
-            if column in selected_columns or column in ClientService.CLIENT_REQUIRED_COLUMNS
+            if column in selected_columns
+            or column not in ClientService.OPTIONAL_TEMPLATE_COLUMNS
         ]
         buffer = io.StringIO()
         writer = csv.DictWriter(buffer, fieldnames=headers, extrasaction="ignore")
@@ -331,13 +365,9 @@ class ClientService:
             raise ValueError("El archivo no contiene encabezados.")
 
         normalized_headers = {
-            (header or "").strip().lower() for header in reader.fieldnames if header
+            ClientService._normalize_header(header) for header in reader.fieldnames if header
         }
         header_aliases = set(normalized_headers)
-        if "base_id" in normalized_headers:
-            header_aliases.add("zone_id")
-        if "service_base_id" in normalized_headers:
-            header_aliases.add("service_zone_id")
 
         required_columns = (
             ClientService.CLIENT_REQUIRED_COLUMNS | ClientService.SERVICE_REQUIRED_COLUMNS
@@ -363,7 +393,8 @@ class ClientService:
 
         for index, raw_row in enumerate(reader, start=2):
             normalized_row = {
-                (key or "").strip().lower(): value for key, value in (raw_row or {}).items()
+                ClientService._normalize_header(key): value
+                for key, value in (raw_row or {}).items()
             }
 
             if not any(_normalize_string(value) for value in normalized_row.values()):
@@ -500,7 +531,7 @@ class ClientService:
         payload: dict[str, object] = {}
 
         for column in ClientService.CLIENT_REQUIRED_COLUMNS:
-            raw_value = _normalize_string(row.get(column) or row.get("base_id"))
+            raw_value = _normalize_string(row.get(column))
             if raw_value is None:
                 raise _RowProcessingError(
                     f"La columna '{column}' es obligatoria y no puede quedar vacía."
@@ -601,6 +632,7 @@ class ClientService:
         custom_price = (
             _parse_decimal(custom_price_raw) if custom_price_raw is not None else None
         )
+        notes = _normalize_string(row.get("service_notes"))
 
         if plan.requires_ip and ip_address is None:
             raise _RowProcessingError(
@@ -622,6 +654,7 @@ class ClientService:
             "antenna_model": antenna_model,
             "modem_model": modem_model,
             "custom_price": custom_price,
+            "notes": notes,
         }
 
     @staticmethod
