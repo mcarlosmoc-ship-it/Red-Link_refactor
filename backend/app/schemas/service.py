@@ -60,6 +60,9 @@ class ClientServiceBase(BaseModel):
     antenna_model: Optional[str] = None
     modem_model: Optional[str] = None
     custom_price: Optional[Decimal] = Field(default=None, ge=0)
+    debt_amount: Optional[Decimal] = Field(default=Decimal("0"), ge=0)
+    debt_months: Optional[Decimal] = Field(default=Decimal("0"), ge=0)
+    debt_notes: Optional[str] = None
     notes: Optional[str] = None
     service_metadata: Optional[dict[str, Any]] = Field(
         default=None,
@@ -104,6 +107,9 @@ class ClientServiceUpdate(BaseModel):
     )
     ip_address: Optional[str] = None
     custom_price: Optional[Decimal] = Field(default=None, ge=0)
+    debt_amount: Optional[Decimal] = Field(default=None, ge=0)
+    debt_months: Optional[Decimal] = Field(default=None, ge=0)
+    debt_notes: Optional[str] = None
     notes: Optional[str] = None
     service_metadata: Optional[dict[str, Any]] = Field(
         default=None,
@@ -132,6 +138,9 @@ class ClientServiceRead(BaseModel):
     ip_address: Optional[str] = None
     custom_price: Optional[Decimal] = None
     effective_price: Optional[Decimal] = None
+    debt_amount: Optional[Decimal] = None
+    debt_months: Optional[Decimal] = None
+    debt_notes: Optional[str] = None
     notes: Optional[str] = None
     service_metadata: Optional[dict[str, Any]] = Field(
         default=None,
@@ -150,6 +159,24 @@ class ClientServiceListResponse(PaginatedResponse[ClientServiceRead]):
     """Paginated listing of client services."""
 
     pass
+
+
+class ServiceDebtRead(BaseModel):
+    """Standalone view for service-level debt tracking."""
+
+    debt_amount: Decimal = Field(default=Decimal("0"), ge=0)
+    debt_months: Decimal = Field(default=Decimal("0"), ge=0)
+    debt_notes: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ServiceDebtUpdate(BaseModel):
+    """Payload to modify outstanding debt for a service."""
+
+    debt_amount: Optional[Decimal] = Field(default=None, ge=0)
+    debt_months: Optional[Decimal] = Field(default=None, ge=0)
+    debt_notes: Optional[str] = None
 
 
 class ClientServiceBulkCreate(BaseModel):

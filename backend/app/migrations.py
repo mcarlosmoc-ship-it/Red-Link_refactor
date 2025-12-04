@@ -121,6 +121,10 @@ def _migration_lock(path: Path, *, timeout: float) -> Iterator[None]:
 
 REVISION_SENTINELS: Sequence[RevisionSentinel] = (
     (
+        "20250601_0005",
+        lambda inspector: _column_exists(inspector, "client_services", "debt_amount"),
+    ),
+    (
         "20250501_0002",
         lambda inspector: (
             _column_exists(inspector, "service_plans", "capacity_type")

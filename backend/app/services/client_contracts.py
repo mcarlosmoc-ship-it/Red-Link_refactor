@@ -149,6 +149,22 @@ class ClientContractService:
         else:
             payload["custom_price"] = None
 
+        if payload.get("debt_amount") is not None:
+            debt_amount = Decimal(str(payload["debt_amount"]))
+            if debt_amount < 0:
+                raise ClientContractError("El adeudo no puede ser negativo.")
+            payload["debt_amount"] = debt_amount
+
+        if payload.get("debt_months") is not None:
+            debt_months = Decimal(str(payload["debt_months"]))
+            if debt_months < 0:
+                raise ClientContractError("Los meses vencidos no pueden ser negativos.")
+            payload["debt_months"] = debt_months
+
+        if "debt_notes" in payload:
+            raw_notes = payload.get("debt_notes")
+            payload["debt_notes"] = raw_notes if raw_notes is not None else None
+
         if effective_price <= Decimal("0"):
             payload["billing_day"] = None
             payload.pop("next_billing_date", None)
@@ -393,6 +409,37 @@ class ClientContractService:
         except SQLAlchemyError as exc:
             db.rollback()
             raise ClientContractError("No se pudo actualizar el servicio.") from exc
+
+        db.refresh(service)
+        return service
+
+    @staticmethod
+    def update_service_debt(
+        db: Session, service: models.ClientService, data: schemas.ServiceDebtUpdate
+    ) -> models.ClientService:
+        update_data = data.model_dump(exclude_unset=True)
+
+        if "debt_amount" in update_data:
+            debt_amount = Decimal(str(update_data.get("debt_amount") or 0))
+            if debt_amount < 0:
+                raise ClientContractError("El adeudo no puede ser negativo.")
+            service.debt_amount = debt_amount
+
+        if "debt_months" in update_data:
+            debt_months = Decimal(str(update_data.get("debt_months") or 0))
+            if debt_months < 0:
+                raise ClientContractError("Los meses vencidos no pueden ser negativos.")
+            service.debt_months = debt_months
+
+        if "debt_notes" in update_data:
+            service.debt_notes = update_data.get("debt_notes")
+
+        try:
+            db.add(service)
+            db.commit()
+        except SQLAlchemyError as exc:
+            db.rollback()
+            raise ClientContractError("No se pudo actualizar el adeudo del servicio.") from exc
 
         db.refresh(service)
         return service

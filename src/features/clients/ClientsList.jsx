@@ -377,6 +377,11 @@ export default function ClientsList({
                 const isSelected = id && id === selectedClientId
                 const isChecked = id ? selectedClientIds.includes(id) : false
                 const primaryService = getPrimaryService(client)
+                const servicesWithDebt = Array.isArray(client.services)
+                  ? client.services.filter(
+                      (service) => Number(service.debtMonths ?? 0) > 0 || Number(service.debtAmount ?? 0) > 0,
+                    )
+                  : []
                 return (
                   <tr
                     key={id}
@@ -397,6 +402,12 @@ export default function ClientsList({
                     <td className="px-3 py-2">{client.location || 'Sin ubicación'}</td>
                     <td className="px-3 py-2">
                       {primaryService?.status === 'suspended' ? 'Suspendido' : 'Activo'}
+                      {servicesWithDebt.length > 0 && (
+                        <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
+                          Adeudo
+                          {servicesWithDebt.length > 1 && `(${servicesWithDebt.length})`}
+                        </span>
+                      )}
                     </td>
                     <td className="px-3 py-2">
                       <div className="flex gap-2">
