@@ -785,23 +785,41 @@ export const useBackofficeStore = create((set, get) => ({
     period,
     notes,
   }) => {
+    const state = get()
+    const targetAccount = state.clientAccounts.find(
+      (account) => String(account.id) === String(clientAccountId),
+    )
+
+    if (!targetAccount) {
+      throw new Error('Selecciona un cliente válido para registrar el pago')
+    }
+
+    if (!targetAccount.clientServiceId) {
+      throw new Error('El cliente no tiene un servicio mensual asociado para registrar pagos')
+    }
+
     await runMutation({
       set,
       resources: 'clientAccounts',
       action: async () => {
-        await apiClient.post(`/client-accounts/${clientAccountId}/payments`, {
-          monto: amount,
-          fecha_pago: paymentDate,
-          metodo_pago: method ?? 'Transferencia',
-          periodo_correspondiente: period ?? null,
-          notas: notes ?? null,
+        await apiClient.post('/payments', {
+          client_service_id: targetAccount.clientServiceId,
+          paid_on: paymentDate,
+          amount,
+          method: method ?? 'Transferencia',
+          period_key: period ?? null,
+          note: notes ?? null,
         })
       },
     })
 
     invalidateQuery(queryKeys.clientAccounts())
+    invalidateQuery(['metrics'])
 
-    await get().loadClientAccounts({ force: true, retries: 1 })
+    await Promise.all([
+      get().loadClientAccounts({ force: true, retries: 1 }),
+      get().loadMetrics({ force: true, retries: 1 }),
+    ])
   },
   updateClientAccountPassword: async ({ clientAccountId, password }) => {
     await runMutation({

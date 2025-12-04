@@ -195,7 +195,7 @@ def delete_client_account(
 
 @router.post(
     "/client-accounts/{client_account_id}/payments",
-    response_model=schemas.ClientAccountPaymentRead,
+    response_model=schemas.ServicePaymentRead,
     status_code=status.HTTP_201_CREATED,
 )
 def register_client_payment(

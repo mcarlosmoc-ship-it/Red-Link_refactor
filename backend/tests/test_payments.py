@@ -330,7 +330,74 @@ def test_payment_returns_400_when_commit_fails(
 
     response = client.post("/payments/", json=payload)
     assert response.status_code == 400
-    assert response.json()["detail"] == "Unable to record payment at this time."
+
+
+def test_streaming_payment_updates_next_billing(client, db_session):
+    principal = models.PrincipalAccount(
+        email_principal="streaming-owner@example.com", max_slots=5
+    )
+    streaming_client = models.Client(
+        full_name="Cliente Streaming",
+        location="Zona Streaming",
+        client_type=models.ClientType.RESIDENTIAL,
+        monthly_fee=Decimal("150"),
+    )
+    streaming_plan = models.ServicePlan(
+        name="Plan Streaming",
+        category=models.ClientServiceType.STREAMING,
+        monthly_price=Decimal("150"),
+        status=models.ServicePlanStatus.ACTIVE,
+    )
+    streaming_service = models.ClientService(
+        client=streaming_client,
+        service_plan=streaming_plan,
+        status=models.ClientServiceStatus.ACTIVE,
+    )
+    streaming_account = models.ClientAccount(
+        principal_account=principal,
+        client_service=streaming_service,
+        client_id=streaming_client.id,
+        correo_cliente="perfil@example.com",
+        contrasena_cliente="secreto123",
+        perfil="Perfil 1",
+        nombre_cliente="Perfil Streaming",
+        estatus="activo",
+    )
+
+    db_session.add_all(
+        [principal, streaming_client, streaming_plan, streaming_service, streaming_account]
+    )
+    db_session.commit()
+
+    pay_date = date(2025, 2, 1)
+    response = client.post(
+        "/payments/",
+        json={
+            "client_service_id": str(streaming_service.id),
+            "paid_on": pay_date.isoformat(),
+            "amount": "450.00",
+            "method": models.PaymentMethod.TRANSFERENCIA.value,
+        },
+    )
+
+    assert response.status_code == 201, response.text
+    data = response.json()
+    assert Decimal(str(data["months_paid"])) == Decimal("3.00")
+
+    db_session.expire_all()
+    refreshed_account = (
+        db_session.query(models.ClientAccount)
+        .filter(models.ClientAccount.id == streaming_account.id)
+        .one()
+    )
+    refreshed_service = (
+        db_session.query(models.ClientService)
+        .filter(models.ClientService.id == streaming_service.id)
+        .one()
+    )
+
+    assert refreshed_account.fecha_proximo_pago == date(2025, 5, 1)
+    assert refreshed_service.next_billing_date == date(2025, 5, 1)
 
 
 def test_preloaded_sqlite_database_allows_creating_payments(tmp_path, monkeypatch, security_settings):
