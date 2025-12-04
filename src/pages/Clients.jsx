@@ -28,6 +28,12 @@ const MAIN_TABS = [
   { id: 'services', label: 'Servicios mensuales' },
 ]
 
+const CLIENT_TABS = [
+  { id: 'list', label: 'Listado' },
+  { id: 'create', label: 'Agregar cliente' },
+  { id: 'payments', label: 'Adeudos y pagos' },
+]
+
 export default function ClientsPage() {
   const { initializeStatus } = useBackofficeStore((state) => ({
     initializeStatus: state.status.initialize,
@@ -49,6 +55,7 @@ export default function ClientsPage() {
   const { servicePlans, status: servicePlansStatus } = useServicePlans()
   const { showToast } = useToast()
   const [activeMainTab, setActiveMainTab] = useState('clients')
+  const [activeClientTab, setActiveClientTab] = useState('list')
   const [selectedClientId, setSelectedClientId] = useState(null)
   const [selectedClientIds, setSelectedClientIds] = useState([])
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -68,6 +75,14 @@ export default function ClientsPage() {
     () => clients.find((client) => normalizeId(client.id) === normalizeId(selectedClientId)) ?? null,
     [clients, selectedClientId],
   )
+
+  const handleSelectClient = (clientId) => {
+    const normalizedId = normalizeId(clientId)
+    setSelectedClientId(normalizedId)
+    if (normalizedId) {
+      setActiveClientTab('payments')
+    }
+  }
 
   const handleCreateClient = async ({ client, service }) => {
     setIsSubmitting(true)
@@ -513,15 +528,19 @@ export default function ClientsPage() {
   return (
     <div className="space-y-4">
       <Card>
-        <CardContent className="flex flex-wrap gap-2 pt-6">
+        <CardContent className="flex flex-wrap gap-2 pt-6" role="tablist">
           {MAIN_TABS.map((tab) => (
             <button
               key={tab.id}
+              id={`main-tab-${tab.id}`}
+              role="tab"
+              aria-selected={activeMainTab === tab.id}
+              aria-controls={`main-panel-${tab.id}`}
               className={`rounded px-4 py-2 text-sm font-medium ${
                 activeMainTab === tab.id
                   ? 'bg-blue-600 text-white'
                   : 'bg-white text-slate-700 ring-1 ring-slate-200'
-              }`}
+              } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2`}
               onClick={() => setActiveMainTab(tab.id)}
             >
               {tab.label}
@@ -531,45 +550,135 @@ export default function ClientsPage() {
       </Card>
 
       {activeMainTab === 'services' ? (
-        <MonthlyServicesPage />
+        <div id="main-panel-services" role="tabpanel" aria-labelledby="main-tab-services">
+          <MonthlyServicesPage />
+        </div>
       ) : (
-        <div className="grid gap-4 lg:grid-cols-3">
-          <div className="space-y-4 lg:col-span-2">
-            <ClientsList
-              clients={clients}
-              status={clientsStatus}
-              onReload={reloadClients}
-              onSelectClient={setSelectedClientId}
-              selectedClientId={selectedClientId}
-              selectedClientIds={selectedClientIds}
-              onSelectionChange={setSelectedClientIds}
-              onDeleteClient={handleDeleteClient}
-              servicePlans={servicePlans}
-              isProcessing={isProcessingService || clientsStatus?.isMutating}
-              onBulkAssignPlan={handleBulkAssignPlan}
-              onBulkChangeStatus={handleBulkServiceStatus}
-              onBulkDeleteClients={handleBulkDeleteClients}
-              isProcessingSelection={isProcessingSelection}
-              onOpenImport={() => setIsImportModalOpen(true)}
-            />
-            {selectedClient && <ClientDetailTabs client={selectedClient} />}
-          </div>
-          <div className="space-y-4">
-            <ClientForm
-              servicePlans={servicePlans}
-              onSubmit={handleCreateClient}
-              isSubmitting={isSubmitting}
-            />
-            <ServicesAssignments
-              client={selectedClient}
-              servicePlans={servicePlans}
-              onAssign={handleAssignService}
-              onChangeStatus={handleUpdateServiceStatus}
-              onUpdateService={handleUpdateServiceMetadata}
-              onDeleteService={handleDeleteService}
-              isProcessing={isProcessingService || servicePlansStatus?.isLoading}
-            />
-          </div>
+        <div
+          id="main-panel-clients"
+          role="tabpanel"
+          aria-labelledby="main-tab-clients"
+          className="space-y-4"
+        >
+          <Card aria-label="Opciones de clientes">
+            <CardContent className="flex flex-wrap gap-2 pt-6" role="tablist">
+              {CLIENT_TABS.map((tab) => (
+                <button
+                  key={tab.id}
+                  id={`client-tab-${tab.id}`}
+                  role="tab"
+                  aria-selected={activeClientTab === tab.id}
+                  aria-controls={`client-panel-${tab.id}`}
+                  className={`rounded px-4 py-2 text-sm font-medium ${
+                    activeClientTab === tab.id
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-white text-slate-700 ring-1 ring-slate-200'
+                  } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2`}
+                  onClick={() => setActiveClientTab(tab.id)}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </CardContent>
+          </Card>
+
+          {activeClientTab === 'list' && (
+            <div id="client-panel-list" role="tabpanel" aria-labelledby="client-tab-list" className="space-y-4">
+              <ClientsList
+                clients={clients}
+                status={clientsStatus}
+                onReload={reloadClients}
+                onSelectClient={handleSelectClient}
+                selectedClientId={selectedClientId}
+                selectedClientIds={selectedClientIds}
+                onSelectionChange={setSelectedClientIds}
+                onDeleteClient={handleDeleteClient}
+                servicePlans={servicePlans}
+                isProcessing={isProcessingService || clientsStatus?.isMutating}
+                onBulkAssignPlan={handleBulkAssignPlan}
+                onBulkChangeStatus={handleBulkServiceStatus}
+                onBulkDeleteClients={handleBulkDeleteClients}
+                isProcessingSelection={isProcessingSelection}
+                onOpenImport={() => setIsImportModalOpen(true)}
+              />
+            </div>
+          )}
+
+          {activeClientTab === 'create' && (
+            <div
+              id="client-panel-create"
+              role="tabpanel"
+              aria-labelledby="client-tab-create"
+              className="space-y-4"
+            >
+              <div className="mx-auto max-w-4xl">
+                <ClientForm
+                  servicePlans={servicePlans}
+                  onSubmit={handleCreateClient}
+                  isSubmitting={isSubmitting}
+                />
+              </div>
+            </div>
+          )}
+
+          {activeClientTab === 'payments' && (
+            <div
+              id="client-panel-payments"
+              role="tabpanel"
+              aria-labelledby="client-tab-payments"
+              className="space-y-4"
+            >
+              <Card>
+                <CardContent className="space-y-3">
+                  <div>
+                    <label className="text-sm font-medium" htmlFor="client-selector">
+                      Selecciona un cliente para ver adeudos y pagos
+                    </label>
+                    <select
+                      id="client-selector"
+                      className="mt-1 w-full rounded border border-slate-200 p-2"
+                      value={normalizeId(selectedClientId) ?? ''}
+                      onChange={(event) => handleSelectClient(event.target.value)}
+                    >
+                      <option value="">Elige un cliente</option>
+                      {clients.map((client) => (
+                        <option key={client.id} value={normalizeId(client.id)}>
+                          {client.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <p className="text-sm text-slate-600">
+                    Usa las flechas de tabulación para cambiar entre pestañas y controles. La lista conserva tu
+                    selección.
+                  </p>
+                </CardContent>
+              </Card>
+
+              {selectedClient ? (
+                <>
+                  <ClientDetailTabs client={selectedClient} initialTab="payments" />
+                  <ServicesAssignments
+                    client={selectedClient}
+                    servicePlans={servicePlans}
+                    onAssign={handleAssignService}
+                    onChangeStatus={handleUpdateServiceStatus}
+                    onUpdateService={handleUpdateServiceMetadata}
+                    onDeleteService={handleDeleteService}
+                    isProcessing={isProcessingService || servicePlansStatus?.isLoading}
+                  />
+                </>
+              ) : (
+                <Card>
+                  <CardContent>
+                    <p className="text-sm text-slate-600">
+                      Selecciona un cliente para revisar su historial de pagos y administrar adeudos.
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          )}
         </div>
       )}
       <ImportClientsModal

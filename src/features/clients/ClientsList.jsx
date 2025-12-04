@@ -240,7 +240,7 @@ export default function ClientsList({
           </Button>
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-4 p-4 sm:p-6">
         <div className="grid grid-cols-1 gap-2 md:grid-cols-4">
           <input
             aria-label="Buscar clientes"
@@ -282,18 +282,18 @@ export default function ClientsList({
         </div>
 
         <div className="flex flex-col gap-2 rounded border border-slate-200 p-3">
-        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-          <p className="text-sm text-slate-700">
-            {selectedClientsOnPage} seleccionados / {currentPageClientIds.length} visibles (página{' '}
-            {currentPage} de {totalPages})
-          </p>
-          <p
-            className="text-xs text-slate-500"
-            title="Funciona como Wisphub: selecciona clientes en la página visible y aplica acciones masivas desde esta barra."
-          >
-            Selección por página + barra de acciones (modo Wisphub)
-          </p>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <p className="text-sm text-slate-700">
+              {selectedClientsOnPage} seleccionados / {currentPageClientIds.length} visibles (página{' '}
+              {currentPage} de {totalPages})
+            </p>
+            <p
+              className="text-xs text-slate-500"
+              title="Funciona como Wisphub: selecciona clientes en la página visible y aplica acciones masivas desde esta barra."
+            >
+              Selección por página + barra de acciones (modo Wisphub)
+            </p>
+            <div className="flex flex-wrap gap-2">
               <select
                 className="rounded border border-slate-200 p-2"
                 data-testid="bulk-plan"
@@ -351,7 +351,7 @@ export default function ClientsList({
         {hasError && <p className="text-sm text-red-600">Ocurrió un error al cargar los clientes.</p>}
         {isLoading && <p className="text-sm text-slate-500">Cargando clientes...</p>}
 
-        <div className="overflow-x-auto">
+        <div className="-mx-4 overflow-x-auto sm:mx-0">
           <table className="min-w-full divide-y divide-slate-200 text-sm">
             <thead>
               <tr className="bg-slate-50 text-left">
