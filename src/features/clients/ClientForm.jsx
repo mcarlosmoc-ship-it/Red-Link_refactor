@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from 'react'
 import Button from '../../components/ui/Button.jsx'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card.jsx'
 import InfoTooltip from '../../components/ui/InfoTooltip.jsx'
-import { CLIENT_PRICE } from '../../store/useBackofficeStore.js'
 import { planRequiresIp } from '../../utils/servicePlanMetadata.js'
 import { computeServiceFormErrors } from '../../utils/serviceFormValidation.js'
 import { createInitialServiceState } from './utils.js'
@@ -13,14 +12,8 @@ const defaultForm = {
   location: '',
   zoneId: '',
   notes: '',
-  ip: '',
-  antennaIp: '',
-  modemIp: '',
-  antennaModel: '',
-  modemModel: '',
   debtMonths: 0,
   paidMonthsAhead: 0,
-  monthlyFee: CLIENT_PRICE,
 }
 
 export default function ClientForm({ servicePlans, onSubmit, isSubmitting }) {
@@ -223,19 +216,6 @@ export default function ClientForm({ servicePlans, onSubmit, isSubmitting }) {
 
           <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
             <div>
-              <label className="text-sm font-medium" htmlFor="monthlyFee">
-                Tarifa mensual
-              </label>
-              <input
-                id="monthlyFee"
-                type="number"
-                min="0"
-                className="mt-1 w-full rounded border border-slate-200 p-2"
-                value={formState.monthlyFee}
-                onChange={(event) => handleChange('monthlyFee', Number(event.target.value) || 0)}
-              />
-            </div>
-            <div>
               <label className="text-sm font-medium" htmlFor="notes">
                 Notas
               </label>
@@ -246,6 +226,7 @@ export default function ClientForm({ servicePlans, onSubmit, isSubmitting }) {
                 onChange={(event) => handleChange('notes', event.target.value)}
               />
             </div>
+            <div />
           </div>
 
           <div className="rounded border border-slate-200 p-3">

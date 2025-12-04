@@ -11,6 +11,7 @@
 - Replicar el flujo de alta/edición de servicios como en Wisphub: el plan define los campos obligatorios y el precio base, y los atributos específicos (IP, CPE, credenciales) se guardan en la tabla de servicios del cliente, no en `clients`.
 - La importación masiva debe aceptar clientes con uno o varios servicios en la misma carga, asignando IP/estado/precio por servicio y validando duplicados como lo hace Wisphub.
 - La selección múltiple y las acciones en lote deben funcionar sobre la misma tabla con checkboxes y un panel de acciones masivas, manteniendo el comportamiento existente de `bulkAssignClientServices`.
+- Columnas `tarifa`/`ip` en la tabla `clientes` son obsoletas y no deben usarse; la tarifa efectiva se toma del `servicio_mensual (client_services)` asociado. Se puede considerar una migración futura para marcarlas como `NULL` o eliminarlas.
 
 ## Tareas a implementar
 

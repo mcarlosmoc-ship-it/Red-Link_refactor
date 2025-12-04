@@ -343,7 +343,6 @@ export const serializeClientPayload = (payload) => {
     location: payload.location,
     zone_id: payload.zoneId ?? payload.base ?? null,
     base_id: payload.base ?? payload.zoneId ?? null,
-    monthly_fee: payload.monthlyFee ?? null,
     paid_months_ahead: payload.paidMonthsAhead ?? 0,
     debt_months: payload.debtMonths ?? 0,
     service_status: payload.service ?? 'Activo',
