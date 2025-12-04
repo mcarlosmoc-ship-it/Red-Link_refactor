@@ -60,6 +60,14 @@ class ClientService(Base):
             "custom_price IS NULL OR custom_price >= 0",
             name="ck_client_services_custom_price_non_negative",
         ),
+        CheckConstraint(
+            "debt_amount >= 0",
+            name="ck_client_services_debt_amount_non_negative",
+        ),
+        CheckConstraint(
+            "debt_months >= 0",
+            name="ck_client_services_debt_months_non_negative",
+        ),
     )
 
     id = Column("client_service_id", GUID(), primary_key=True, default=uuid.uuid4)
@@ -98,6 +106,9 @@ class ClientService(Base):
     modem_ip = Column(INET(), nullable=True)
     antenna_model = Column(String, nullable=True)
     modem_model = Column(String, nullable=True)
+    debt_amount = Column(Numeric(12, 2), nullable=False, default=0)
+    debt_months = Column(Numeric(6, 2), nullable=False, default=0)
+    debt_notes = Column(Text, nullable=True)
     notes = Column(Text, nullable=True)
     service_metadata = Column(
         "metadata", JSON().with_variant(SQLiteJSON(), "sqlite"), nullable=True

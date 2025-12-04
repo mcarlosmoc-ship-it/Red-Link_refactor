@@ -44,6 +44,9 @@ export const mapClientService = (service) => ({
   ),
   currency: service.currency ?? 'MXN',
   baseId: service.base_id ?? null,
+  debtAmount: normalizeDecimal(service.debt_amount ?? service.debtAmount),
+  debtMonths: normalizeDecimal(service.debt_months ?? service.debtMonths),
+  debtNotes: service.debt_notes ?? service.debtNotes ?? '',
   notes: service.notes ?? '',
   metadata: service.metadata ?? {},
   createdAt: service.created_at ?? null,
@@ -121,6 +124,14 @@ export const mapClient = (client) => {
   })()
   const normalizedDebtMonths = isCourtesy ? 0 : normalizeDecimal(client.debt_months)
   const normalizedAheadMonths = isCourtesy ? 0 : normalizeDecimal(client.paid_months_ahead)
+  const totalServiceDebtMonths = services.reduce(
+    (acc, service) => acc + (normalizeDecimal(service.debtMonths ?? 0, 0) ?? 0),
+    0,
+  )
+  const totalServiceDebtAmount = services.reduce(
+    (acc, service) => acc + (normalizeDecimal(service.debtAmount ?? 0, 0) ?? 0),
+    0,
+  )
   const normalizedServiceStatus = (() => {
     const rawStatus = client.service_status
     if (rawStatus === 'Activo' || rawStatus === 'Suspendido') {
@@ -141,6 +152,7 @@ export const mapClient = (client) => {
   })()
 
   const serviceStatus = normalizedServiceStatus ?? (activeServices.length > 0 ? 'Activo' : 'Suspendido')
+  const debtMonths = totalServiceDebtMonths > 0 ? totalServiceDebtMonths : normalizedDebtMonths
 
   const recentPayments = Array.isArray(client.recent_payments)
     ? client.recent_payments.map(mapRecentPayment)
@@ -186,7 +198,8 @@ export const mapClient = (client) => {
     modemModel: resolvedModemModel,
     monthlyFee: normalizedMonthlyFee,
     paidMonthsAhead: normalizedAheadMonths,
-    debtMonths: normalizedDebtMonths,
+    debtMonths,
+    debtAmount: totalServiceDebtAmount > 0 ? totalServiceDebtAmount : null,
     service: serviceStatus,
     services,
     recentPayments,
@@ -481,6 +494,30 @@ export const serializeClientServicePayload = (payload) => {
     body.notes = payload.notes
   }
 
+  if (payload.debtAmount !== undefined && payload.debtAmount !== null) {
+    body.debt_amount = payload.debtAmount
+  }
+
+  if (payload.debtMonths !== undefined && payload.debtMonths !== null) {
+    body.debt_months = payload.debtMonths
+  }
+
+  if (payload.debtNotes) {
+    body.debt_notes = payload.debtNotes
+  }
+
+  if (payload.debtAmount !== undefined && payload.debtAmount !== null) {
+    body.debt_amount = payload.debtAmount
+  }
+
+  if (payload.debtMonths !== undefined && payload.debtMonths !== null) {
+    body.debt_months = payload.debtMonths
+  }
+
+  if (payload.debtNotes) {
+    body.debt_notes = payload.debtNotes
+  }
+
   if (payload.metadata) {
     body.metadata = payload.metadata
   }
@@ -602,6 +639,18 @@ export const serializeClientServiceUpdatePayload = (payload = {}) => {
 
   if (Object.prototype.hasOwnProperty.call(payload, 'notes')) {
     body.notes = payload.notes ?? null
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'debtAmount')) {
+    body.debt_amount = payload.debtAmount ?? null
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'debtMonths')) {
+    body.debt_months = payload.debtMonths ?? null
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'debtNotes')) {
+    body.debt_notes = payload.debtNotes ?? null
   }
 
   if (Object.prototype.hasOwnProperty.call(payload, 'metadata')) {

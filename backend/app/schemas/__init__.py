@@ -125,6 +125,8 @@ __all__ = [
     "ClientServiceRead",
     "ClientServiceUpdate",
     "ClientServiceListResponse",
+    "ServiceDebtRead",
+    "ServiceDebtUpdate",
     "PaginatedResponse",
     "ServicePaymentBase",
     "ServicePaymentCreate",
@@ -193,6 +195,8 @@ from .service import (
     ClientServiceListResponse,
     ClientServiceRead,
     ClientServiceUpdate,
+    ServiceDebtRead,
+    ServiceDebtUpdate,
     ServicePlanSummary,
 )
 

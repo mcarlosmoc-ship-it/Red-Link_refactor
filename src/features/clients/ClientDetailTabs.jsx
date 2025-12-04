@@ -26,6 +26,11 @@ export default function ClientDetailTabs({ client, initialTab = 'summary' }) {
           <div>
             <CardTitle>{client.name}</CardTitle>
             <p className="text-sm text-slate-600">{client.location || 'Sin ubicación'}</p>
+            {Number(client.debtMonths ?? 0) > 0 && (
+              <span className="mt-1 inline-flex items-center gap-2 rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-800">
+                Adeudo activo ({client.debtMonths} mes{Number(client.debtMonths) === 1 ? '' : 'es'})
+              </span>
+            )}
           </div>
           <div className="flex gap-2">
             {TABS.map((tab) => (
@@ -66,6 +71,12 @@ export default function ClientDetailTabs({ client, initialTab = 'summary' }) {
                   <p className="text-slate-600">
                     Tarifa: {service.customPrice ?? service.price ?? 'N/D'}
                   </p>
+                  {(Number(service.debtMonths ?? 0) > 0 || Number(service.debtAmount ?? 0) > 0) && (
+                    <p className="mt-1 inline-flex items-center gap-2 rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-800">
+                      Adeudo: {service.debtMonths ?? 0} mes(es)
+                      {Number(service.debtAmount ?? 0) > 0 && ` • $${service.debtAmount}`}
+                    </p>
+                  )}
                   <div className="mt-1 grid grid-cols-1 gap-1 text-xs text-slate-600 md:grid-cols-2">
                     {service.ipAddress && <span>IP: {service.ipAddress}</span>}
                     {service.antennaIp && <span>IP antena: {service.antennaIp}</span>}

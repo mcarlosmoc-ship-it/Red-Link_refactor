@@ -79,6 +79,9 @@ export default function ServicesAssignments({
       antennaModel: trim(state.antennaModel) || undefined,
       modemModel: trim(state.modemModel) || undefined,
       customPrice,
+      debtAmount: state.debtAmount === '' ? undefined : Number(state.debtAmount) || 0,
+      debtMonths: state.debtMonths === '' ? undefined : Number(state.debtMonths) || 0,
+      debtNotes: trim(state.debtNotes) || undefined,
       notes: trim(state.notes) || undefined,
     }
 
@@ -90,6 +93,9 @@ export default function ServicesAssignments({
         'modemIp',
         'antennaModel',
         'modemModel',
+        'debtAmount',
+        'debtMonths',
+        'debtNotes',
         'notes',
       ]
       for (const key of nullableKeys) {
@@ -141,6 +147,9 @@ export default function ServicesAssignments({
       antennaModel: service.antennaModel ?? '',
       modemModel: service.modemModel ?? '',
       notes: service.notes ?? '',
+      debtAmount: service.debtAmount ?? '',
+      debtMonths: service.debtMonths ?? '',
+      debtNotes: service.debtNotes ?? '',
     })
   }
 
@@ -377,6 +386,48 @@ export default function ServicesAssignments({
                 </div>
               </div>
 
+              <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+                <div>
+                  <label className="text-sm font-medium" htmlFor="assignment-debt-months">
+                    Meses vencidos
+                  </label>
+                  <input
+                    id="assignment-debt-months"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    className="mt-1 w-full rounded border border-slate-200 p-2"
+                    value={serviceState.debtMonths}
+                    onChange={(event) => handleServiceStateChange('debtMonths', event.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium" htmlFor="assignment-debt-amount">
+                    Monto pendiente
+                  </label>
+                  <input
+                    id="assignment-debt-amount"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    className="mt-1 w-full rounded border border-slate-200 p-2"
+                    value={serviceState.debtAmount}
+                    onChange={(event) => handleServiceStateChange('debtAmount', event.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium" htmlFor="assignment-debt-notes">
+                    Notas de adeudo
+                  </label>
+                  <input
+                    id="assignment-debt-notes"
+                    className="mt-1 w-full rounded border border-slate-200 p-2"
+                    value={serviceState.debtNotes}
+                    onChange={(event) => handleServiceStateChange('debtNotes', event.target.value)}
+                  />
+                </div>
+              </div>
+
               {(requiresIp || showEquipmentFields) && (
                 <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
                   {requiresIp && (
@@ -470,6 +521,12 @@ export default function ServicesAssignments({
                         <p className="text-sm text-slate-600">
                           Tarifa: {service.customPrice ?? service.price ?? 'N/D'}
                         </p>
+                        {(Number(service.debtMonths ?? 0) > 0 || Number(service.debtAmount ?? 0) > 0) && (
+                          <p className="mt-1 inline-flex items-center gap-2 rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-800">
+                            Adeudo: {Number(service.debtMonths ?? 0) > 0 ? `${service.debtMonths} mes(es)` : 'Pendiente'}
+                            {Number(service.debtAmount ?? 0) > 0 && ` • $${service.debtAmount}`}
+                          </p>
+                        )}
                       </div>
                       <div className="flex gap-2">
                         <Button
@@ -652,6 +709,53 @@ export default function ServicesAssignments({
                             />
                           </div>
                         )}
+                        <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+                          <div>
+                            <label className="text-sm font-medium" htmlFor={`edit-debt-months-${service.id}`}>
+                              Meses vencidos
+                            </label>
+                            <input
+                              id={`edit-debt-months-${service.id}`}
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              className="mt-1 w-full rounded border border-slate-200 p-2"
+                              value={editState.debtMonths}
+                              onChange={(event) =>
+                                setEditState((prev) => ({ ...prev, debtMonths: event.target.value }))
+                              }
+                            />
+                          </div>
+                          <div>
+                            <label className="text-sm font-medium" htmlFor={`edit-debt-amount-${service.id}`}>
+                              Monto pendiente
+                            </label>
+                            <input
+                              id={`edit-debt-amount-${service.id}`}
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              className="mt-1 w-full rounded border border-slate-200 p-2"
+                              value={editState.debtAmount}
+                              onChange={(event) =>
+                                setEditState((prev) => ({ ...prev, debtAmount: event.target.value }))
+                              }
+                            />
+                          </div>
+                          <div>
+                            <label className="text-sm font-medium" htmlFor={`edit-debt-notes-${service.id}`}>
+                              Notas de adeudo
+                            </label>
+                            <input
+                              id={`edit-debt-notes-${service.id}`}
+                              className="mt-1 w-full rounded border border-slate-200 p-2"
+                              value={editState.debtNotes}
+                              onChange={(event) =>
+                                setEditState((prev) => ({ ...prev, debtNotes: event.target.value }))
+                              }
+                            />
+                          </div>
+                        </div>
                         <div className="flex justify-end gap-2">
                           <Button size="sm" variant="ghost" onClick={() => setEditState(null)}>
                             Cancelar

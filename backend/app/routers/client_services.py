@@ -103,6 +103,36 @@ def get_service(service_id: str, db: Session = Depends(get_db)) -> schemas.Clien
     return service
 
 
+@router.get("/{service_id}/debt", response_model=schemas.ServiceDebtRead)
+def get_service_debt(
+    service_id: str, db: Session = Depends(get_db)
+) -> schemas.ServiceDebtRead:
+    service = ClientContractService.get_service(db, service_id)
+    if service is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Service not found")
+    return schemas.ServiceDebtRead.model_validate(service)
+
+
+@router.put("/{service_id}/debt", response_model=schemas.ServiceDebtRead)
+def update_service_debt(
+    service_id: str,
+    payload: schemas.ServiceDebtUpdate,
+    db: Session = Depends(get_db),
+) -> schemas.ServiceDebtRead:
+    service = ClientContractService.get_service(db, service_id)
+    if service is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Service not found")
+
+    try:
+        updated = ClientContractService.update_service_debt(db, service, payload)
+    except ClientContractError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=_build_error_detail(exc)
+        ) from exc
+
+    return schemas.ServiceDebtRead.model_validate(updated)
+
+
 @router.put("/{service_id}", response_model=schemas.ClientServiceRead)
 def update_service(
     service_id: str,

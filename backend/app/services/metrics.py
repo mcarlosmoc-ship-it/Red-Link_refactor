@@ -91,6 +91,11 @@ class MetricsService:
                 courtesy = True
 
         debt_months = Decimal(str(client.debt_months or 0))
+        service_debt_months = sum(
+            Decimal(str(service.debt_months or 0)) for service in active_services
+        )
+        if service_debt_months > Decimal("0"):
+            debt_months = service_debt_months
         ahead_months = Decimal(str(client.paid_months_ahead or 0))
 
         if courtesy:
@@ -119,11 +124,23 @@ class MetricsService:
             effective_price, debt_months, _ahead_months, _courtesy = (
                 MetricsService._resolve_client_billing_context(client)
             )
+            service_debt_amount = sum(
+                Decimal(str(service.debt_amount or 0))
+                if Decimal(str(service.debt_amount or 0)) > 0
+                else Decimal(str(service.debt_months or 0))
+                * MetricsService._service_effective_price(service)
+                for service in getattr(client, "services", []) or []
+            )
+            debt_amount = (
+                service_debt_amount
+                if service_debt_amount > 0
+                else debt_months * effective_price
+            )
             if debt_months == Decimal("0"):
                 paid_clients += 1
             else:
                 pending_clients += 1
-                total_debt_amount += debt_months * effective_price
+                total_debt_amount += debt_amount
 
         base_cost_breakdown: Dict[str, Decimal] = {}
 
@@ -186,9 +203,21 @@ class MetricsService:
             effective_price, debt_months, _ahead_months, _courtesy = (
                 MetricsService._resolve_client_billing_context(client)
             )
+            service_debt_amount = sum(
+                Decimal(str(service.debt_amount or 0))
+                if Decimal(str(service.debt_amount or 0)) > 0
+                else Decimal(str(service.debt_months or 0))
+                * MetricsService._service_effective_price(service)
+                for service in getattr(client, "services", []) or []
+            )
+            debt_amount = (
+                service_debt_amount
+                if service_debt_amount > 0
+                else debt_months * effective_price
+            )
             if debt_months > Decimal("0"):
                 location_metrics["pending_clients"] += 1
-            location_metrics["debt_amount"] += debt_months * effective_price
+            location_metrics["debt_amount"] += debt_amount
 
         if period_key:
             payments, _payments_total = PaymentService.list_payments(db, period_key=period_key, limit=10_000)

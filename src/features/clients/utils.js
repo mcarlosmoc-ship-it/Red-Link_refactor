@@ -74,6 +74,9 @@ export const createInitialServiceState = (zoneId) => ({
   modemIp: '',
   antennaModel: '',
   modemModel: '',
+  debtAmount: '',
+  debtMonths: '',
+  debtNotes: '',
 })
 
 export const getPrimaryService = (client) => {

@@ -121,6 +121,18 @@ class PaymentService:
         amount = cls._normalize_amount(data.amount)
         months_paid = cls._normalize_months(data.months_paid)
 
+        outstanding_debt_months = Decimal(service.debt_months or 0)
+        outstanding_debt_amount = Decimal(service.debt_amount or 0)
+
+        if outstanding_debt_months > Decimal("0"):
+            if months_paid is None or months_paid < outstanding_debt_months:
+                raise ValueError(
+                    "Debes cubrir los meses vencidos antes de registrar meses adelantados."
+                )
+
+        if outstanding_debt_amount > Decimal("0") and amount < outstanding_debt_amount:
+            raise ValueError("El monto no cubre el adeudo pendiente del servicio.")
+
         payment = models.ServicePayment(
             client_service_id=service.id,
             client_id=client.id,
@@ -137,9 +149,11 @@ class PaymentService:
             FinancialSnapshotService.apply_payment(db, period_key, amount)
 
         cls._apply_client_balances(service, client, months_paid or Decimal("0"))
+        cls._apply_service_debt(service, amount, months_paid)
 
         db.add(payment)
         db.add(client)
+        db.add(service)
 
         audit_entry = models.PaymentAuditLog(
             payment=payment,
@@ -186,6 +200,19 @@ class PaymentService:
             client.service_status = models.ServiceStatus.ACTIVE
 
     @staticmethod
+    def _apply_service_debt(
+        service: models.ClientService, amount_paid: Decimal, months_paid: Optional[Decimal]
+    ) -> None:
+        outstanding_amount = Decimal(service.debt_amount or 0)
+        outstanding_months = Decimal(service.debt_months or 0)
+
+        if outstanding_amount > 0:
+            service.debt_amount = max(Decimal("0"), outstanding_amount - amount_paid)
+
+        if months_paid is not None and outstanding_months > 0:
+            service.debt_months = max(Decimal("0"), outstanding_months - months_paid)
+
+    @staticmethod
     def _revert_client_balances(
         service: models.ClientService, client: models.Client, months_paid: Decimal
     ) -> None:
@@ -209,6 +236,20 @@ class PaymentService:
             client.service_status = models.ServiceStatus.SUSPENDED
         else:
             client.service_status = models.ServiceStatus.ACTIVE
+
+    @staticmethod
+    def _revert_service_debt(
+        service: models.ClientService, amount_paid: Decimal, months_paid: Optional[Decimal]
+    ) -> None:
+        if amount_paid and Decimal(amount_paid) > 0:
+            service.debt_amount = (Decimal(service.debt_amount or 0) + amount_paid).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+
+        if months_paid is not None and months_paid > 0:
+            service.debt_months = (Decimal(service.debt_months or 0) + months_paid).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
 
     @classmethod
     def delete_payment(cls, db: Session, payment: models.ServicePayment) -> None:
@@ -235,10 +276,12 @@ class PaymentService:
             FinancialSnapshotService.remove_payment(db, payment.period_key, amount)
 
         cls._revert_client_balances(service, client, months_paid)
+        cls._revert_service_debt(service, amount, months_paid)
 
         try:
             db.add(audit_entry)
             db.add(client)
+            db.add(service)
             db.delete(payment)
             db.commit()
         except SQLAlchemyError as exc:
