@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..models.client_service import ClientServiceStatus, ClientServiceType
 from .client_contracts import ClientContractError, ClientContractService
+from .payments import PaymentService, PaymentServiceError
 from ..models.audit import ClientAccountSecurityAction
 from ..database import session_scope
 from ..security import AdminIdentity
@@ -392,16 +393,28 @@ class AccountService:
         data: schemas.ClientAccountPaymentCreate,
         *,
         actor: Optional[AdminIdentity] = None,
-    ) -> models.ClientAccountPayment:
-        payment = models.ClientAccountPayment(
-            client_account_id=account.id, **data.model_dump()
-        )
-        account.fecha_proximo_pago = _add_one_month(data.fecha_pago)
-        db.add(payment)
-        db.add(account)
-        db.commit()
-        db.refresh(payment)
-        db.refresh(account)
+    ) -> models.ServicePayment:
+        if not account.client_service_id:
+            raise AccountServiceError(
+                "El cliente no tiene un servicio asociado para registrar pagos."
+            )
+
+        try:
+            payment = PaymentService.create_payment(
+                db,
+                schemas.ServicePaymentCreate(
+                    client_service_id=str(account.client_service_id),
+                    paid_on=data.fecha_pago,
+                    amount=data.monto,
+                    method=models.PaymentMethod(data.metodo_pago),
+                    period_key=data.periodo_correspondiente,
+                    note=data.notas,
+                    recorded_by=actor.username if actor else None,
+                ),
+            )
+        except (ValueError, PaymentServiceError) as exc:
+            raise AccountServiceError(str(exc)) from exc
+
         AccountService._record_security_event(
             db,
             account.id,

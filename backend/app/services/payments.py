@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from calendar import monthrange
 from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
+from math import ceil
 from typing import Iterable, Optional, Tuple
 
 from sqlalchemy import func
@@ -100,6 +102,8 @@ class PaymentService:
         service = (
             db.query(models.ClientService)
             .options(selectinload(models.ClientService.client))
+            .options(selectinload(models.ClientService.streaming_account))
+            .options(selectinload(models.ClientService.service_plan))
             .filter(models.ClientService.id == service_id)
             .first()
         )
@@ -120,6 +124,8 @@ class PaymentService:
 
         amount = cls._normalize_amount(data.amount)
         months_paid = cls._normalize_months(data.months_paid)
+        if months_paid is None:
+            months_paid = cls._infer_months_from_amount(amount, service.effective_price)
 
         outstanding_debt_months = Decimal(service.debt_months or 0)
         outstanding_debt_amount = Decimal(service.debt_amount or 0)
@@ -150,6 +156,7 @@ class PaymentService:
 
         cls._apply_client_balances(service, client, months_paid or Decimal("0"))
         cls._apply_service_debt(service, amount, months_paid)
+        cls._update_next_billing(service, data.paid_on, months_paid, amount)
 
         db.add(payment)
         db.add(client)
@@ -176,6 +183,50 @@ class PaymentService:
         db.refresh(payment)
         db.refresh(client)
         return payment
+
+    @staticmethod
+    def _infer_months_from_amount(
+        amount: Decimal, effective_price: Optional[Decimal]
+    ) -> Optional[Decimal]:
+        if effective_price is None:
+            return None
+        if Decimal(effective_price) <= 0:
+            return None
+        months = amount / Decimal(effective_price)
+        if months <= 0:
+            return None
+        cents = Decimal("0.01")
+        return months.quantize(cents, rounding=ROUND_HALF_UP)
+
+    @staticmethod
+    def _add_months(start: date, months: Decimal | float | int) -> date:
+        whole_months = int(ceil(float(months)))
+        current_year, current_month = start.year, start.month
+        new_month = current_month + whole_months
+        new_year = current_year + (new_month - 1) // 12
+        normalized_month = ((new_month - 1) % 12) + 1
+        last_day = monthrange(new_year, normalized_month)[1]
+        return date(new_year, normalized_month, min(start.day, last_day))
+
+    @classmethod
+    def _update_next_billing(
+        cls,
+        service: models.ClientService,
+        paid_on: date,
+        months_paid: Optional[Decimal],
+        amount: Decimal,
+    ) -> None:
+        months_to_apply = months_paid
+        if months_to_apply is None:
+            months_to_apply = cls._infer_months_from_amount(amount, service.effective_price)
+
+        if months_to_apply is None:
+            return
+
+        next_due_date = cls._add_months(paid_on, months_to_apply)
+        service.next_billing_date = next_due_date
+        if service.streaming_account:
+            service.streaming_account.fecha_proximo_pago = next_due_date
 
     @staticmethod
     def _apply_client_balances(

@@ -341,6 +341,8 @@ export const mapPrincipalAccount = (account) => ({
 export const mapClientAccount = (account) => ({
   id: account.id,
   principalId: account.principal_account_id ?? null,
+  clientId: account.client_id ?? null,
+  clientServiceId: account.client_service_id ?? null,
   email: account.correo_cliente ?? '',
   profile: account.perfil ?? '',
   name: account.nombre_cliente ?? '',
