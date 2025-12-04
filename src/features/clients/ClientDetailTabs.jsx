@@ -19,6 +19,13 @@ export default function ClientDetailTabs({ client, initialTab = 'summary' }) {
 
   if (!client) return null
 
+  const monthlyFee =
+    primaryService?.effectivePrice ?? primaryService?.price ?? primaryService?.customPrice ?? null
+  const monthlyLabel =
+    primaryService && Number.isFinite(Number(monthlyFee))
+      ? `$${Number(monthlyFee)}`
+      : 'Sin servicio asignado'
+
   return (
     <Card data-testid="client-details">
       <CardHeader>
@@ -54,7 +61,7 @@ export default function ClientDetailTabs({ client, initialTab = 'summary' }) {
               <span className="font-medium">Zona:</span> {client.zoneId || 'Sin zona'}
             </p>
             <p>
-              <span className="font-medium">Mensualidad:</span> ${client.monthlyFee ?? 'N/D'}
+              <span className="font-medium">Mensualidad:</span> {monthlyLabel}
             </p>
             <p>
               <span className="font-medium">Notas:</span> {client.notes || 'Sin notas'}

@@ -1,17 +1,7 @@
 import { normalizeId, resolveApiErrorMessage } from './utils.js'
 
-export const handleCreateClientFlow = async ({
-  clientPayload,
-  servicePayload,
-  createClient,
-  createClientService,
-}) => {
-  const created = await createClient(clientPayload)
-  if (servicePayload?.servicePlanId) {
-    await createClientService({ ...servicePayload, clientId: created.id })
-  }
-  return created
-}
+export const handleCreateClientFlow = async ({ clientPayload, createClient }) =>
+  createClient(clientPayload)
 
 export const handleAssignServiceFlow = async ({ payload, createClientService }) => {
   if (!payload?.clientId) {

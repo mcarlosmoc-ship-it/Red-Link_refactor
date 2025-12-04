@@ -40,7 +40,7 @@ export const mapClientService = (service) => ({
     service.effective_price ?? service.effectivePrice ?? service.custom_price,
   ),
   price: normalizeDecimal(
-    service.effective_price ?? service.custom_price,
+    service.effective_price ?? service.custom_price ?? service.service_plan?.monthly_price,
   ),
   currency: service.currency ?? 'MXN',
   baseId: service.base_id ?? null,
@@ -106,22 +106,8 @@ export const mapClient = (client) => {
   const referencePrice = referenceService
     ? parseDecimalOrNull(referenceService.effectivePrice ?? referenceService.price)
     : null
-  const fallbackMonthlyFee = parseDecimalOrNull(client.monthly_fee)
-  const isCourtesy = referencePrice !== null
-    ? referencePrice <= 0
-    : hasServices && fallbackMonthlyFee !== null && fallbackMonthlyFee <= 0
-  const normalizedMonthlyFee = (() => {
-    if (referencePrice !== null) {
-      return isCourtesy ? 0 : referencePrice
-    }
-    if (fallbackMonthlyFee !== null) {
-      if (!hasServices && fallbackMonthlyFee === 0) {
-        return null
-      }
-      return isCourtesy ? 0 : fallbackMonthlyFee
-    }
-    return null
-  })()
+  const isCourtesy = referencePrice !== null && referencePrice <= 0
+  const normalizedMonthlyFee = referencePrice !== null ? (isCourtesy ? 0 : referencePrice) : null
   const normalizedDebtMonths = isCourtesy ? 0 : normalizeDecimal(client.debt_months)
   const normalizedAheadMonths = isCourtesy ? 0 : normalizeDecimal(client.paid_months_ahead)
   const totalServiceDebtMonths = services.reduce(

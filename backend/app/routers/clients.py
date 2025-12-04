@@ -116,6 +116,19 @@ def _create_client(
     db: Session = Depends(get_db),
 ) -> schemas.ClientRead:
     """Create a new client record."""
+
+    if client_in.services:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El alta de cliente ya no acepta captura de servicios. Registra el servicio después del cliente.",
+        )
+
+    if client_in.monthly_fee is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La mensualidad se calcula a partir del servicio asignado.",
+        )
+
     try:
         return ClientService.create_client(db, client_in)
     except ValueError as exc:
@@ -130,12 +143,7 @@ def create_client(
     db: Session = Depends(get_db),
 ) -> schemas.ClientRead:
     """Create a new client record."""
-    try:
-        return ClientService.create_client(db, client_in)
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
-        ) from exc
+    return _create_client(client_in, db)
 
 
 @router.delete("/{client_id}", status_code=status.HTTP_204_NO_CONTENT)
