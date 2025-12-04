@@ -11,19 +11,16 @@ import {
 const sampleError = { response: { data: { message: 'Detalle' } } }
 
 describe('clients flows helpers', () => {
-  it('ejecuta alta con servicio inicial', async () => {
+  it('ejecuta alta de cliente simple', async () => {
     const createClient = vi.fn().mockResolvedValue({ id: '1' })
-    const createClientService = vi.fn().mockResolvedValue({})
 
     const created = await handleCreateClientFlow({
       clientPayload: { name: 'Nuevo' },
-      servicePayload: { servicePlanId: 'plan-1' },
       createClient,
-      createClientService,
     })
 
     expect(created.id).toBe('1')
-    expect(createClientService).toHaveBeenCalled()
+    expect(createClient).toHaveBeenCalled()
   })
 
   it('ejecuta asignación y cambios de estado', async () => {

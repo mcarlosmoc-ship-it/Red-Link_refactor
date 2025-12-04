@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useSearchParams } from 'react-router-dom'
 import { Card, CardContent } from '../components/ui/Card.jsx'
 import ClientsList from '../features/clients/ClientsList.jsx'
@@ -6,6 +6,7 @@ import ClientForm from '../features/clients/ClientForm.jsx'
 import ClientDetailTabs from '../features/clients/ClientDetailTabs.jsx'
 import ServicesAssignments from '../features/clients/ServicesAssignments.jsx'
 import ImportClientsModal from '../components/clients/ImportClientsModal.jsx'
+import Button from '../components/ui/Button.jsx'
 import { useBackofficeStore } from '../store/useBackofficeStore.js'
 import { useClients } from '../hooks/useClients.js'
 import { useServicePlans } from '../hooks/useServicePlans.js'
@@ -65,6 +66,7 @@ export default function ClientsPage() {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false)
   const [importSummary, setImportSummary] = useState(null)
   const [isImporting, setIsImporting] = useState(false)
+  const serviceFormRef = useRef(null)
 
   useEffect(() => {
     if (location.hash?.includes('services')) {
@@ -123,6 +125,14 @@ export default function ClientsPage() {
     [clients, selectedClientId],
   )
 
+  const focusServiceForm = () => {
+    setTimeout(() => {
+      if (serviceFormRef.current) {
+        serviceFormRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }
+    }, 50)
+  }
+
   const handleSelectClient = (clientId) => {
     const normalizedId = normalizeId(clientId)
     setSelectedClientId(normalizedId)
@@ -136,9 +146,7 @@ export default function ClientsPage() {
     try {
       const created = await handleCreateClientFlow({
         clientPayload: client,
-        servicePayload: service,
         createClient,
-        createClientService,
       })
       showToast({
         type: 'success',
@@ -146,6 +154,7 @@ export default function ClientsPage() {
         description: 'El cliente se registró correctamente.',
       })
       setSelectedClientId(normalizeId(created.id))
+      setActiveClientTab('payments')
       return created
     } catch (error) {
       const description = resolveApiErrorMessage(error, 'No se pudo crear el cliente.')
@@ -702,9 +711,25 @@ export default function ClientsPage() {
                 </CardContent>
               </Card>
 
-              {selectedClient ? (
-                <>
-                  <ClientDetailTabs client={selectedClient} initialTab="payments" />
+            {selectedClient ? (
+              <>
+                <ClientDetailTabs client={selectedClient} initialTab="payments" />
+                {(!selectedClient.services || selectedClient.services.length === 0) && (
+                  <Card>
+                    <CardContent className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                      <div>
+                        <p className="font-semibold">Sin servicio asignado</p>
+                        <p className="text-sm text-slate-600">
+                          Completa el registro creando el servicio mensual para este cliente.
+                        </p>
+                      </div>
+                      <Button variant="primary" onClick={focusServiceForm}>
+                        Crear servicio mensual
+                      </Button>
+                    </CardContent>
+                  </Card>
+                )}
+                <div ref={serviceFormRef}>
                   <ServicesAssignments
                     client={selectedClient}
                     servicePlans={servicePlans}
@@ -714,8 +739,9 @@ export default function ClientsPage() {
                     onDeleteService={handleDeleteService}
                     isProcessing={isProcessingService || servicePlansStatus?.isLoading}
                   />
-                </>
-              ) : (
+                </div>
+              </>
+            ) : (
                 <Card>
                   <CardContent>
                     <p className="text-sm text-slate-600">
