@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useSearchParams } from 'react-router-dom'
 import { Card, CardContent } from '../components/ui/Card.jsx'
 import ClientsList from '../features/clients/ClientsList.jsx'
 import ClientForm from '../features/clients/ClientForm.jsx'
@@ -40,6 +40,7 @@ export default function ClientsPage() {
   }))
   const { isRefreshing } = useBackofficeRefresh()
   const location = useLocation()
+  const [searchParams, setSearchParams] = useSearchParams()
   const {
     clients,
     status: clientsStatus,
@@ -70,6 +71,52 @@ export default function ClientsPage() {
       setActiveMainTab('services')
     }
   }, [location.hash])
+
+  useEffect(() => {
+    const viewParam = searchParams.get('view')
+    const clientIdParam = normalizeId(searchParams.get('clientId'))
+
+    if (clientIdParam && clientIdParam !== normalizeId(selectedClientId)) {
+      setSelectedClientId(clientIdParam)
+    }
+
+    if (viewParam === 'services') {
+      setActiveMainTab('services')
+    } else {
+      setActiveMainTab('clients')
+      if (viewParam === 'payments') {
+        setActiveClientTab('payments')
+      } else if (viewParam === 'create') {
+        setActiveClientTab('create')
+      } else if (viewParam === 'list') {
+        setActiveClientTab('list')
+      }
+    }
+  }, [searchParams, selectedClientId])
+
+  useEffect(() => {
+    const nextParams = new URLSearchParams(searchParams)
+    const normalizedClientId = normalizeId(selectedClientId)
+    const viewValue =
+      activeMainTab === 'services' ? 'services' : activeClientTab || 'list'
+
+    if (normalizedClientId) {
+      nextParams.set('clientId', normalizedClientId)
+    } else {
+      nextParams.delete('clientId')
+    }
+
+    if (viewValue && viewValue !== 'list') {
+      nextParams.set('view', viewValue)
+    } else {
+      nextParams.delete('view')
+    }
+
+    const nextString = nextParams.toString()
+    if (nextString !== searchParams.toString()) {
+      setSearchParams(nextParams, { replace: true })
+    }
+  }, [activeMainTab, activeClientTab, selectedClientId, searchParams, setSearchParams])
 
   const selectedClient = useMemo(
     () => clients.find((client) => normalizeId(client.id) === normalizeId(selectedClientId)) ?? null,

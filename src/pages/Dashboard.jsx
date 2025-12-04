@@ -1155,8 +1155,6 @@ export default function DashboardPage() {
                     ? primaryServicePrice
                     : client.monthlyFee ?? CLIENT_PRICE
                   const isExpanded = expandedClientId === client.id
-                  const isPaymentActive =
-                    paymentForm.open && paymentForm.clientId === client.id && Boolean(activeClient)
                   return (
                     <React.Fragment key={client.id}>
                       <tr>
@@ -1218,24 +1216,22 @@ export default function DashboardPage() {
                           })()}
                         </td>
                         <td className="px-3 py-2 text-right">
-                          <Button
-                            type="button"
-                            size="sm"
-                            disabled={!isCurrentPeriod || isSubmittingPayment}
-                            className="disabled:cursor-not-allowed disabled:opacity-50"
-                            onClick={() => handleOpenPaymentForm(client)}
-                          >
-                            Registrar pago
-                          </Button>
+                          <div className="inline-flex flex-col items-end gap-2 sm:flex-row">
+                            <Link
+                              to={`/clients?clientId=${client.id}&view=payments`}
+                              className="inline-flex items-center gap-1 rounded-md border border-blue-100 px-3 py-1.5 text-xs font-semibold text-blue-600 transition hover:bg-blue-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40"
+                            >
+                              Ver pagos
+                            </Link>
+                            <Link
+                              to={`/clients?clientId=${client.id}&view=services`}
+                              className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40"
+                            >
+                              Servicios
+                            </Link>
+                          </div>
                         </td>
                       </tr>
-                      {isPaymentActive && (
-                        <tr>
-                          <td colSpan={5} className="bg-slate-50 px-3 py-3">
-                            <QuickPaymentForm refCallback={paymentFormRef} />
-                          </td>
-                        </tr>
-                      )}
                       {isExpanded && (
                         <tr id={`client-details-${client.id}`}>
                           <td colSpan={5} className="bg-slate-50 px-3 py-3">
@@ -1332,20 +1328,17 @@ export default function DashboardPage() {
                                       </p>
                                       <div className="flex flex-wrap items-center gap-2">
                                         <Link
-                                          to={`/clients#client-${client.id}`}
+                                          to={`/clients?clientId=${client.id}&view=payments`}
                                           className="inline-flex items-center gap-1 rounded-md border border-blue-100 px-3 py-1.5 text-xs font-semibold text-blue-600 transition hover:bg-blue-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40"
                                         >
-                                          Abrir en clientes →
+                                          Ver adeudos y pagos →
                                         </Link>
-                                        <Button
-                                          type="button"
-                                          size="sm"
-                                          disabled={!isCurrentPeriod || isSubmittingPayment}
-                                          className="disabled:cursor-not-allowed disabled:opacity-50"
-                                          onClick={() => handleOpenPaymentForm(client)}
+                                        <Link
+                                          to={`/clients?clientId=${client.id}&view=services`}
+                                          className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40"
                                         >
-                                          Registrar pago
-                                        </Button>
+                                          Gestionar servicios →
+                                        </Link>
                                       </div>
                                       <p className="text-xs text-slate-500">
                                         Periodo consultado: {periodLabel}.{' '}
