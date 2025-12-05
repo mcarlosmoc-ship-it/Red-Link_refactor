@@ -19,6 +19,7 @@ depends_on: Sequence[str] | None = None
 
 def upgrade() -> None:
     bind = op.get_bind()
+    dialect_name = bind.dialect.name
     inspector = sa.inspect(bind)
 
     if inspector.has_table("client_services"):
@@ -40,18 +41,19 @@ def upgrade() -> None:
                 sa.Column("debt_notes", sa.Text(), nullable=True),
             )
 
-        op.create_check_constraint(
-            "ck_client_services_debt_amount_non_negative",
-            "client_services",
-            "debt_amount >= 0",
-            schema=None,
-        )
-        op.create_check_constraint(
-            "ck_client_services_debt_months_non_negative",
-            "client_services",
-            "debt_months >= 0",
-            schema=None,
-        )
+        if dialect_name != "sqlite":
+            op.create_check_constraint(
+                "ck_client_services_debt_amount_non_negative",
+                "client_services",
+                "debt_amount >= 0",
+                schema=None,
+            )
+            op.create_check_constraint(
+                "ck_client_services_debt_months_non_negative",
+                "client_services",
+                "debt_months >= 0",
+                schema=None,
+            )
 
         op.execute(sa.text("UPDATE client_services SET debt_amount = 0 WHERE debt_amount IS NULL"))
         op.execute(sa.text("UPDATE client_services SET debt_months = 0 WHERE debt_months IS NULL"))
@@ -59,19 +61,21 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     bind = op.get_bind()
+    dialect_name = bind.dialect.name
     inspector = sa.inspect(bind)
 
     if inspector.has_table("client_services"):
-        op.drop_constraint(
-            "ck_client_services_debt_amount_non_negative",
-            "client_services",
-            type_="check",
-        )
-        op.drop_constraint(
-            "ck_client_services_debt_months_non_negative",
-            "client_services",
-            type_="check",
-        )
+        if dialect_name != "sqlite":
+            op.drop_constraint(
+                "ck_client_services_debt_amount_non_negative",
+                "client_services",
+                type_="check",
+            )
+            op.drop_constraint(
+                "ck_client_services_debt_months_non_negative",
+                "client_services",
+                type_="check",
+            )
 
         columns = {col["name"] for col in inspector.get_columns("client_services")}
         if "debt_amount" in columns:

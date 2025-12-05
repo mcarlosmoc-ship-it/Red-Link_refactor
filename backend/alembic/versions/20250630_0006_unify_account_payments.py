@@ -47,17 +47,21 @@ def _infer_months(amount: Decimal, price: Decimal | None) -> Decimal | None:
 
 def upgrade() -> None:
     bind = op.get_bind()
+    inspector = sa.inspect(bind)
     metadata = sa.MetaData()
-    metadata.reflect(
-        bind=bind,
-        only=[
-            "payments",
-            "service_payments",
-            "client_accounts",
-            "client_services",
-            "service_plans",
-        ],
-    )
+    target_tables = [
+        "payments",
+        "service_payments",
+        "client_accounts",
+        "client_services",
+        "service_plans",
+    ]
+    existing_tables = [t for t in target_tables if inspector.has_table(t)]
+
+    if not existing_tables:
+        return
+
+    metadata.reflect(bind=bind, only=existing_tables)
 
     payments = metadata.tables.get("payments")
     service_payments = metadata.tables.get("service_payments")
@@ -158,8 +162,14 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     bind = op.get_bind()
+    inspector = sa.inspect(bind)
     metadata = sa.MetaData()
-    metadata.reflect(bind=bind, only=["payments", "service_payments"])
+    target_tables = ["payments", "service_payments"]
+    existing_tables = [t for t in target_tables if inspector.has_table(t)]
+    if not existing_tables:
+        return
+
+    metadata.reflect(bind=bind, only=existing_tables)
     payments = metadata.tables.get("payments")
     service_payments = metadata.tables.get("service_payments")
     if not payments or not service_payments:
