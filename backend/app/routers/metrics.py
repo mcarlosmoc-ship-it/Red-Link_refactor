@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from dataclasses import asdict
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from .. import schemas
 from ..database import get_db
-from ..services import MetricsService, OperatingCostService
+from ..services import DataConsistencyService, MetricsService, OperatingCostService
 from ..services.scheduler_monitor import SchedulerMonitor
 from ..security import require_admin
 
@@ -69,3 +71,15 @@ def get_scheduler_health() -> schemas.SchedulerHealthResponse:
     """Expose the health and error history for background schedulers."""
 
     return schemas.SchedulerHealthResponse(jobs=SchedulerMonitor.snapshot())
+
+
+@router.get(
+    "/consistency/payments",
+    response_model=schemas.PaymentConsistencyReport,
+    summary="Compara los contadores de pagos entre módulos",
+)
+def get_payment_consistency(db: Session = Depends(get_db)) -> schemas.PaymentConsistencyReport:
+    """Detecta discrepancias básicas entre pagos, servicios y clientes."""
+
+    snapshot = DataConsistencyService.payment_counters(db)
+    return schemas.PaymentConsistencyReport.model_validate(asdict(snapshot))

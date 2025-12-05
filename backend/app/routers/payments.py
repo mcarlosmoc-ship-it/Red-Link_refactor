@@ -6,6 +6,8 @@ from datetime import date
 from decimal import Decimal
 from typing import Optional
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
@@ -15,6 +17,8 @@ from ..models.client_service import ClientServiceType
 from ..models.payment import PaymentMethod
 from ..security import require_admin
 from ..services import PaymentService, PaymentServiceError
+
+LOGGER = logging.getLogger(__name__)
 
 router = APIRouter(dependencies=[Depends(require_admin)])
 
@@ -81,7 +85,16 @@ def create_payment(
 ) -> schemas.ServicePaymentRead:
     """Record a new payment and update client balances."""
     try:
-        return PaymentService.create_payment(db, payment_in)
+        payment = PaymentService.create_payment(db, payment_in)
+        LOGGER.info(
+            "Payment created",
+            extra={
+                "client_id": payment.client_id,
+                "client_service_id": payment.client_service_id,
+                "payment_id": payment.id,
+            },
+        )
+        return payment
     except (ValueError, PaymentServiceError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -22,6 +23,8 @@ def _build_error_detail(exc: Exception) -> object:
     if exc.args:
         return exc.args[0]
     return str(exc)
+
+LOGGER = logging.getLogger(__name__)
 
 router = APIRouter(dependencies=[Depends(require_admin)])
 
@@ -56,7 +59,12 @@ def create_service(
     payload: schemas.ClientServiceCreate, db: Session = Depends(get_db)
 ) -> schemas.ClientServiceRead:
     try:
-        return ClientContractService.create_service(db, payload)
+        service = ClientContractService.create_service(db, payload)
+        LOGGER.info(
+            "Service created",
+            extra={"client_id": service.client_id, "client_service_id": service.id},
+        )
+        return service
     except (ValueError, ClientContractError) as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail=_build_error_detail(exc)
@@ -72,7 +80,16 @@ def bulk_create_services(
     payload: schemas.ClientServiceBulkCreate, db: Session = Depends(get_db)
 ) -> List[schemas.ClientServiceRead]:
     try:
-        return ClientContractService.bulk_create_services(db, payload)
+        created = ClientContractService.bulk_create_services(db, payload)
+        LOGGER.info(
+            "Bulk service creation completed",
+            extra={
+                "client_ids": payload.client_ids,
+                "service_plan_id": payload.service_id,
+                "created_count": len(created),
+            },
+        )
+        return created
     except (ValueError, ClientContractError) as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail=_build_error_detail(exc)
@@ -88,7 +105,16 @@ def bulk_assign_services(
     payload: schemas.ClientServiceBulkCreate, db: Session = Depends(get_db)
 ) -> List[schemas.ClientServiceRead]:
     try:
-        return ClientContractService.bulk_create_services(db, payload)
+        created = ClientContractService.bulk_create_services(db, payload)
+        LOGGER.info(
+            "Bulk service assignment completed",
+            extra={
+                "client_ids": payload.client_ids,
+                "service_plan_id": payload.service_id,
+                "created_count": len(created),
+            },
+        )
+        return created
     except (ValueError, ClientContractError) as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail=_build_error_detail(exc)
@@ -125,6 +151,10 @@ def update_service_debt(
 
     try:
         updated = ClientContractService.update_service_debt(db, service, payload)
+        LOGGER.info(
+            "Service debt updated",
+            extra={"client_id": updated.client_id, "client_service_id": updated.id},
+        )
     except ClientContractError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail=_build_error_detail(exc)
@@ -143,7 +173,16 @@ def update_service(
     if service is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Service not found")
     try:
-        return ClientContractService.update_service(db, service, payload)
+        updated = ClientContractService.update_service(db, service, payload)
+        LOGGER.info(
+            "Service updated",
+            extra={
+                "client_id": updated.client_id,
+                "client_service_id": updated.id,
+                "status": str(updated.status),
+            },
+        )
+        return updated
     except ClientContractError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail=_build_error_detail(exc)
