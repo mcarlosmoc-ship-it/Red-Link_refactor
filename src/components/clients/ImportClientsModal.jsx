@@ -27,6 +27,8 @@ const OPTIONAL_COLUMNS = [
   { key: 'email', label: 'email' },
   { key: 'coordenadas', label: 'coordenadas' },
   { key: 'comentarios', label: 'comentarios' },
+  { key: 'paid_months_ahead', label: 'paid_months_ahead (meses adelantados)' },
+  { key: 'debt_months', label: 'debt_months (meses adeudados)' },
 ]
 
 export default function ImportClientsModal({
@@ -200,8 +202,8 @@ export default function ImportClientsModal({
                         nombre y dirección).
                       </li>
                       <li>
-                        Las columnas opcionales (email, coordenadas y comentarios) puedes mostrarlas u ocultarlas al
-                        generar la plantilla.
+                        Las columnas opcionales (contacto, coordenadas, comentarios y meses adelantados/adeudados)
+                        puedes mostrarlas u ocultarlas al generar la plantilla.
                       </li>
                       <li>
                         Evita repetir IPs (principal, antena o módem): si la IP ya existe en el sistema o en otra fila del
@@ -253,6 +255,9 @@ export default function ImportClientsModal({
                           </label>
                         ))}
                       </div>
+                      <p className="text-xs text-slate-500">
+                        Usa valores decimales positivos para los meses adelantados o adeudados, igual que en Wisphub.
+                      </p>
                     </div>
                   </div>
                 </div>

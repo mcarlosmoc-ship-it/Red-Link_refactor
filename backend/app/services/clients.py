@@ -85,6 +85,8 @@ class ClientService:
         "telefono",
         "zona",
         "tipo_cliente",
+        "paid_months_ahead",
+        "debt_months",
         "service_plan",
         "custom_price",
         "dia_corte",
@@ -97,7 +99,13 @@ class ClientService:
         "coordenadas",
         "comentarios",
     ]
-    OPTIONAL_TEMPLATE_COLUMNS = {"email", "coordenadas", "comentarios"}
+    OPTIONAL_TEMPLATE_COLUMNS = {
+        "email",
+        "coordenadas",
+        "comentarios",
+        "paid_months_ahead",
+        "debt_months",
+    }
     IMPORT_TEMPLATE_ROWS = [
         {
             "external_code": "CLI-001",
@@ -106,6 +114,8 @@ class ClientService:
             "telefono": "555-1234",
             "zona": 1,
             "tipo_cliente": "residential",
+            "paid_months_ahead": "1",
+            "debt_months": "0",
             "service_plan": "Plan Básico",
             "custom_price": "350",
             "estado_servicio": models.ClientServiceStatus.ACTIVE.value,
@@ -124,6 +134,8 @@ class ClientService:
             "telefono": "555-1234",
             "zona": 1,
             "tipo_cliente": "residential",
+            "paid_months_ahead": "1",
+            "debt_months": "0",
             "service_plan": "Plan Fibra",
             "custom_price": "480",
             "estado_servicio": models.ClientServiceStatus.ACTIVE.value,
@@ -137,6 +149,8 @@ class ClientService:
             "telefono": "555-5678",
             "zona": 2,
             "tipo_cliente": "token",
+            "paid_months_ahead": "0",
+            "debt_months": "2",
             "service_plan": "Hotspot diario",
             "custom_price": "120",
             "estado_servicio": models.ClientServiceStatus.PENDING.value,
