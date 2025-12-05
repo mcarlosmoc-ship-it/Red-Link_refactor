@@ -23,13 +23,18 @@ const STATUS_OPTIONS = [
   { value: 'courtesy', label: 'Gratis / Cortesía' },
 ]
 
+const resolvePlanPrice = (plan) => {
+  const price = plan?.defaultMonthlyFee ?? plan?.monthlyPrice
+  const numeric = Number(price)
+  return Number.isFinite(numeric) ? numeric : null
+}
+
 const createDefaultFormState = () => ({
   servicePlanId: '',
   status: 'active',
   billingDay: '',
   baseId: '',
   useClientBase: true,
-  isCustomPriceEnabled: false,
   price: '',
   notes: '',
 })
@@ -136,7 +141,6 @@ export default function BulkAssignServicesModal({
     const validationErrors = computeServiceFormErrors(
       {
         ...formState,
-        price: formState.isCustomPriceEnabled ? formState.price : '',
       },
       { plan: selectedPlan, effectivePrice },
     )
@@ -183,10 +187,14 @@ export default function BulkAssignServicesModal({
 
     if (isCourtesySelection) {
       payload.customPrice = 0
-    } else if (formState.isCustomPriceEnabled) {
-      const parsedPrice = Number(formState.price)
+    } else {
+      const planPrice = resolvePlanPrice(selectedPlan)
+      const hasPriceValue = formState.price !== '' && formState.price !== null && formState.price !== undefined
+      const parsedPrice = hasPriceValue ? Number(formState.price) : null
       if (Number.isFinite(parsedPrice)) {
-        payload.customPrice = parsedPrice
+        if (planPrice === null || parsedPrice !== planPrice) {
+          payload.customPrice = parsedPrice
+        }
       }
     }
 
@@ -221,23 +229,16 @@ export default function BulkAssignServicesModal({
         return {
           ...prev,
           servicePlanId: nextPlanId,
-          isCustomPriceEnabled: true,
           price: '0',
         }
       }
 
-      const nextSuggestedPrice = planForNext
-        ? planForNext.defaultMonthlyFee ?? planForNext.monthlyPrice ?? ''
-        : ''
-
-      const nextPrice = prev.isCustomPriceEnabled
-        ? prev.price
-        : nextSuggestedPrice
+      const nextSuggestedPrice = resolvePlanPrice(planForNext)
+      const nextPrice = nextSuggestedPrice === null ? '' : String(nextSuggestedPrice)
 
       return {
         ...prev,
         servicePlanId: nextPlanId,
-        isCustomPriceEnabled: prev.isCustomPriceEnabled,
         price: nextPrice,
       }
     })
@@ -487,31 +488,29 @@ export default function BulkAssignServicesModal({
               <label className="grid gap-1 text-xs font-semibold text-slate-700">
                 <span>Estado inicial</span>
                 <select
-                  value={formState.status}
-                  onChange={(event) => {
-                    const nextStatus = event.target.value
-                    setFormState((prev) => {
-                      if (nextStatus === 'courtesy') {
-                        return {
-                          ...prev,
-                          status: nextStatus,
-                          isCustomPriceEnabled: true,
-                          price: '0',
-                          billingDay: '',
-                        }
-                      }
-
-                      const shouldKeepCustomPrice = Boolean(
-                        prev.isCustomPriceEnabled && prev.price !== '' && prev.price !== null,
-                      )
-
+                value={formState.status}
+                onChange={(event) => {
+                  const nextStatus = event.target.value
+                  setFormState((prev) => {
+                    if (nextStatus === 'courtesy') {
                       return {
                         ...prev,
                         status: nextStatus,
-                        isCustomPriceEnabled: shouldKeepCustomPrice,
-                        price: shouldKeepCustomPrice && prev.price !== '0' ? prev.price : '',
+                        price: '0',
+                        billingDay: '',
                       }
-                    })
+                    }
+
+                    const nextPrice = prev.status === 'courtesy' && prev.price === '0'
+                      ? ''
+                      : prev.price
+
+                    return {
+                      ...prev,
+                      status: nextStatus,
+                      price: nextPrice,
+                    }
+                  })
                     setErrors((prevErrors) => ({
                       ...prevErrors,
                       status: undefined,
@@ -611,24 +610,12 @@ export default function BulkAssignServicesModal({
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <label className="flex items-center gap-2 text-xs font-semibold text-slate-700">
-                  <input
-                    type="checkbox"
-                    checked={formState.isCustomPriceEnabled}
-                    onChange={(event) =>
-                      setFormState((prev) => ({
-                        ...prev,
-                        isCustomPriceEnabled: event.target.checked,
-                        price: event.target.checked ? prev.price : '',
-                      }))
-                    }
-                    disabled={isProcessing || isCourtesyMode}
-                    className="h-4 w-4 rounded border-slate-300 text-blue-600 focus-visible:ring-blue-500"
-                  />
-                  <span>Usar tarifa personalizada</span>
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-700" htmlFor="bulk-price">
+                  Tarifa mensual a aplicar
                 </label>
                 <input
+                  id="bulk-price"
                   value={formState.price}
                   onChange={(event) =>
                     setFormState((prev) => ({ ...prev, price: event.target.value }))
@@ -637,16 +624,17 @@ export default function BulkAssignServicesModal({
                     errors.price
                       ? 'border-red-400 focus-visible:border-red-400 focus-visible:ring-red-200'
                       : 'border-slate-300'
-                  } ${
-                    !formState.isCustomPriceEnabled || isCourtesyMode
-                      ? 'bg-slate-100 text-slate-500'
-                      : ''
-                  }`}
+                  } ${isCourtesyMode ? 'bg-slate-100 text-slate-500' : ''}`}
                   placeholder={
-                    selectedPlan ? `Tarifa sugerida: ${formatServicePlanLabel(selectedPlan)}` : '300'
+                    selectedPlan
+                      ? `Tarifa del plan: ${resolvePlanPrice(selectedPlan) ?? 'N/D'}`
+                      : 'Ejemplo: 120'
                   }
-                  disabled={isProcessing || !formState.isCustomPriceEnabled || isCourtesyMode}
+                  disabled={isProcessing || isCourtesyMode}
                 />
+                <p className="text-[11px] text-slate-500">
+                  Deja el campo vacío para usar el precio del plan en todos los clientes.
+                </p>
                 {errors.price && (
                   <span className="text-xs font-medium text-red-600">{errors.price}</span>
                 )}

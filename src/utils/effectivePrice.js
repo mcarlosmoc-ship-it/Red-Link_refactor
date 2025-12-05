@@ -3,31 +3,21 @@ export const resolveEffectivePriceForFormState = (formState, plan) => {
     return null
   }
 
-  if (formState?.isCustomPriceEnabled) {
-    const customValue = Number(formState?.price)
+  const hasPriceValue =
+    formState && formState.price !== '' && formState.price !== null && formState.price !== undefined
+
+  if (hasPriceValue) {
+    const customValue = Number(formState.price)
     if (Number.isFinite(customValue)) {
       return customValue
     }
   }
 
-  if (plan.monthlyPrice !== undefined && plan.monthlyPrice !== null) {
-    const planPrice = Number(plan.monthlyPrice)
+  const monthlyPrice = plan.monthlyPrice ?? plan.defaultMonthlyFee
+  if (monthlyPrice !== undefined && monthlyPrice !== null) {
+    const planPrice = Number(monthlyPrice)
     if (Number.isFinite(planPrice)) {
       return planPrice
-    }
-  }
-
-  if (plan.defaultMonthlyFee !== undefined && plan.defaultMonthlyFee !== null) {
-    const fallbackPrice = Number(plan.defaultMonthlyFee)
-    if (Number.isFinite(fallbackPrice)) {
-      return fallbackPrice
-    }
-  }
-
-  if (formState && formState.price !== '' && formState.price !== null && formState.price !== undefined) {
-    const numericPrice = Number(formState.price)
-    if (Number.isFinite(numericPrice)) {
-      return numericPrice
     }
   }
 
