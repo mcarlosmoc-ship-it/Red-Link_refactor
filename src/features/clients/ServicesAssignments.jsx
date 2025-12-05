@@ -11,6 +11,13 @@ import {
 import { computeServiceFormErrors } from '../../utils/serviceFormValidation.js'
 import { createInitialServiceState } from './utils.js'
 
+const resolvePlanPrice = (plan) => {
+  if (!plan) return null
+  const price = plan.monthlyPrice ?? plan.defaultMonthlyFee
+  const numeric = Number(price)
+  return Number.isFinite(numeric) ? numeric : null
+}
+
 export default function ServicesAssignments({
   client,
   servicePlans,
@@ -45,6 +52,8 @@ export default function ServicesAssignments({
     [availablePlans, serviceState.servicePlanId],
   )
 
+  const selectedPlanPrice = useMemo(() => resolvePlanPrice(selectedPlan), [selectedPlan])
+
   const selectedPlanRequirements = useMemo(
     () => resolvePlanRequirements(selectedPlan),
     [selectedPlan],
@@ -56,17 +65,23 @@ export default function ServicesAssignments({
 
   const mapServicePayload = (state, { clientId, forUpdate = false } = {}) => {
     const trim = (value) => (typeof value === 'string' ? value.trim() : value)
+    const plan = findPlanById(state.servicePlanId)
+    const planPrice = resolvePlanPrice(plan)
     const resolveBaseId = () => {
       const baseValue = state.useClientBase ? client?.zoneId : state.baseId
       const parsed = Number(baseValue)
       return Number.isInteger(parsed) && parsed > 0 ? parsed : null
     }
 
-    const customPrice = state.isCustomPriceEnabled
-      ? Number(state.price) || 0
-      : state.customPrice === '' || state.customPrice === null || state.customPrice === undefined
+    const hasPriceValue = state.price !== '' && state.price !== null && state.price !== undefined
+    const parsedPrice = hasPriceValue ? Number(state.price) : null
+    const normalizedPrice = Number.isFinite(parsedPrice) ? parsedPrice : null
+    const customPrice =
+      normalizedPrice === null
         ? undefined
-        : Number(state.customPrice)
+        : planPrice !== null && planPrice === normalizedPrice
+          ? undefined
+          : normalizedPrice
 
     const payload = {
       ...(clientId ? { clientId } : {}),
@@ -139,7 +154,6 @@ export default function ServicesAssignments({
       billingDay: service.billingDay ?? '1',
       baseId: service.baseId ? String(service.baseId) : '',
       useClientBase: !service.baseId && Boolean(client.zoneId),
-      isCustomPriceEnabled: Boolean(service.customPrice || service.customPrice === 0),
       price: service.customPrice ?? '',
       ipAddress: service.ipAddress ?? '',
       antennaIp: service.antennaIp ?? '',
@@ -178,11 +192,12 @@ export default function ServicesAssignments({
     const planId = event.target.value
     const plan = findPlanById(planId)
     const requirements = resolvePlanRequirements(plan)
+    const suggestedPrice = resolvePlanPrice(plan)
     setServiceState((prev) => ({
       ...prev,
       servicePlanId: planId,
       serviceType: plan?.serviceType ?? plan?.category ?? prev.serviceType,
-      customPrice: plan ? plan.defaultMonthlyFee : '',
+      price: suggestedPrice === null ? '' : String(suggestedPrice),
       ipAddress: requirements.requiresIp ? prev.ipAddress : '',
       antennaIp: requirements.requiresIp ? prev.antennaIp : '',
       modemIp: requirements.requiresIp ? prev.modemIp : '',
@@ -269,33 +284,29 @@ export default function ServicesAssignments({
                 </div>
               )}
 
-              <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                <label className="flex items-center gap-2 font-medium">
-                  <input
-                    type="checkbox"
-                    checked={serviceState.isCustomPriceEnabled}
-                    onChange={(event) =>
-                      setServiceState((prev) => ({
-                        ...prev,
-                        isCustomPriceEnabled: event.target.checked,
-                        price: event.target.checked ? prev.price : '',
-                      }))
-                    }
-                    className="h-4 w-4 rounded border-slate-300 text-blue-600 focus-visible:ring-blue-500"
-                  />
-                  Tarifa personalizada
+              <div className="space-y-1">
+                <label className="text-sm font-medium" htmlFor="assignment-price">
+                  Tarifa mensual
                 </label>
                 <input
+                  id="assignment-price"
                   type="number"
                   min="0"
-                  className="rounded border border-slate-200 p-2"
+                  className="w-full rounded border border-slate-200 p-2"
                   value={serviceState.price}
                   onChange={(event) =>
                     setServiceState((prev) => ({ ...prev, price: event.target.value }))
                   }
-                  disabled={!serviceState.isCustomPriceEnabled}
-                  placeholder="Monto personalizado"
+                  placeholder={
+                    selectedPlanPrice !== null
+                      ? `Usa el precio del plan: ${selectedPlanPrice}`
+                      : 'Ejemplo: 120'
+                  }
                 />
+                <p className="text-xs text-slate-500">
+                  Deja el campo vacío para usar el precio configurado en el plan
+                  {selectedPlanPrice !== null ? ` (${selectedPlanPrice})` : ''}.
+                </p>
               </div>
 
               {(requiresIp || showEquipmentFields) && (
@@ -357,21 +368,14 @@ export default function ServicesAssignments({
           {selectedPlan && (
             <div className="mt-3 space-y-2">
               <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                <div>
-                  <label className="text-sm font-medium" htmlFor="assignment-price">
-                    Precio del plan
-                  </label>
-                  <input
-                    id="assignment-price"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    className="mt-1 w-full rounded border border-slate-200 p-2"
-                    value={serviceState.customPrice}
-                    onChange={(event) =>
-                      handleServiceStateChange('customPrice', event.target.value)
-                    }
-                  />
+                <div className="rounded border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-sm font-semibold text-slate-800">Precio del plan</p>
+                  <p className="mt-1 text-2xl font-bold text-slate-900">
+                    {selectedPlanPrice !== null ? `$${selectedPlanPrice}` : 'N/D'}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Si dejas la tarifa mensual vacía, se cobrará este valor automáticamente.
+                  </p>
                 </div>
                 <div>
                   <label className="text-sm font-medium" htmlFor="assignment-notes">
@@ -614,33 +618,28 @@ export default function ServicesAssignments({
                             </label>
                           )}
                         </div>
-                        <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
-                          <label className="flex items-center gap-2 text-sm font-medium">
-                            <input
-                              type="checkbox"
-                              checked={editState.isCustomPriceEnabled}
-                              onChange={(event) =>
-                                setEditState((prev) => ({
-                                  ...prev,
-                                  isCustomPriceEnabled: event.target.checked,
-                                  price: event.target.checked ? prev.price : '',
-                                }))
-                              }
-                              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus-visible:ring-blue-500"
-                            />
-                            Tarifa personalizada
+                        <div className="space-y-1">
+                          <label className="text-sm font-medium" htmlFor={`edit-price-${service.id}`}>
+                            Tarifa mensual
                           </label>
                           <input
+                            id={`edit-price-${service.id}`}
                             type="number"
                             min="0"
-                            className="rounded border border-slate-200 p-2"
+                            className="w-full rounded border border-slate-200 p-2"
                             value={editState.price}
                             onChange={(event) =>
                               setEditState((prev) => ({ ...prev, price: event.target.value }))
                             }
-                            disabled={!editState.isCustomPriceEnabled}
-                            placeholder="Tarifa"
+                            placeholder={
+                              resolvePlanPrice(plan) !== null
+                                ? `Precio del plan: ${resolvePlanPrice(plan)}`
+                                : 'Ejemplo: 120'
+                            }
                           />
+                          <p className="text-xs text-slate-500">
+                            Deja el campo vacío o igual al plan para volver al precio estándar.
+                          </p>
                         </div>
                         {showTechnicalFields && (
                           <div className="grid grid-cols-1 gap-2 md:grid-cols-2">

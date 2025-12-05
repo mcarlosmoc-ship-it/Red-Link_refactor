@@ -82,24 +82,21 @@ export const computeServiceFormErrors = (
       }
     }
 
-    if (state?.isCustomPriceEnabled) {
+    const hasPriceValue =
+      state && state.price !== '' && state.price !== null && state.price !== undefined
+
+    if (hasPriceValue) {
       const customValue = Number(state?.price)
       if (Number.isFinite(customValue)) {
         return customValue
       }
     }
 
-    if (plan && plan.monthlyPrice !== undefined && plan.monthlyPrice !== null) {
-      const planPrice = Number(plan.monthlyPrice)
+    const monthlyPrice = plan?.monthlyPrice ?? plan?.defaultMonthlyFee
+    if (monthlyPrice !== undefined && monthlyPrice !== null) {
+      const planPrice = Number(monthlyPrice)
       if (Number.isFinite(planPrice)) {
         return planPrice
-      }
-    }
-
-    if (plan && plan.defaultMonthlyFee !== undefined && plan.defaultMonthlyFee !== null) {
-      const planDefault = Number(plan.defaultMonthlyFee)
-      if (Number.isFinite(planDefault)) {
-        return planDefault
       }
     }
 
@@ -141,15 +138,12 @@ export const computeServiceFormErrors = (
     }
   }
 
-  if (state?.isCustomPriceEnabled) {
-    const priceValue = state?.price
-    if (priceValue === '' || priceValue === null || priceValue === undefined) {
+  const priceValue = state?.price
+  const hasPriceValue = priceValue !== '' && priceValue !== null && priceValue !== undefined
+  if (hasPriceValue) {
+    const parsedPrice = Number(priceValue)
+    if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
       errors.price = 'Ingresa una tarifa mensual válida (cero o mayor).'
-    } else {
-      const parsedPrice = Number(priceValue)
-      if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
-        errors.price = 'Ingresa una tarifa mensual válida (cero o mayor).'
-      }
     }
   }
 
