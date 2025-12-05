@@ -60,6 +60,11 @@ from .metrics import (
     SchedulerJobHealth,
     StatusFilter,
 )
+from .integrity import (
+    CounterMismatch,
+    PaymentClientMismatch,
+    PaymentConsistencyReport,
+)
 from .payment import (
     ServicePaymentBase,
     ServicePaymentCreate,
@@ -173,6 +178,9 @@ __all__ = [
     "SchedulerJobHealth",
     "SchedulerHealthResponse",
     "StatusFilter",
+    "CounterMismatch",
+    "PaymentClientMismatch",
+    "PaymentConsistencyReport",
     "DashboardClient",
     "DashboardMetricsSummary",
     "DashboardMetricsResponse",

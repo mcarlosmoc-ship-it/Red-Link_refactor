@@ -27,6 +27,7 @@ from .payment_reminders import (
     start_payment_reminder_scheduler,
     stop_payment_reminder_scheduler,
 )
+from .data_consistency import DataConsistencyService
 
 __all__ = [
     "AccountService",
@@ -57,4 +58,5 @@ __all__ = [
     "build_notification_client_from_env",
     "start_payment_reminder_scheduler",
     "stop_payment_reminder_scheduler",
+    "DataConsistencyService",
 ]
