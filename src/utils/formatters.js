@@ -37,32 +37,42 @@ export const toPeriodKey = (date = new Date()) => {
 }
 
 export const parsePeriodKey = (periodKey) => {
-  if (typeof periodKey !== 'string') {
-    return new Date()
+  if (typeof periodKey !== 'string' || !PERIOD_KEY_PATTERN.test(periodKey)) {
+    return null
   }
 
   const [yearPart, monthPart] = periodKey.split('-')
   const year = Number(yearPart)
   const month = Number(monthPart)
 
-  if (!Number.isFinite(year) || !Number.isFinite(month)) {
-    return new Date()
+  if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) {
+    return null
   }
 
-  return new Date(year, Math.min(Math.max(month - 1, 0), 11), 1)
+  return new Date(year, month - 1, 1)
 }
 
 export const getCurrentPeriodKey = () => toPeriodKey(new Date())
 
 export const addMonthsToPeriod = (periodKey, months) => {
   const baseDate = parsePeriodKey(periodKey)
-  const result = new Date(baseDate.getFullYear(), baseDate.getMonth() + months, 1)
+  const monthsToAdd = Number(months)
+
+  if (!baseDate || !Number.isFinite(monthsToAdd)) {
+    return null
+  }
+
+  const result = new Date(baseDate.getFullYear(), baseDate.getMonth() + monthsToAdd, 1)
   return toPeriodKey(result)
 }
 
 export const diffPeriods = (fromPeriod, toPeriod) => {
   const fromDate = parsePeriodKey(fromPeriod)
   const toDate = parsePeriodKey(toPeriod)
+
+  if (!fromDate || !toDate) {
+    return Number.NaN
+  }
 
   return (
     (toDate.getFullYear() - fromDate.getFullYear()) * 12 +
@@ -72,6 +82,11 @@ export const diffPeriods = (fromPeriod, toPeriod) => {
 
 export const periodToIndex = (periodKey) => {
   const date = parsePeriodKey(periodKey)
+
+  if (!date) {
+    return Number.NaN
+  }
+
   return date.getFullYear() * 12 + date.getMonth()
 }
 
@@ -169,7 +184,13 @@ export const getPeriodFromDateString = (value) => {
 }
 
 export const formatPeriodLabel = (periodKey) => {
-  const label = periodLabelFormatter.format(parsePeriodKey(periodKey))
+  const parsed = parsePeriodKey(periodKey)
+
+  if (!parsed) {
+    return ''
+  }
+
+  const label = periodLabelFormatter.format(parsed)
   return label.charAt(0).toUpperCase() + label.slice(1)
 }
 

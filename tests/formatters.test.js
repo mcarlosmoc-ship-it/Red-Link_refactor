@@ -43,6 +43,11 @@ describe('addMonthsToPeriod', () => {
   it('handles negative month offsets', () => {
     expect(addMonthsToPeriod('2024-01', -1)).toBe('2023-12')
   })
+
+  it('returns null for invalid period keys or month offsets', () => {
+    expect(addMonthsToPeriod('not-a-period', 1)).toBeNull()
+    expect(addMonthsToPeriod('2024-01', 'abc')).toBeNull()
+  })
 })
 
 describe('diffPeriods', () => {
@@ -56,6 +61,10 @@ describe('diffPeriods', () => {
 
   it('handles differences across years', () => {
     expect(diffPeriods('2023-11', '2024-02')).toBe(3)
+  })
+
+  it('returns NaN when any period is invalid', () => {
+    expect(Number.isNaN(diffPeriods('2024-01', 'invalid'))).toBe(true)
   })
 })
 
@@ -93,13 +102,18 @@ describe('parsePeriodKey', () => {
     expect(periodToIndex('2024-01')).toBe(2024 * 12)
   })
 
-  it('clamps out-of-range months to the nearest valid month', () => {
-    const upper = parsePeriodKey('2024-15')
-    expect(upper.getFullYear()).toBe(2024)
-    expect(upper.getMonth()).toBe(11)
+  it('rejects out-of-range months', () => {
+    expect(parsePeriodKey('2024-15')).toBeNull()
+    expect(parsePeriodKey('2024-00')).toBeNull()
+  })
 
-    const lower = parsePeriodKey('2024-00')
-    expect(lower.getFullYear()).toBe(2024)
-    expect(lower.getMonth()).toBe(0)
+  it('returns null for non-string values', () => {
+    expect(parsePeriodKey(null)).toBeNull()
+  })
+})
+
+describe('periodToIndex', () => {
+  it('returns NaN for invalid periods', () => {
+    expect(Number.isNaN(periodToIndex('2024-13'))).toBe(true)
   })
 })
