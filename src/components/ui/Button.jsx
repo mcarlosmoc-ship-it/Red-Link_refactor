@@ -6,11 +6,11 @@ function clsx(...xs) {
 
 const VARIANT_CLASSES = {
   primary:
-    'bg-blue-600 text-white shadow-sm hover:bg-blue-700 focus-visible:ring-blue-500/40 disabled:bg-blue-400 disabled:text-white',
+    'bg-blue-700 text-white shadow-md hover:bg-blue-800 focus-visible:ring-blue-600/50 disabled:bg-blue-400 disabled:text-white',
   secondary:
-    'bg-slate-100 text-slate-700 shadow-sm hover:bg-slate-200 focus-visible:ring-slate-400/40 disabled:bg-slate-200 disabled:text-slate-400',
+    'border border-slate-300 bg-white text-slate-800 shadow-sm hover:bg-slate-50 hover:border-slate-400 focus-visible:ring-slate-500/40 disabled:text-slate-400 disabled:border-slate-200',
   ghost:
-    'bg-transparent text-slate-600 hover:bg-slate-100 focus-visible:ring-slate-400/40 disabled:text-slate-400',
+    'bg-transparent text-slate-700 hover:bg-slate-100 focus-visible:ring-slate-500/30 disabled:text-slate-400',
   danger:
     'bg-red-600 text-white shadow-sm hover:bg-red-700 focus-visible:ring-red-500/40 disabled:bg-red-400 disabled:text-white',
   outline:
