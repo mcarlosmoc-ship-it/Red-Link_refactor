@@ -1,10 +1,9 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState, useId } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CalendarDays, DollarSign, Plus, Wifi } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import StatCard from '../components/dashboard/StatCard.jsx'
 import EarningsCard from '../components/dashboard/EarningsCard.jsx'
 import Button from '../components/ui/Button.jsx'
-import InfoTooltip from '../components/ui/InfoTooltip.jsx'
 import {
   peso,
   formatPeriodLabel,
@@ -21,6 +20,8 @@ import {
   CLIENT_TYPE_LABELS,
   SERVICE_STATUS_LABELS,
   formatServiceStatus,
+  getClientDebtSummary,
+  getClientMonthlyFee,
   getFractionalDebt,
   getOutstandingPeriodKeys,
   getPrimaryService,
