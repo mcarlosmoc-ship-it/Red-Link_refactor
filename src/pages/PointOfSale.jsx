@@ -401,6 +401,26 @@ export default function PointOfSalePage() {
     return totals
   }, [cartItems])
 
+  const cartTotalsByChargeTiming = useMemo(() => {
+    return cartItems.reduce(
+      (acc, item) => {
+        const lineTotal = item.unitPrice * item.quantity
+        const timing = getChargeTimingForItem(item)
+
+        acc[timing] = {
+          total: (acc[timing]?.total ?? 0) + lineTotal,
+          items: [...(acc[timing]?.items ?? []), item],
+        }
+
+        return acc
+      },
+      {
+        [BILLING_TIMINGS.IMMEDIATE]: { total: 0, items: [] },
+        [BILLING_TIMINGS.FUTURE]: { total: 0, items: [] },
+      },
+    )
+  }, [cartItems])
+
   const cartCategoriesSummary = useMemo(
     () => [
       {
@@ -425,6 +445,24 @@ export default function PointOfSalePage() {
       },
     ],
     [cartTotalsByCategory],
+  )
+
+  const cartChargeTimingSummary = useMemo(
+    () => [
+      {
+        key: BILLING_TIMINGS.IMMEDIATE,
+        label: 'Cobro inmediato',
+        detail: 'Se registra en caja en este ticket.',
+        ...cartTotalsByChargeTiming[BILLING_TIMINGS.IMMEDIATE],
+      },
+      {
+        key: BILLING_TIMINGS.FUTURE,
+        label: 'Cargo futuro',
+        detail: 'Prorrateo o próxima mensualidad programada.',
+        ...cartTotalsByChargeTiming[BILLING_TIMINGS.FUTURE],
+      },
+    ],
+    [cartTotalsByChargeTiming],
   )
 
   const handleAddCustomItem = (event) => {
@@ -612,19 +650,29 @@ export default function PointOfSalePage() {
       return []
     }
 
-    const hasSuspended = selectedClientServices.some((service) => service.status === 'suspended')
-    const hasPendingInstallation = selectedClientServices.some((service) => {
-      const status = String(service.status ?? '')
-      return ['pending_installation', 'installation_pending', 'pending'].includes(status)
-    })
-    const hasBillingBlock = selectedClientServices.some((service) => {
-      const status = String(service.status ?? '')
-      return (
-        ['billing_blocked', 'blocked'].includes(status) ||
-        service.metadata?.billingBlocked === true ||
-        service.metadata?.billing_blocked === true
-      )
-    })
+    const hasSuspended =
+      selectedClient.status === 'suspended' ||
+      selectedClientServices.some((service) => service.status === 'suspended')
+    const hasPendingInstallation =
+      ['pending_installation', 'installation_pending', 'pending'].includes(
+        String(selectedClient.status ?? ''),
+      ) ||
+      selectedClientServices.some((service) => {
+        const status = String(service.status ?? '')
+        return ['pending_installation', 'installation_pending', 'pending'].includes(status)
+      })
+    const hasBillingBlock =
+      ['billing_blocked', 'blocked'].includes(String(selectedClient.status ?? '')) ||
+      selectedClient.metadata?.billingBlocked === true ||
+      selectedClient.metadata?.billing_blocked === true ||
+      selectedClientServices.some((service) => {
+        const status = String(service.status ?? '')
+        return (
+          ['billing_blocked', 'blocked'].includes(status) ||
+          service.metadata?.billingBlocked === true ||
+          service.metadata?.billing_blocked === true
+        )
+      })
 
     const alerts = []
     if (hasSuspended) {
@@ -1559,6 +1607,36 @@ export default function PointOfSalePage() {
                             <span className="text-sm font-semibold text-slate-900">{peso(category.amount)}</span>
                           </div>
                         ))}
+                      </div>
+                      <div className="mt-4 space-y-2">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                          Resumen por momento de cobro
+                        </p>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {cartChargeTimingSummary.map((timing) => (
+                            <div
+                              key={timing.key}
+                              className="rounded-md border border-slate-100 bg-slate-50 px-3 py-2"
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="space-y-0.5">
+                                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                                    {timing.label}
+                                  </p>
+                                  <p className="text-[11px] text-slate-500">{timing.detail}</p>
+                                </div>
+                                <span className="text-sm font-semibold text-slate-900">
+                                  {peso(timing.total)}
+                                </span>
+                              </div>
+                              {timing.items?.length ? (
+                                <p className="mt-2 text-[11px] text-slate-500">
+                                  {timing.items.length} concepto(s) marcados para este momento.
+                                </p>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     </div>
 
