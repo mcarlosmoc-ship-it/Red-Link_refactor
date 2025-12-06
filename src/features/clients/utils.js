@@ -89,6 +89,10 @@ export const SERVICE_STATUS_LABELS = {
   active: 'Activo',
   suspended: 'Suspendido',
   cancelled: 'Baja',
+  pending_installation: 'Por instalar',
+  installation_pending: 'Por instalar',
+  billing_blocked: 'Bloqueo de facturación',
+  blocked: 'Bloqueado',
 }
 
 export const formatServiceStatus = (status) => SERVICE_STATUS_LABELS[status] ?? 'Desconocido'

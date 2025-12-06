@@ -23,9 +23,15 @@ import { useClients } from '../hooks/useClients.js'
 import { useServicePlans } from '../hooks/useServicePlans.js'
 import { useClientServices } from '../hooks/useClientServices.js'
 import { useToast } from '../hooks/useToast.js'
-import { getClientDebtSummary, getClientMonthlyFee, getPrimaryService } from '../features/clients/utils.js'
+import {
+  formatServiceStatus,
+  getClientDebtSummary,
+  getClientMonthlyFee,
+  getPrimaryService,
+} from '../features/clients/utils.js'
 import { CLIENT_PRICE, useBackofficeStore } from '../store/useBackofficeStore.js'
 import { peso } from '../utils/formatters.js'
+import { getServiceTypeLabel } from '../constants/serviceTypes.js'
 
 const PAYMENT_METHODS = ['Efectivo', 'Transferencia', 'Tarjeta', 'Revendedor', 'Otro']
 
@@ -98,10 +104,17 @@ const toInputValue = (value, decimals = 2) => {
   return numericValue.toFixed(decimals)
 }
 
+const formatDate = (value) => {
+  if (!value) return ''
+  const date = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return new Intl.DateTimeFormat('es-MX', { dateStyle: 'medium' }).format(date)
+}
+
 export default function PointOfSalePage() {
   const { products, isLoading: isLoadingProducts, createProduct } = usePosCatalog()
   const { sales, recordSale } = usePosSales({ limit: 8 })
-  const { clients, isLoading: isLoadingClients } = useClients()
+  const { clients, isLoading: isLoadingClients, createClient } = useClients()
   const { servicePlans, isLoading: isLoadingPlans } = useServicePlans()
   const { clientServices, isLoading: isLoadingClientServices } = useClientServices()
   const recordPayment = useBackofficeStore((state) => state.recordPayment)
@@ -115,6 +128,7 @@ export default function PointOfSalePage() {
   const [paymentMethod, setPaymentMethod] = useState(PAYMENT_METHODS[0])
   const [clientName, setClientName] = useState('')
   const [selectedClientId, setSelectedClientId] = useState('')
+  const [clientSearchTerm, setClientSearchTerm] = useState('')
   const [notes, setNotes] = useState('')
   const [discount, setDiscount] = useState('')
   const [tax, setTax] = useState('')
@@ -133,6 +147,9 @@ export default function PointOfSalePage() {
   const [paymentNote, setPaymentNote] = useState('')
   const [isSubmittingClientPayment, setIsSubmittingClientPayment] = useState(false)
   const [ticketSearchTerm, setTicketSearchTerm] = useState('')
+  const [quickClientName, setQuickClientName] = useState('')
+  const [quickClientLocation, setQuickClientLocation] = useState('')
+  const [isCreatingClient, setIsCreatingClient] = useState(false)
 
   const filteredSalesProducts = useMemo(() => {
     const term = salesSearchTerm.trim().toLowerCase()
@@ -163,6 +180,22 @@ export default function PointOfSalePage() {
   const selectedClient = useMemo(
     () => sortedClients.find((client) => String(client.id) === String(selectedClientId)) ?? null,
     [selectedClientId, sortedClients],
+  )
+
+  const filteredSaleClients = useMemo(() => {
+    const term = clientSearchTerm.trim().toLowerCase()
+    if (!term) {
+      return sortedClients
+    }
+    return sortedClients.filter((client) => {
+      const haystack = `${client.name} ${client.location ?? ''} ${client.zoneName ?? ''}`.toLowerCase()
+      return haystack.includes(term)
+    })
+  }, [clientSearchTerm, sortedClients])
+
+  const clientOptionsForSale = useMemo(
+    () => filteredSaleClients.slice(0, 50),
+    [filteredSaleClients],
   )
 
   const filteredClients = useMemo(() => {
@@ -463,6 +496,50 @@ export default function PointOfSalePage() {
     }, {})
   }, [clientServices])
 
+  const selectedClientServices = useMemo(() => {
+    if (!selectedClient) {
+      return []
+    }
+    return clientServicesByClient[String(selectedClient.id)] ?? selectedClient.services ?? []
+  }, [clientServicesByClient, selectedClient])
+
+  const selectedClientDebt = useMemo(
+    () => getClientDebtSummary(selectedClient, CLIENT_PRICE),
+    [selectedClient],
+  )
+
+  const clientServiceAlerts = useMemo(() => {
+    if (!selectedClient) {
+      return []
+    }
+
+    const hasSuspended = selectedClientServices.some((service) => service.status === 'suspended')
+    const hasPendingInstallation = selectedClientServices.some((service) => {
+      const status = String(service.status ?? '')
+      return ['pending_installation', 'installation_pending', 'pending'].includes(status)
+    })
+    const hasBillingBlock = selectedClientServices.some((service) => {
+      const status = String(service.status ?? '')
+      return (
+        ['billing_blocked', 'blocked'].includes(status) ||
+        service.metadata?.billingBlocked === true ||
+        service.metadata?.billing_blocked === true
+      )
+    })
+
+    const alerts = []
+    if (hasSuspended) {
+      alerts.push('Este cliente tiene servicios suspendidos. Verifica adeudos antes de cobrar.')
+    }
+    if (hasPendingInstallation) {
+      alerts.push('Hay instalaciones pendientes. No olvides coordinar antes de entregar equipos.')
+    }
+    if (hasBillingBlock) {
+      alerts.push('Cliente con bloqueo de facturación. Revisa su estado antes de generar tickets.')
+    }
+    return alerts
+  }, [selectedClient, selectedClientServices])
+
   const cartValidation = useMemo(() => {
     const validation = {}
     cartItems.forEach((item) => {
@@ -572,6 +649,51 @@ export default function PointOfSalePage() {
       })
     } finally {
       setIsSubmittingSale(false)
+    }
+  }
+
+  const handleQuickCreateClient = async (event) => {
+    event.preventDefault()
+    const normalizedName = quickClientName.trim()
+
+    if (!normalizedName) {
+      showToast({
+        type: 'warning',
+        title: 'Agrega el nombre del cliente',
+        description: 'Captura al menos el nombre para guardar el registro rápido.',
+      })
+      return
+    }
+
+    setIsCreatingClient(true)
+    try {
+      const payload = {
+        name: normalizedName,
+        location: quickClientLocation.trim() || undefined,
+        type: 'residential',
+        notes: 'Capturado rápidamente desde el punto de venta. Completa los datos más tarde.',
+      }
+
+      const created = await createClient(payload)
+      setSelectedClientId(String(created.id))
+      setClientName(created.name ?? normalizedName)
+      setQuickClientName('')
+      setQuickClientLocation('')
+
+      showToast({
+        type: 'success',
+        title: 'Cliente registrado',
+        description: 'Se guardó el contacto con los datos mínimos. Podrás completarlo después.',
+      })
+    } catch (error) {
+      const message = error?.message ?? 'No se pudo crear el cliente rápido.'
+      showToast({
+        type: 'error',
+        title: 'Error al crear cliente',
+        description: message,
+      })
+    } finally {
+      setIsCreatingClient(false)
     }
   }
 
@@ -966,25 +1088,181 @@ export default function PointOfSalePage() {
                         </ul>
                       )}
                     </div>
-                    <div className="grid gap-2 text-xs font-medium text-slate-600">
-                      <label className="grid gap-1">
-                        Cliente para validar servicios
-                        <select
-                          value={selectedClientId}
-                          onChange={(event) => setSelectedClientId(event.target.value)}
-                          className="rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                        >
-                          <option value="">Sin seleccionar</option>
-                          {sortedClients.map((client) => (
-                            <option key={client.id} value={client.id}>
-                              {client.name} {client.zoneName ? `· ${client.zoneName}` : ''}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      {(isLoadingClients || isLoadingPlans || isLoadingClientServices) && (
-                        <p className="text-[11px] text-slate-500">Validando datos de cliente y servicios…</p>
-                      )}
+                    <div className="grid gap-3 lg:grid-cols-[1.4fr,1fr]">
+                      <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                            Atajo de cliente
+                          </p>
+                          <span className="text-[11px] text-slate-500">Servicios y alertas para el ticket</span>
+                        </div>
+                        <div className="grid gap-2 md:grid-cols-2">
+                          <label className="grid gap-1 text-xs font-medium text-slate-600">
+                            Buscar cliente
+                            <input
+                              type="search"
+                              value={clientSearchTerm}
+                              onChange={(event) => setClientSearchTerm(event.target.value)}
+                              placeholder="Nombre, zona o ubicación"
+                              className="rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                            />
+                          </label>
+                          <label className="grid gap-1 text-xs font-medium text-slate-600">
+                            Cliente para validar servicios
+                            <select
+                              value={selectedClientId}
+                              onChange={(event) => setSelectedClientId(event.target.value)}
+                              className="rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                            >
+                              <option value="">Sin seleccionar</option>
+                              {clientOptionsForSale.map((client) => (
+                                <option key={client.id} value={client.id}>
+                                  {client.name} {client.zoneName ? `· ${client.zoneName}` : ''}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
+                        <div className="flex flex-wrap items-center justify-between text-[11px] text-slate-500">
+                          <span>Mostrando {clientOptionsForSale.length} coincidencias</span>
+                          {(isLoadingClients || isLoadingPlans || isLoadingClientServices) && (
+                            <span>Validando datos de cliente y servicios…</span>
+                          )}
+                        </div>
+
+                        {clientServiceAlerts.length > 0 ? (
+                          <div className="space-y-1 rounded-md bg-amber-50 p-3 text-xs text-amber-800">
+                            {clientServiceAlerts.map((alert) => (
+                              <p key={alert} className="flex items-center gap-2">
+                                <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
+                                {alert}
+                              </p>
+                            ))}
+                          </div>
+                        ) : null}
+
+                        <div className="space-y-2 rounded-md border border-dashed border-slate-200 bg-white p-3">
+                          {selectedClient ? (
+                            <div className="space-y-2 text-sm">
+                              <div className="flex flex-wrap items-start justify-between gap-2">
+                                <div>
+                                  <p className="font-semibold text-slate-900">{selectedClient.name}</p>
+                                  <p className="text-xs text-slate-500">
+                                    {selectedClient.location || 'Sin referencia de ubicación'}
+                                  </p>
+                                </div>
+                                <div className="text-right text-xs text-slate-600">
+                                  <p className="font-semibold text-slate-900">
+                                    Adeudo: {peso(selectedClientDebt.totalDue)}
+                                  </p>
+                                  <p>Mensualidad base: {peso(selectedClientDebt.monthlyFee)}</p>
+                                </div>
+                              </div>
+                              <div className="space-y-2">
+                                {selectedClientServices.length === 0 ? (
+                                  <p className="text-xs text-slate-500">Este cliente aún no tiene servicios registrados.</p>
+                                ) : (
+                                  selectedClientServices.map((service) => (
+                                    <div
+                                      key={service.id ?? service.name}
+                                      className="rounded-md border border-slate-200 bg-slate-50 p-3"
+                                    >
+                                      <div className="flex flex-wrap items-center justify-between gap-2">
+                                        <div>
+                                          <p className="text-sm font-semibold text-slate-900">{service.name}</p>
+                                          <p className="text-xs capitalize text-slate-500">
+                                            {getServiceTypeLabel(service.type ?? 'other')}
+                                          </p>
+                                        </div>
+                                        <span
+                                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${
+                                            service.status === 'active'
+                                              ? 'bg-emerald-50 text-emerald-700'
+                                              : service.status === 'suspended'
+                                                ? 'bg-amber-50 text-amber-800'
+                                                : ['pending_installation', 'installation_pending', 'pending'].includes(
+                                                    service.status,
+                                                  )
+                                                  ? 'bg-blue-50 text-blue-700'
+                                                  : 'bg-slate-100 text-slate-700'
+                                          }`}
+                                        >
+                                          {formatServiceStatus(service.status)}
+                                        </span>
+                                      </div>
+                                      <div className="mt-2 grid gap-1 text-xs text-slate-600 sm:grid-cols-2">
+                                        <span>
+                                          Tarifa: <strong>{peso(service.effectivePrice ?? service.price ?? CLIENT_PRICE)}</strong>
+                                        </span>
+                                        <span>
+                                          Próximo cobro:{' '}
+                                          <strong>
+                                            {service.nextBillingDate
+                                              ? formatDate(service.nextBillingDate)
+                                              : service.billingDay
+                                                ? `Día ${service.billingDay} de cada mes`
+                                                : 'Sin fecha definida'}
+                                          </strong>
+                                        </span>
+                                      </div>
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="text-xs text-slate-500">
+                              Selecciona un cliente para ver sus servicios, adeudos y próximos cobros desde el ticket.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="space-y-3 rounded-lg border border-dashed border-slate-200 p-3">
+                        <div className="space-y-1">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                            Crear cliente rápido
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            Captura lo mínimo para seguir vendiendo y completa los datos después.
+                          </p>
+                        </div>
+                        <form className="space-y-2" onSubmit={handleQuickCreateClient}>
+                          <label className="grid gap-1 text-xs font-medium text-slate-600">
+                            Nombre del cliente
+                            <input
+                              type="text"
+                              value={quickClientName}
+                              onChange={(event) => setQuickClientName(event.target.value)}
+                              placeholder="Ej. Juan Pérez"
+                              className="rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                            />
+                          </label>
+                          <label className="grid gap-1 text-xs font-medium text-slate-600">
+                            Referencia o ubicación (opcional)
+                            <input
+                              type="text"
+                              value={quickClientLocation}
+                              onChange={(event) => setQuickClientLocation(event.target.value)}
+                              placeholder="Calle, colonia o punto de referencia"
+                              className="rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                            />
+                          </label>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Button
+                              type="submit"
+                              variant="secondary"
+                              disabled={!quickClientName.trim() || isCreatingClient}
+                            >
+                              <ClipboardList className="mr-2 h-4 w-4" aria-hidden />
+                              {isCreatingClient ? 'Guardando…' : 'Registrar cliente'}
+                            </Button>
+                            <p className="text-[11px] text-slate-500">
+                              Se registrará como residencial; podrás asignar servicios después.
+                            </p>
+                          </div>
+                        </form>
+                      </div>
                     </div>
                   </div>
 
