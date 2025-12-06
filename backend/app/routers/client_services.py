@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import date
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -127,6 +128,30 @@ def get_service(service_id: str, db: Session = Depends(get_db)) -> schemas.Clien
     if service is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Service not found")
     return service
+
+
+@router.get(
+    "/{service_id}/proration",
+    response_model=schemas.ProrationPreview,
+    summary="Calcula prorrateos o ajustes de plan",
+)
+def preview_proration(
+    service_id: str,
+    start_date: Optional[date] = Query(
+        None, description="Fecha de inicio para calcular el prorrateo"
+    ),
+    target_plan_id: Optional[int] = Query(
+        None, description="Plan al que se migrará el servicio"
+    ),
+    db: Session = Depends(get_db),
+) -> schemas.ProrationPreview:
+    service = ClientContractService.get_service(db, service_id)
+    if service is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Service not found")
+
+    return ClientContractService.preview_proration(
+        db, service, start_date=start_date, target_plan_id=target_plan_id
+    )
 
 
 @router.get("/{service_id}/debt", response_model=schemas.ServiceDebtRead)

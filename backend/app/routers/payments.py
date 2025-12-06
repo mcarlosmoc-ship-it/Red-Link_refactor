@@ -64,6 +64,12 @@ def list_overdue_periods(
     discount_rate: Decimal = Query(
         Decimal("0"), ge=0, description="Descuento por rol o promoción (0.10 = 10%)"
     ),
+    applied_by: Optional[str] = Query(
+        None, description="Usuario o rol que aplica ajustes"
+    ),
+    applied_role: Optional[str] = Query(
+        None, description="Rol asociado a recargos/bonificaciones"
+    ),
 ) -> schemas.OverduePeriodListResponse:
     periods = PaymentService.overdue_periods(
         db,
@@ -71,8 +77,26 @@ def list_overdue_periods(
         reference_date=reference_date,
         late_fee_rate=late_fee_rate,
         discount_rate=discount_rate,
+        applied_by=applied_by,
+        applied_role=applied_role,
     )
     return schemas.OverduePeriodListResponse(items=periods)
+
+
+@router.get(
+    "/duplicates/check",
+    response_model=schemas.PaymentDuplicateCheck,
+    summary="Verifica si existe un pago registrado para el periodo",
+)
+def validate_duplicate_payment(
+    client_service_id: str = Query(..., description="Servicio a validar"),
+    period_key: str = Query(..., description="Periodo de facturación"),
+    db: Session = Depends(get_db),
+) -> schemas.PaymentDuplicateCheck:
+    exists = PaymentService.has_duplicate_payment(db, client_service_id, period_key)
+    return schemas.PaymentDuplicateCheck(
+        client_service_id=client_service_id, period_key=period_key, exists=exists
+    )
 
 
 @router.get("/", response_model=schemas.ServicePaymentListResponse)

@@ -11,6 +11,7 @@ from sqlalchemy import Enum
 class PaymentMethod(str, enum.Enum):
     """Supported payment methods."""
 
+    MIXTO = "Mixto"
     EFECTIVO = "Efectivo"
     TRANSFERENCIA = "Transferencia"
     TARJETA = "Tarjeta"

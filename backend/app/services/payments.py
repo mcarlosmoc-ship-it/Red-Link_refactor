@@ -99,6 +99,38 @@ class PaymentService:
             raise ValueError("months_paid must be greater than zero")
         return months
 
+    @classmethod
+    def _normalize_method_breakdown(
+        cls, data: schemas.ServicePaymentBase
+    ) -> tuple[models.PaymentMethod, list[dict] | None]:
+        breakdown = None
+        method = data.method
+        if data.methods:
+            breakdown = []
+            total = Decimal("0")
+            for entry in data.methods:
+                normalized_amount = cls._normalize_amount(entry.amount)
+                total += normalized_amount
+                breakdown.append(
+                    {
+                        "method": entry.method.value,
+                        "amount": str(normalized_amount),
+                    }
+                )
+
+            if total != cls._normalize_amount(data.amount):
+                raise ValueError("La suma de los métodos no coincide con el monto total.")
+
+            if len(data.methods) > 1:
+                method = models.PaymentMethod.MIXTO
+            elif method is None:
+                method = data.methods[0].method
+
+        if method is None:
+            raise ValueError("Debes especificar un método de pago.")
+
+        return method, breakdown
+
     @staticmethod
     def _resolve_service(db: Session, service_id: str) -> models.ClientService:
         service = (
@@ -124,16 +156,11 @@ class PaymentService:
             "payment_method": str(data.method.value),
         }
 
-        try:
-            service = cls._resolve_service(db, data.client_service_id)
-            client = service.client
-
-            tags.update(
-                {
-                    "client_id": str(client.id),
-                    "service_type": getattr(service.service_plan, "category", None),
-                }
-            )
+        amount = cls._normalize_amount(data.amount)
+        months_paid = cls._normalize_months(data.months_paid)
+        if months_paid is None:
+            months_paid = cls._infer_months_from_amount(amount, service.effective_price)
+        method, breakdown = cls._normalize_method_breakdown(data)
 
             period_key = None
             if data.period_key:
@@ -172,9 +199,21 @@ class PaymentService:
             if period_key:
                 FinancialSnapshotService.apply_payment(db, period_key, amount)
 
-            cls._apply_client_balances(service, client, months_paid or Decimal("0"))
-            cls._apply_service_debt(service, amount, months_paid)
-            cls._update_next_billing(service, data.paid_on, months_paid, amount)
+        if outstanding_debt_amount > Decimal("0") and amount < outstanding_debt_amount:
+            raise ValueError("El monto no cubre el adeudo pendiente del servicio.")
+
+        payment = models.ServicePayment(
+            client_service_id=service.id,
+            client_id=client.id,
+            period_key=period_key,
+            paid_on=data.paid_on,
+            amount=amount,
+            months_paid=months_paid,
+            method=method,
+            method_breakdown=breakdown,
+            note=data.note,
+            recorded_by=data.recorded_by,
+        )
 
             db.add(payment)
             db.add(client)
@@ -194,21 +233,19 @@ class PaymentService:
 
             db.commit()
 
-            db.refresh(payment)
-            db.refresh(client)
-
-            ObservabilityService.record_event(
-                db,
-                "payments.captured",
-                MetricOutcome.SUCCESS,
-                duration_ms=(perf_counter() - start) * 1000,
-                tags=tags,
-                metadata={
-                    "period_key": period_key,
-                    "months_paid": str(months_paid) if months_paid is not None else None,
-                    "amount": str(amount),
-                },
-            )
+        audit_entry = models.PaymentAuditLog(
+            payment=payment,
+            action=models.PaymentAuditAction.CREATED,
+            snapshot={
+                "amount": str(amount),
+                "months_paid": str(months_paid) if months_paid is not None else None,
+                "method": payment.method,
+                "method_breakdown": breakdown,
+                "paid_on": str(payment.paid_on),
+                "recorded_by": payment.recorded_by,
+            },
+        )
+        db.add(audit_entry)
 
             return payment
         except ValueError as exc:
@@ -275,6 +312,22 @@ class PaymentService:
             raise ValueError(
                 "Ya existe un pago registrado para este periodo y servicio."
             )
+
+    @staticmethod
+    def has_duplicate_payment(
+        db: Session, service_id: str, period_key: Optional[str]
+    ) -> bool:
+        if period_key is None:
+            return False
+        return (
+            db.query(models.ServicePayment)
+            .filter(
+                models.ServicePayment.client_service_id == service_id,
+                models.ServicePayment.period_key == period_key,
+            )
+            .first()
+            is not None
+        )
 
     @staticmethod
     def _add_months(start: date, months: Decimal | float | int) -> date:
@@ -471,6 +524,8 @@ class PaymentService:
         reference_date: Optional[date] = None,
         late_fee_rate: Decimal | float | str = Decimal("0"),
         discount_rate: Decimal | float | str = Decimal("0"),
+        applied_by: Optional[str] = None,
+        applied_role: Optional[str] = None,
     ) -> list[schemas.OverduePeriod]:
         service = cls._resolve_service(db, client_service_id)
         period_start, _, _ = cls._billing_window(service, reference_date)
@@ -509,6 +564,8 @@ class PaymentService:
                     discount_applied=discount,
                     amount_due=base_amount,
                     total_due=total,
+                    applied_by=applied_by,
+                    applied_role=applied_role,
                 )
             )
 
@@ -532,6 +589,8 @@ class PaymentService:
                 else None,
                 "method": payment.method,
                 "paid_on": str(payment.paid_on),
+                "method_breakdown": payment.method_breakdown,
+                "recorded_by": payment.recorded_by,
             },
         )
 
