@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import io
+import re
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Iterable, Optional, Tuple
@@ -40,6 +41,7 @@ class ClientService:
         "telefono": "contact_phone",
         "email": "contact_email",
         "service_plan_id": "service_plan",
+        "service_plan": "service_plan",
         "service_base_id": "service_zone_id",
         "base_id": "zone_id",
     }
@@ -81,20 +83,26 @@ class ClientService:
     IMPORT_TEMPLATE_ORDER = [
         "external_code",
         "nombre",
+        "full_name",
         "direccion",
         "telefono",
         "zona",
+        "client_type",
         "tipo_cliente",
         "paid_months_ahead",
         "debt_months",
-        "service_plan",
-        "custom_price",
-        "dia_corte",
-        "estado_servicio",
-        "ip_principal",
-        "ip_antena",
-        "ip_modem",
-        "router_model",
+        "service_1_plan_id",
+        "service_1_status",
+        "service_1_billing_day",
+        "service_1_zone_id",
+        "service_1_ip_address",
+        "service_1_custom_price",
+        "service_2_plan_id",
+        "service_2_status",
+        "service_2_billing_day",
+        "service_2_zone_id",
+        "service_2_ip_address",
+        "service_2_custom_price",
         "email",
         "coordenadas",
         "comentarios",
@@ -116,31 +124,20 @@ class ClientService:
             "tipo_cliente": "residential",
             "paid_months_ahead": "1",
             "debt_months": "0",
-            "service_plan": "Plan Básico",
-            "custom_price": "350",
-            "estado_servicio": models.ClientServiceStatus.ACTIVE.value,
-            "dia_corte": 1,
-            "ip_principal": "10.0.0.10",
-            "ip_antena": "10.0.0.11",
-            "ip_modem": "10.0.0.12",
-            "router_model": "Router AC",
+            "service_1_plan_id": 1,
+            "service_1_status": models.ClientServiceStatus.ACTIVE.value,
+            "service_1_billing_day": 1,
+            "service_1_zone_id": 1,
+            "service_1_ip_address": "10.0.0.10",
+            "service_1_custom_price": "350",
+            "service_2_plan_id": 2,
+            "service_2_status": models.ClientServiceStatus.PENDING.value,
+            "service_2_billing_day": 15,
+            "service_2_zone_id": 1,
+            "service_2_ip_address": "10.0.0.11",
+            "service_2_custom_price": "480",
             "email": "juan@example.com",
-            "comentarios": "Cliente residencial con IP fija",
-        },
-        {
-            "external_code": "CLI-001",
-            "nombre": "Juan Pérez",
-            "direccion": "Centro",
-            "telefono": "555-1234",
-            "zona": 1,
-            "tipo_cliente": "residential",
-            "paid_months_ahead": "1",
-            "debt_months": "0",
-            "service_plan": "Plan Fibra",
-            "custom_price": "480",
-            "estado_servicio": models.ClientServiceStatus.ACTIVE.value,
-            "dia_corte": 15,
-            "router_model": "ONT",
+            "comentarios": "Cliente residencial con dos servicios",
         },
         {
             "external_code": "CLI-002",
@@ -151,11 +148,12 @@ class ClientService:
             "tipo_cliente": "token",
             "paid_months_ahead": "0",
             "debt_months": "2",
-            "service_plan": "Hotspot diario",
-            "custom_price": "120",
-            "estado_servicio": models.ClientServiceStatus.PENDING.value,
-            "dia_corte": 20,
-            "ip_principal": "10.0.1.5",
+            "service_1_plan_id": 3,
+            "service_1_status": models.ClientServiceStatus.PENDING.value,
+            "service_1_billing_day": 20,
+            "service_1_zone_id": 2,
+            "service_1_ip_address": "10.0.1.5",
+            "service_1_custom_price": "120",
             "coordenadas": "-16.5,-68.15",
         },
     ]
@@ -383,14 +381,22 @@ class ClientService:
         }
         header_aliases = set(normalized_headers)
 
-        required_columns = (
-            ClientService.CLIENT_REQUIRED_COLUMNS | ClientService.SERVICE_REQUIRED_COLUMNS
-        )
-        missing = required_columns - header_aliases
+        service_indices = {
+            int(match.group(1))
+            for header in normalized_headers
+            if (match := re.match(r"service_(\d+)_", header))
+        }
+        has_standard_service = {
+            "service_plan",
+            "service_plan_id",
+        } & header_aliases
+        missing = ClientService.CLIENT_REQUIRED_COLUMNS - header_aliases
         if missing:
             raise ValueError(
                 "Faltan columnas obligatorias: " + ", ".join(sorted(missing))
             )
+        if not service_indices and not has_standard_service:
+            raise ValueError("Faltan columnas obligatorias: service_plan")
 
         zone_ids = {zone_id for (zone_id,) in db.query(models.Zone.id).all()}
         service_plans = {
@@ -427,6 +433,7 @@ class ClientService:
                 row_payload["row_number"] = index
                 row_payload["reservations"] = reservations
                 parsed_rows.append(row_payload)
+                ClientService._reserve_ips(pending_reservations, reservations)
             except _RowProcessingError as exc:
                 summary.register_error(
                     index,
@@ -471,7 +478,7 @@ class ClientService:
                 ClientService._assert_consistent_client_data(
                     bucket["client_payload"], row["client_payload"]
                 )
-                bucket["services"].append(row["service_payload"])
+                bucket["services"].extend(row["services"])
                 bucket["row_numbers"].append(row["row_number"])
                 ClientService._reserve_ips(bucket["reservations"], row["reservations"])
                 ClientService._reserve_ips(pending_reservations, row["reservations"])
@@ -527,15 +534,24 @@ class ClientService:
         known_ips: dict[str, set[str]],
     ) -> tuple[dict, dict[str, set[str]]]:
         client_payload = ClientService._extract_client_fields(row, zone_ids)
-        service_payload = ClientService._extract_service_row(
-            db, row, client_payload, service_plans, zone_ids
-        )
+        services_raw = ClientService._extract_service_blocks(row)
+        if not services_raw:
+            raise _RowProcessingError("La fila no incluye servicios asignados.")
+
+        service_payloads: list[dict[str, object]] = []
+        for service_row in services_raw:
+            service_payloads.append(
+                ClientService._extract_service_row(
+                    db, service_row, client_payload, service_plans, zone_ids
+                )
+            )
+
         ip_reservations = ClientService._validate_ip_uniqueness(
-            [service_payload], known_ips
+            service_payloads, known_ips
         )
         return {
             "client_payload": client_payload,
-            "service_payload": service_payload,
+            "services": service_payloads,
         }, ip_reservations
 
     @staticmethod
@@ -590,13 +606,17 @@ class ClientService:
         service_plans: dict[str, models.ServicePlan],
         zone_ids: set[int],
     ) -> dict[str, object]:
+        plan_id_raw = _normalize_string(row.get("service_plan_id"))
         plan_name = _normalize_string(row.get("service_plan"))
-        if not plan_name:
+
+        if not plan_id_raw and not plan_name:
             raise _RowProcessingError("La columna 'service_plan' es obligatoria.")
 
         price_raw = _normalize_string(row.get("service_plan_price"))
         plan_price = _parse_decimal(price_raw) if price_raw is not None else Decimal("0")
-        plan = ClientService._resolve_or_create_plan(db, service_plans, plan_name, plan_price)
+        plan = ClientService._resolve_or_create_plan(
+            db, service_plans, plan_name, plan_price, plan_id_raw
+        )
 
         status_raw = _normalize_string(row.get("service_status"))
         status = models.ClientServiceStatus.ACTIVE
@@ -672,12 +692,72 @@ class ClientService:
         }
 
     @staticmethod
+    def _extract_service_blocks(row: dict[str, Optional[str]]) -> list[dict[str, object]]:
+        service_indices = sorted(
+            {
+                int(match.group(1))
+                for key in row.keys()
+                if (match := re.match(r"service_(\d+)_", key))
+            }
+        )
+        services: list[dict[str, object]] = []
+
+        if not service_indices:
+            return [row]
+
+        for index in service_indices:
+            prefix = f"service_{index}_"
+            plan_candidate = _normalize_string(row.get(f"{prefix}plan") or row.get(f"{prefix}plan_id"))
+            if plan_candidate is None:
+                continue
+            services.append(
+                {
+                    "service_plan_id": row.get(f"{prefix}plan_id"),
+                    "service_plan": row.get(f"{prefix}plan"),
+                    "service_plan_price": row.get(f"{prefix}plan_price"),
+                    "service_status": row.get(f"{prefix}status"),
+                    "service_billing_day": row.get(f"{prefix}billing_day"),
+                    "service_zone_id": row.get(f"{prefix}zone_id"),
+                    "service_ip_address": row.get(f"{prefix}ip_address"),
+                    "service_antenna_ip": row.get(f"{prefix}antenna_ip"),
+                    "service_modem_ip": row.get(f"{prefix}modem_ip"),
+                    "service_antenna_model": row.get(f"{prefix}antenna_model"),
+                    "service_modem_model": row.get(f"{prefix}modem_model"),
+                    "service_custom_price": row.get(f"{prefix}custom_price"),
+                    "service_notes": row.get(f"{prefix}notes"),
+                }
+            )
+
+        return services
+
+    @staticmethod
     def _resolve_or_create_plan(
         db: Session,
         service_plans: dict[str, models.ServicePlan],
         plan_name: str,
         plan_price: Decimal,
+        plan_id_raw: Optional[str] = None,
     ) -> models.ServicePlan:
+        if plan_id_raw is not None:
+            try:
+                plan_id = int(plan_id_raw)
+            except ValueError as exc:
+                raise _RowProcessingError(
+                    "El ID del plan debe ser un número entero."
+                ) from exc
+
+            plan = db.get(models.ServicePlan, plan_id)
+            if plan is None:
+                raise _RowProcessingError(
+                    f"El plan con ID {plan_id} no existe."
+                )
+            if plan.status != models.ServicePlanStatus.ACTIVE:
+                raise _RowProcessingError(
+                    f"El plan '{plan.name}' existe pero está inactivo."
+                )
+            service_plans[plan.name.lower()] = plan
+            return plan
+
         key = plan_name.lower()
         plan = service_plans.get(key)
         if plan is None:
@@ -826,7 +906,7 @@ class _ImportAccumulator:
                 schemas.ClientImportRowSummary(
                     row_number=row_number,
                     client_name=client_name,
-                    services_created=1,
+                    services_created=services_created,
                     status="created",
                 )
             )

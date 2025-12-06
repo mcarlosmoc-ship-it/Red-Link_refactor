@@ -168,7 +168,7 @@ def update_client(
     return ClientService.update_client(db, client, client_in)
 
 
-@router.post("/import/template", response_class=StreamingResponse)
+@router.get("/import/template", response_class=StreamingResponse)
 def download_client_import_template(
     payload: schemas.ClientImportTemplateRequest | None = None,
 ) -> StreamingResponse:
