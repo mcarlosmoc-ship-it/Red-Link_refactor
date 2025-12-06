@@ -38,7 +38,7 @@ class ObservabilityService:
             outcome=outcome,
             duration_ms=Decimal(str(duration_ms)) if duration_ms is not None else None,
             tags=tags or {},
-            metadata=metadata or None,
+            details=metadata or None,
         )
         ObservabilityService._persist(db, payload)
 
