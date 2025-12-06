@@ -4,6 +4,7 @@ import {
   BadgeCheck,
   Box,
   ClipboardList,
+  AlertTriangle,
   Download,
   Minus,
   PackagePlus,
@@ -19,6 +20,8 @@ import { Card, CardContent } from '../components/ui/Card.jsx'
 import { usePosCatalog } from '../hooks/usePosCatalog.js'
 import { usePosSales } from '../hooks/usePosSales.js'
 import { useClients } from '../hooks/useClients.js'
+import { useServicePlans } from '../hooks/useServicePlans.js'
+import { useClientServices } from '../hooks/useClientServices.js'
 import { useToast } from '../hooks/useToast.js'
 import { getClientDebtSummary, getClientMonthlyFee, getPrimaryService } from '../features/clients/utils.js'
 import { CLIENT_PRICE, useBackofficeStore } from '../store/useBackofficeStore.js'
@@ -99,6 +102,8 @@ export default function PointOfSalePage() {
   const { products, isLoading: isLoadingProducts, createProduct } = usePosCatalog()
   const { sales, recordSale } = usePosSales({ limit: 8 })
   const { clients, isLoading: isLoadingClients } = useClients()
+  const { servicePlans, isLoading: isLoadingPlans } = useServicePlans()
+  const { clientServices, isLoading: isLoadingClientServices } = useClientServices()
   const recordPayment = useBackofficeStore((state) => state.recordPayment)
   const { showToast } = useToast()
 
@@ -109,6 +114,7 @@ export default function PointOfSalePage() {
   const [cartItems, setCartItems] = useState([])
   const [paymentMethod, setPaymentMethod] = useState(PAYMENT_METHODS[0])
   const [clientName, setClientName] = useState('')
+  const [selectedClientId, setSelectedClientId] = useState('')
   const [notes, setNotes] = useState('')
   const [discount, setDiscount] = useState('')
   const [tax, setTax] = useState('')
@@ -126,6 +132,7 @@ export default function PointOfSalePage() {
   const [paymentMethodPos, setPaymentMethodPos] = useState(PAYMENT_METHODS[0])
   const [paymentNote, setPaymentNote] = useState('')
   const [isSubmittingClientPayment, setIsSubmittingClientPayment] = useState(false)
+  const [ticketSearchTerm, setTicketSearchTerm] = useState('')
 
   const filteredSalesProducts = useMemo(() => {
     const term = salesSearchTerm.trim().toLowerCase()
@@ -152,6 +159,11 @@ export default function PointOfSalePage() {
   const sortedClients = useMemo(() => {
     return [...clients].sort((a, b) => a.name.localeCompare(b.name))
   }, [clients])
+
+  const selectedClient = useMemo(
+    () => sortedClients.find((client) => String(client.id) === String(selectedClientId)) ?? null,
+    [selectedClientId, sortedClients],
+  )
 
   const filteredClients = useMemo(() => {
     const term = paymentSearch.trim().toLowerCase()
@@ -205,6 +217,22 @@ export default function PointOfSalePage() {
     setPaymentNote('')
   }, [selectedPaymentClient, selectedPaymentDebt, selectedPaymentMonthlyFee])
 
+  useEffect(() => {
+    if (selectedClient && !clientName.trim()) {
+      setClientName(selectedClient.name)
+    }
+  }, [clientName, selectedClient])
+
+  useEffect(() => {
+    setCartItems((current) =>
+      current.map((item) =>
+        item.type === 'punctual-service' || item.type === 'monthly-service'
+          ? { ...item, clientId: selectedClient ? selectedClient.id : null }
+          : item,
+      ),
+    )
+  }, [selectedClient])
+
   const addProductToCart = (product) => {
     setCartItems((current) => {
       const existing = current.find((item) => item.productId === product.id)
@@ -224,7 +252,7 @@ export default function PointOfSalePage() {
           category: product.category,
           unitPrice: product.unitPrice,
           quantity: 1,
-          type: 'catalog',
+          type: 'product',
         },
       ]
     })
@@ -302,6 +330,190 @@ export default function PointOfSalePage() {
     setCustomItem({ description: '', price: '', quantity: '1' })
   }
 
+  const punctualServices = useMemo(() => {
+    return servicePlans
+      .filter((plan) => {
+        const category = (plan.serviceType ?? plan.category ?? '').toLowerCase()
+        return category && !['internet', 'streaming', 'hotspot'].includes(category)
+      })
+      .map((plan) => ({
+        id: plan.id,
+        name: plan.name,
+        category: plan.category ?? 'Servicio puntual',
+        price: Number(plan.defaultMonthlyFee ?? plan.monthlyPrice ?? 0),
+        plan,
+      }))
+  }, [servicePlans])
+
+  const monthlyServices = useMemo(() => {
+    return servicePlans
+      .filter((plan) => {
+        const category = (plan.serviceType ?? plan.category ?? '').toLowerCase()
+        return !category || ['internet', 'streaming', 'hotspot'].includes(category)
+      })
+      .map((plan) => ({
+        id: plan.id,
+        name: plan.name,
+        category: plan.category ?? 'Servicio mensual',
+        price: Number(plan.defaultMonthlyFee ?? plan.monthlyPrice ?? 0),
+        plan,
+      }))
+  }, [servicePlans])
+
+  const searchableItems = useMemo(() => {
+    const productEntries = products.map((product) => ({
+      id: `product-${product.id}`,
+      label: product.name,
+      detail: product.category ?? '',
+      price: product.unitPrice,
+      type: 'product',
+      product,
+    }))
+
+    const punctualEntries = punctualServices.map((service) => ({
+      id: `punctual-${service.id}`,
+      label: service.name,
+      detail: service.category ?? 'Servicio puntual',
+      price: service.price,
+      type: 'punctual-service',
+      service,
+    }))
+
+    const monthlyEntries = monthlyServices.map((service) => ({
+      id: `monthly-${service.id}`,
+      label: service.name,
+      detail: service.category ?? 'Servicio mensual',
+      price: service.price,
+      type: 'monthly-service',
+      service,
+    }))
+
+    return [...productEntries, ...punctualEntries, ...monthlyEntries]
+  }, [monthlyServices, products, punctualServices])
+
+  const filteredSearchItems = useMemo(() => {
+    const term = ticketSearchTerm.trim().toLowerCase()
+    if (!term) {
+      return searchableItems.slice(0, 6)
+    }
+    return searchableItems
+      .filter((item) =>
+        `${item.label} ${item.detail}`.toLowerCase().includes(term),
+      )
+      .slice(0, 10)
+  }, [searchableItems, ticketSearchTerm])
+
+  const addSearchItemToCart = (entry) => {
+    if (entry.type === 'product' && entry.product) {
+      addProductToCart(entry.product)
+      return
+    }
+
+    const baseItem = {
+      id: generateLineId(),
+      name: entry.label,
+      category: entry.detail,
+      unitPrice: entry.price,
+      quantity: 1,
+      productId: null,
+    }
+
+    if (entry.type === 'punctual-service') {
+      setCartItems((current) => [
+        ...current,
+        {
+          ...baseItem,
+          type: 'punctual-service',
+          clientId: selectedClient ? selectedClient.id : null,
+          servicePlanId: entry.service?.id ?? null,
+        },
+      ])
+      return
+    }
+
+    if (entry.type === 'monthly-service') {
+      setCartItems((current) => [
+        ...current,
+        {
+          ...baseItem,
+          type: 'monthly-service',
+          clientId: selectedClient ? selectedClient.id : null,
+          servicePlanId: entry.service?.id ?? null,
+        },
+      ])
+    }
+  }
+
+  const productLookup = useMemo(() => {
+    const map = new Map()
+    products.forEach((product) => {
+      map.set(product.id, product)
+    })
+    return map
+  }, [products])
+
+  const clientServicesByClient = useMemo(() => {
+    return clientServices.reduce((acc, service) => {
+      const key = String(service.clientId ?? '')
+      if (!acc[key]) {
+        acc[key] = []
+      }
+      acc[key].push(service)
+      return acc
+    }, {})
+  }, [clientServices])
+
+  const cartValidation = useMemo(() => {
+    const validation = {}
+    cartItems.forEach((item) => {
+      let message = ''
+      if (item.type === 'product') {
+        const product = productLookup.get(item.productId)
+        if (product && product.stockQuantity !== null && item.quantity > product.stockQuantity) {
+          message = `Stock insuficiente: quedan ${product.stockQuantity}`
+        }
+      }
+
+      if (item.type === 'punctual-service') {
+        if (!selectedClient) {
+          message = 'Selecciona un cliente con instalación previa para validar este servicio.'
+        } else {
+          const services = clientServicesByClient[String(selectedClient.id)] ?? selectedClient.services ?? []
+          const hasInstallation = services.some((service) => service.status === 'active')
+          const hasCoverage = Boolean(selectedClient.zoneId || selectedClient.zone?.id)
+          const alreadyAdded = cartItems.some(
+            (other) => other.id !== item.id && other.type === 'punctual-service' && other.clientId === selectedClient.id,
+          )
+
+          if (!hasInstallation) {
+            message = 'Este servicio requiere una instalación previa activa.'
+          } else if (!hasCoverage) {
+            message = 'No hay cobertura asignada para el cliente.'
+          } else if (alreadyAdded) {
+            message = 'Solo se puede agregar un servicio puntual por cliente.'
+          }
+        }
+      }
+
+      if (item.type === 'monthly-service') {
+        if (!selectedClient) {
+          message = 'Selecciona un cliente con contrato activo para continuar.'
+        } else {
+          const services = clientServicesByClient[String(selectedClient.id)] ?? selectedClient.services ?? []
+          const activeContract = services.some((service) => service.status === 'active')
+          if (!activeContract) {
+            message = 'El cliente no tiene un contrato activo para facturar este servicio.'
+          }
+        }
+      }
+
+      if (message) {
+        validation[item.id] = message
+      }
+    })
+    return validation
+  }, [cartItems, clientServicesByClient, productLookup, selectedClient])
+
   const handleCheckout = async (event) => {
     event.preventDefault()
     if (cartItems.length === 0) {
@@ -318,16 +530,23 @@ export default function PointOfSalePage() {
     try {
       const payload = {
         payment_method: paymentMethod,
-        client_name: clientName.trim() || undefined,
+        client_name: clientName.trim() || selectedClient?.name || undefined,
         notes: notes.trim() || undefined,
         discount_amount: discountAmount || 0,
         tax_amount: taxAmount || 0,
         items: cartItems.map((item) => ({
           product_id: item.productId ?? undefined,
-          description: item.productId ? undefined : item.name,
+          description: item.productId ? undefined : `${item.name} (${item.category})`,
           quantity: item.quantity,
           unit_price: item.unitPrice,
         })),
+      }
+
+      const hasErrors = Object.keys(cartValidation).length > 0
+      if (hasErrors) {
+        setFormError('Revisa los artículos con alertas antes de registrar la venta.')
+        setIsSubmittingSale(false)
+        return
       }
 
       const sale = await recordSale(payload)
@@ -688,11 +907,85 @@ export default function PointOfSalePage() {
             <section aria-labelledby="carrito-venta" className="space-y-4">
               <Card>
                 <CardContent className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h2 id="carrito-venta" className="text-lg font-semibold text-slate-900">
-                      Carrito de venta
-                    </h2>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="space-y-1">
+                      <h2 id="carrito-venta" className="text-lg font-semibold text-slate-900">
+                        Carrito de venta
+                      </h2>
+                      <p className="text-xs text-slate-500">
+                        Busca productos, servicios puntuales o mensuales desde aquí.
+                      </p>
+                    </div>
                     <span className="text-xs text-slate-500">{cartItems.length} artículos</span>
+                  </div>
+
+                  <div className="grid gap-3 md:grid-cols-[2fr,1fr]">
+                    <div className="relative">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                      <input
+                        type="search"
+                        value={ticketSearchTerm}
+                        onChange={(event) => setTicketSearchTerm(event.target.value)}
+                        placeholder="Escribe para agregar al ticket"
+                        className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm shadow-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                      />
+                      {filteredSearchItems.length > 0 && (
+                        <ul className="absolute z-10 mt-2 w-full divide-y divide-slate-100 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">
+                          {filteredSearchItems.map((item) => (
+                            <li key={item.id}>
+                              <button
+                                type="button"
+                                onClick={() => addSearchItemToCart(item)}
+                                className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm transition hover:bg-slate-50"
+                              >
+                                <div className="space-y-0.5">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="font-semibold text-slate-900">{item.label}</span>
+                                    <span
+                                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${
+                                        item.type === 'product'
+                                          ? 'bg-blue-50 text-blue-700'
+                                          : item.type === 'punctual-service'
+                                            ? 'bg-amber-50 text-amber-700'
+                                            : 'bg-emerald-50 text-emerald-700'
+                                      }`}
+                                    >
+                                      {item.type === 'product'
+                                        ? 'Producto'
+                                        : item.type === 'punctual-service'
+                                          ? 'Servicio puntual'
+                                          : 'Servicio mensual'}
+                                    </span>
+                                  </div>
+                                  <p className="text-xs text-slate-500">{item.detail || 'Sin categoría'}</p>
+                                </div>
+                                <span className="text-sm font-semibold text-slate-900">{peso(item.price)}</span>
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                    <div className="grid gap-2 text-xs font-medium text-slate-600">
+                      <label className="grid gap-1">
+                        Cliente para validar servicios
+                        <select
+                          value={selectedClientId}
+                          onChange={(event) => setSelectedClientId(event.target.value)}
+                          className="rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                        >
+                          <option value="">Sin seleccionar</option>
+                          {sortedClients.map((client) => (
+                            <option key={client.id} value={client.id}>
+                              {client.name} {client.zoneName ? `· ${client.zoneName}` : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      {(isLoadingClients || isLoadingPlans || isLoadingClientServices) && (
+                        <p className="text-[11px] text-slate-500">Validando datos de cliente y servicios…</p>
+                      )}
+                    </div>
                   </div>
 
                   {cartItems.length === 0 ? (
@@ -706,11 +999,38 @@ export default function PointOfSalePage() {
                         <li key={item.id} className="rounded-lg border border-slate-100 p-3 shadow-sm">
                           <div className="flex items-start justify-between gap-3">
                             <div className="space-y-1">
-                              <p className="font-medium text-slate-900">{item.name}</p>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="font-medium text-slate-900">{item.name}</p>
+                                <span
+                                  className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${
+                                    item.type === 'product'
+                                      ? 'bg-blue-50 text-blue-700'
+                                      : item.type === 'punctual-service'
+                                        ? 'bg-amber-50 text-amber-700'
+                                        : item.type === 'monthly-service'
+                                          ? 'bg-emerald-50 text-emerald-700'
+                                          : 'bg-slate-50 text-slate-600'
+                                  }`}
+                                >
+                                  {item.type === 'product'
+                                    ? 'Producto'
+                                    : item.type === 'punctual-service'
+                                      ? 'Servicio puntual'
+                                      : item.type === 'monthly-service'
+                                        ? 'Servicio mensual'
+                                        : 'Personalizado'}
+                                </span>
+                              </div>
                               <p className="text-xs text-slate-500">{item.category}</p>
                               <p className="text-xs text-slate-400">
                                 Precio unitario: <strong>{peso(item.unitPrice)}</strong>
                               </p>
+                              {cartValidation[item.id] ? (
+                                <p className="flex items-center gap-2 text-xs font-medium text-amber-700">
+                                  <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
+                                  {cartValidation[item.id]}
+                                </p>
+                              ) : null}
                             </div>
                             <Button
                               type="button"
@@ -739,7 +1059,11 @@ export default function PointOfSalePage() {
                                 step="0.01"
                                 value={item.quantity}
                                 onChange={(event) => setItemQuantity(item.id, event.target.value)}
-                                className="h-8 w-20 rounded-md border border-slate-200 px-2 text-center text-sm"
+                                className={`h-8 w-20 rounded-md border px-2 text-center text-sm ${
+                                  cartValidation[item.id]
+                                    ? 'border-amber-300 bg-amber-50 text-amber-800'
+                                    : 'border-slate-200'
+                                }`}
                               />
                               <Button
                                 type="button"
@@ -751,9 +1075,12 @@ export default function PointOfSalePage() {
                                 <Plus className="h-4 w-4" aria-hidden />
                               </Button>
                             </div>
-                            <span className="font-semibold text-slate-900">
-                              {peso(item.unitPrice * item.quantity)}
-                            </span>
+                            <div className="text-right">
+                              <p className="text-[11px] uppercase tracking-wide text-slate-400">Subtotal</p>
+                              <span className="font-semibold text-slate-900">
+                                {peso(item.unitPrice * item.quantity)}
+                              </span>
+                            </div>
                           </div>
                         </li>
                       ))}
