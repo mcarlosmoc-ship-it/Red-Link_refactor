@@ -69,7 +69,8 @@ def upgrade() -> None:
     client_services = metadata.tables.get("client_services")
     service_plans = metadata.tables.get("service_plans")
 
-    if not all([payments, service_payments, client_accounts, client_services]):
+    required_tables = [payments, service_payments, client_accounts, client_services]
+    if not all(table is not None for table in required_tables):
         return
 
     existing_ids = {

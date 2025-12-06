@@ -23,6 +23,58 @@ LOGGER = logging.getLogger(__name__)
 router = APIRouter(dependencies=[Depends(require_admin)])
 
 
+@router.get(
+    "/periods/status",
+    response_model=schemas.ServicePeriodStatusListResponse,
+    summary="Estatus de mensualidades vigentes",
+)
+def list_current_period_status(
+    db: Session = Depends(get_db),
+    client_id: Optional[str] = Query(None, description="Filtrar por cliente"),
+    client_service_id: Optional[str] = Query(
+        None, description="Filtrar por servicio específico"
+    ),
+    reference_date: Optional[date] = Query(
+        None, description="Fecha de referencia para calcular el estado"
+    ),
+) -> schemas.ServicePeriodStatusListResponse:
+    statuses = PaymentService.current_period_statuses(
+        db,
+        client_id=client_id,
+        service_id=client_service_id,
+        reference_date=reference_date,
+    )
+    return schemas.ServicePeriodStatusListResponse(items=statuses, total=len(statuses))
+
+
+@router.get(
+    "/periods/overdue",
+    response_model=schemas.OverduePeriodListResponse,
+    summary="Periodos vencidos con recargos/bonificaciones",
+)
+def list_overdue_periods(
+    client_service_id: str = Query(..., description="Servicio para calcular adeudos"),
+    db: Session = Depends(get_db),
+    reference_date: Optional[date] = Query(
+        None, description="Fecha de referencia para la deuda"
+    ),
+    late_fee_rate: Decimal = Query(
+        Decimal("0"), ge=0, description="Porcentaje de recargo por mora (0.05 = 5%)"
+    ),
+    discount_rate: Decimal = Query(
+        Decimal("0"), ge=0, description="Descuento por rol o promoción (0.10 = 10%)"
+    ),
+) -> schemas.OverduePeriodListResponse:
+    periods = PaymentService.overdue_periods(
+        db,
+        client_service_id,
+        reference_date=reference_date,
+        late_fee_rate=late_fee_rate,
+        discount_rate=discount_rate,
+    )
+    return schemas.OverduePeriodListResponse(items=periods)
+
+
 @router.get("/", response_model=schemas.ServicePaymentListResponse)
 def list_payments(
     db: Session = Depends(get_db),

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from calendar import monthrange
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from math import ceil
 from typing import Iterable, Optional, Tuple
@@ -121,6 +121,7 @@ class PaymentService:
         period_key = None
         if data.period_key:
             period_key = BillingPeriodService.ensure_period(db, data.period_key).period_key
+            cls._ensure_no_duplicate_payment(db, service.id, period_key)
 
         amount = cls._normalize_amount(data.amount)
         months_paid = cls._normalize_months(data.months_paid)
@@ -199,6 +200,25 @@ class PaymentService:
         return months.quantize(cents, rounding=ROUND_HALF_UP)
 
     @staticmethod
+    def _ensure_no_duplicate_payment(
+        db: Session, service_id: str, period_key: Optional[str]
+    ) -> None:
+        if period_key is None:
+            return
+        exists = (
+            db.query(models.ServicePayment)
+            .filter(
+                models.ServicePayment.client_service_id == service_id,
+                models.ServicePayment.period_key == period_key,
+            )
+            .first()
+        )
+        if exists:
+            raise ValueError(
+                "Ya existe un pago registrado para este periodo y servicio."
+            )
+
+    @staticmethod
     def _add_months(start: date, months: Decimal | float | int) -> date:
         whole_months = int(ceil(float(months)))
         current_year, current_month = start.year, start.month
@@ -207,6 +227,36 @@ class PaymentService:
         normalized_month = ((new_month - 1) % 12) + 1
         last_day = monthrange(new_year, normalized_month)[1]
         return date(new_year, normalized_month, min(start.day, last_day))
+
+    @staticmethod
+    def _shift_months(start: date, months_delta: int) -> date:
+        month_index = start.month - 1 + months_delta
+        year = start.year + month_index // 12
+        normalized_month = month_index % 12 + 1
+        last_day = monthrange(year, normalized_month)[1]
+        return date(year, normalized_month, min(start.day, last_day))
+
+    @classmethod
+    def _billing_window(
+        cls, service: models.ClientService, reference_date: Optional[date] = None
+    ) -> tuple[date, date, str]:
+        reference = reference_date or date.today()
+        billing_day = service.billing_day or reference.day
+
+        if reference.day < billing_day:
+            adjusted_reference = cls._shift_months(reference, -1)
+            start = adjusted_reference.replace(
+                day=min(billing_day, monthrange(adjusted_reference.year, adjusted_reference.month)[1])
+            )
+        else:
+            start = reference.replace(
+                day=min(billing_day, monthrange(reference.year, reference.month)[1])
+            )
+
+        next_cycle = cls._add_months(start, 1)
+        end = next_cycle - timedelta(days=1)
+        period_key = f"{start.year:04d}-{start.month:02d}"
+        return start, end, period_key
 
     @classmethod
     def _update_next_billing(
@@ -227,6 +277,58 @@ class PaymentService:
         service.next_billing_date = next_due_date
         if service.streaming_account:
             service.streaming_account.fecha_proximo_pago = next_due_date
+
+    @classmethod
+    def current_period_statuses(
+        cls,
+        db: Session,
+        *,
+        client_id: Optional[str] = None,
+        service_id: Optional[str] = None,
+        reference_date: Optional[date] = None,
+    ) -> list[schemas.ServicePeriodStatus]:
+        query = db.query(models.ClientService).options(
+            selectinload(models.ClientService.client),
+            selectinload(models.ClientService.service_plan),
+        )
+        if client_id:
+            query = query.filter(models.ClientService.client_id == client_id)
+        if service_id:
+            query = query.filter(models.ClientService.id == service_id)
+
+        services = query.all()
+        statuses: list[schemas.ServicePeriodStatus] = []
+        for service in services:
+            period_start, period_end, period_key = cls._billing_window(
+                service, reference_date
+            )
+            payment_exists = (
+                db.query(models.ServicePayment)
+                .filter(
+                    models.ServicePayment.client_service_id == service.id,
+                    models.ServicePayment.period_key == period_key,
+                )
+                .first()
+                is not None
+            )
+            if payment_exists:
+                status = schemas.PeriodPaymentStatus.PAID
+            elif (reference_date or date.today()) > period_end:
+                status = schemas.PeriodPaymentStatus.OVERDUE
+            else:
+                status = schemas.PeriodPaymentStatus.PENDING
+
+            statuses.append(
+                schemas.ServicePeriodStatus(
+                    client_id=str(service.client_id),
+                    client_service_id=str(service.id),
+                    period_key=period_key,
+                    period_start=period_start,
+                    period_end=period_end,
+                    status=status,
+                )
+            )
+        return statuses
 
     @staticmethod
     def _apply_client_balances(
@@ -301,6 +403,58 @@ class PaymentService:
             service.debt_months = (Decimal(service.debt_months or 0) + months_paid).quantize(
                 Decimal("0.01"), rounding=ROUND_HALF_UP
             )
+
+    @classmethod
+    def overdue_periods(
+        cls,
+        db: Session,
+        client_service_id: str,
+        *,
+        reference_date: Optional[date] = None,
+        late_fee_rate: Decimal | float | str = Decimal("0"),
+        discount_rate: Decimal | float | str = Decimal("0"),
+    ) -> list[schemas.OverduePeriod]:
+        service = cls._resolve_service(db, client_service_id)
+        period_start, _, _ = cls._billing_window(service, reference_date)
+
+        debt_months = Decimal(service.debt_months or 0)
+        months_overdue = int(ceil(float(debt_months)))
+        if months_overdue <= 0:
+            return []
+
+        base_amount = Decimal(service.effective_price or 0)
+        late_fee = cls._normalize_amount(late_fee_rate)
+        discount = cls._normalize_amount(discount_rate)
+
+        overdue_periods: list[schemas.OverduePeriod] = []
+        for offset in range(1, months_overdue + 1):
+            start = cls._shift_months(period_start, -offset)
+            end = cls._add_months(start, 1) - timedelta(days=1)
+            period_key = f"{start.year:04d}-{start.month:02d}"
+            total = base_amount
+            if late_fee > 0:
+                total += (base_amount * late_fee).quantize(
+                    Decimal("0.01"), rounding=ROUND_HALF_UP
+                )
+            if discount > 0:
+                total -= (base_amount * discount).quantize(
+                    Decimal("0.01"), rounding=ROUND_HALF_UP
+                )
+
+            overdue_periods.append(
+                schemas.OverduePeriod(
+                    client_service_id=str(service.id),
+                    period_key=period_key,
+                    period_start=start,
+                    period_end=end,
+                    late_fee_applied=late_fee,
+                    discount_applied=discount,
+                    amount_due=base_amount,
+                    total_due=total,
+                )
+            )
+
+        return overdue_periods
 
     @classmethod
     def delete_payment(cls, db: Session, payment: models.ServicePayment) -> None:

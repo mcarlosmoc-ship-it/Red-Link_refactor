@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from enum import Enum
 from decimal import Decimal
 from typing import Optional, TYPE_CHECKING
 
@@ -70,3 +71,48 @@ class ServicePaymentListResponse(PaginatedResponse[ServicePaymentRead]):
     """Paginated payment listing."""
 
     pass
+
+
+class PeriodPaymentStatus(str, Enum):
+    """Current payment state for a billing period."""
+
+    PENDING = "pendiente"
+    PAID = "pagado"
+    OVERDUE = "vencido"
+
+
+class ServicePeriodStatus(BaseModel):
+    """Represents the billing status for a client service in a period."""
+
+    client_id: str
+    client_service_id: str
+    period_key: str
+    period_start: date
+    period_end: date
+    status: PeriodPaymentStatus
+
+
+class ServicePeriodStatusListResponse(BaseModel):
+    """List of billing statuses for current periods."""
+
+    items: list[ServicePeriodStatus]
+    total: int
+
+
+class OverduePeriod(BaseModel):
+    """Details of an overdue billing period including adjustments."""
+
+    client_service_id: str
+    period_key: str
+    period_start: date
+    period_end: date
+    late_fee_applied: Decimal = Field(default=Decimal("0"), ge=0)
+    discount_applied: Decimal = Field(default=Decimal("0"), ge=0)
+    amount_due: Decimal = Field(default=Decimal("0"), ge=0)
+    total_due: Decimal = Field(default=Decimal("0"), ge=0)
+
+
+class OverduePeriodListResponse(BaseModel):
+    """Overdue period list with calculated charges."""
+
+    items: list[OverduePeriod]

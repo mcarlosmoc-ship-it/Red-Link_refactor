@@ -29,13 +29,17 @@ class ClientServiceBase(BaseModel):
     """Shared fields for service creation and updates."""
 
     service_id: int = Field(
-        ...,
+        ..., 
         ge=1,
         validation_alias=AliasChoices("service_id", "service_plan_id"),
     )
     status: ClientServiceStatus = ClientServiceStatus.ACTIVE
     billing_day: Optional[int] = Field(default=None, ge=1, le=31)
     next_billing_date: Optional[date] = None
+    start_date: Optional[date] = Field(
+        default=None, description="Fecha de inicio del servicio para prorrateo"
+    )
+    apply_prorate: bool = True
     zone_id: Optional[int] = Field(
         default=None,
         ge=1,
