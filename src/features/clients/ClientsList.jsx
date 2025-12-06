@@ -3,6 +3,49 @@ import Button from '../../components/ui/Button.jsx'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card.jsx'
 import { getPrimaryService, normalizeId } from './utils.js'
 
+const SelectionActionReport = ({ report, onClear }) => {
+  if (!report || !Array.isArray(report.results) || report.results.length === 0) {
+    return null
+  }
+
+  const successCount = report.results.filter((item) => item.status === 'success').length
+  const failureCount = report.results.filter((item) => item.status === 'error').length
+
+  return (
+    <div className="space-y-2 rounded border border-slate-200 p-3">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <p className="text-sm font-semibold text-slate-800">{report.title ?? 'Resumen de acciones masivas'}</p>
+          <p className="text-xs text-slate-600">
+            {successCount > 0 && `${successCount} completadas`} {failureCount > 0 && `· ${failureCount} con error`}
+          </p>
+        </div>
+        {typeof onClear === 'function' && (
+          <Button size="sm" variant="ghost" onClick={onClear} disabled={report.isLocked}>
+            Limpiar
+          </Button>
+        )}
+      </div>
+      <div className="space-y-2">
+        {report.results.map((item) => (
+          <div key={`${item.clientId}-${item.status}-${item.message}`} className="flex gap-2 text-sm">
+            <span
+              className={`mt-1 h-2 w-2 rounded-full ${
+                item.status === 'success' ? 'bg-green-500' : 'bg-red-500'
+              }`}
+              aria-hidden
+            />
+            <div>
+              <p className="font-medium text-slate-800">{item.clientName ?? `Cliente ${item.clientId}`}</p>
+              <p className="text-slate-600">{item.message}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 const LOCATION_FILTER_NONE = '__none__'
 const PAGE_SIZE = 10
 
@@ -28,6 +71,8 @@ export default function ClientsList({
   onOpenImport,
   isProcessing = false,
   isProcessingSelection = false,
+  selectionActionReport,
+  onClearSelectionReport,
 }) {
   const [filters, setFilters] = useState(filtersInitialState)
   const [currentPage, setCurrentPage] = useState(1)
@@ -346,6 +391,7 @@ export default function ClientsList({
               </Button>
             </div>
           </div>
+          <SelectionActionReport report={selectionActionReport} onClear={onClearSelectionReport} />
         </div>
 
         {hasError && <p className="text-sm text-red-600">Ocurrió un error al cargar los clientes.</p>}
