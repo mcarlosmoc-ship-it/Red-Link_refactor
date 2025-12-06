@@ -115,12 +115,27 @@ Recuerda detener los servicios cerrando las ventanas que se abren al final.
    pip install -r requirements.txt
    ```
 
-2. Define la variable `DATABASE_URL` si quieres usar un motor distinto a SQLite.
+2. Copia la plantilla de variables de entorno y completa tus secretos:
+
+   ```bash
+   cp backend/.env.example backend/.env
+   ```
+
+   - `CLIENT_PASSWORD_KEY`: clave base64 urlsafe de **al menos 32 bytes** para
+     cifrar contraseñas de clientes.
+   - `ADMIN_USERNAME`: usuario permitido en `/auth/token` (usa tu propio correo
+     o alias).
+   - `ADMIN_PASSWORD_HASH`: hash PBKDF2 producido por
+     `backend.app.security.generate_password_hash`.
+   - `ADMIN_JWT_SECRET`: cadena aleatoria y larga para firmar JWT (se recomienda
+     32+ caracteres).
+
+3. Define la variable `DATABASE_URL` si quieres usar un motor distinto a SQLite.
    Si la omites, la API crea y usa `backend/clients.db` como base de datos
    SQLite. (La ruta se resuelve automáticamente a su versión absoluta dentro
    de `backend/`.)
 
-3. Aplica las migraciones para crear todas las tablas necesarias:
+4. Aplica las migraciones para crear todas las tablas necesarias:
 
    ```bash
    alembic upgrade head
@@ -137,7 +152,7 @@ Recuerda detener los servicios cerrando las ventanas que se abren al final.
    > `./backend/scripts/run_alembic.sh upgrade head`, que cambia de directorio
    > y apunta al `alembic.ini` correcto por ti.
 
-4. Con las migraciones al día, el backend quedará escuchando en
+5. Con las migraciones al día, el backend quedará escuchando en
    `http://0.0.0.0:8000`. Asegúrate de que esta URL coincida con la definida en
    `VITE_API_BASE_URL`.
 
