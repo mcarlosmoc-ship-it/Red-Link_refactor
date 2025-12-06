@@ -68,6 +68,8 @@ from .integrity import (
 from .payment import (
     OverduePeriod,
     OverduePeriodListResponse,
+    PaymentDuplicateCheck,
+    PaymentMethodBreakdown,
     PeriodPaymentStatus,
     ServicePaymentBase,
     ServicePaymentCreate,
@@ -103,6 +105,20 @@ from .service_plan import (
     ServicePlanRead,
     ServicePlanUpdate,
 )
+from .service import (
+    ClientContractsResponse,
+    ClientServiceBase,
+    ClientServiceBulkCreate,
+    ClientServiceCreate,
+    ClientServiceInlineCreate,
+    ClientServiceListResponse,
+    ClientServiceRead,
+    ClientServiceUpdate,
+    ContractedServiceSummary,
+    ProrationPreview,
+    ServiceDebtRead,
+    ServiceDebtUpdate,
+)
 from .auth import AdminLoginRequest, TokenResponse
 
 __all__ = [
@@ -135,11 +151,15 @@ __all__ = [
     "ClientServiceRead",
     "ClientServiceUpdate",
     "ClientServiceListResponse",
+    "ClientContractsResponse",
+    "ContractedServiceSummary",
+    "ProrationPreview",
     "ServiceDebtRead",
     "ServiceDebtUpdate",
     "PaginatedResponse",
     "ServicePaymentBase",
     "ServicePaymentCreate",
+    "PaymentMethodBreakdown",
     "ServicePaymentRead",
     "ServicePaymentListResponse",
     "ServicePaymentUpdate",
@@ -148,6 +168,7 @@ __all__ = [
     "PeriodPaymentStatus",
     "OverduePeriod",
     "OverduePeriodListResponse",
+    "PaymentDuplicateCheck",
     "PosProductCreate",
     "PosProductRead",
     "PosProductUpdate",

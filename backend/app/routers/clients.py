@@ -12,7 +12,7 @@ from .. import schemas
 from ..models.client import ServiceStatus
 from ..database import get_db
 from ..security import require_admin
-from ..services import ClientService
+from ..services import ClientContractService, ClientService
 
 router = APIRouter(dependencies=[Depends(require_admin)])
 
@@ -109,6 +109,21 @@ def get_client(client_id: str, db: Session = Depends(get_db)) -> schemas.ClientR
     if client is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client not found")
     return client
+
+
+@router.get(
+    "/{client_id}/contracts",
+    response_model=schemas.ClientContractsResponse,
+    summary="Servicios contratados y adeudos del cliente",
+)
+def list_contracted_services(
+    client_id: str, db: Session = Depends(get_db)
+) -> schemas.ClientContractsResponse:
+    client = ClientService.get_client(db, client_id)
+    if client is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client not found")
+
+    return ClientContractService.contracted_services_summary(db, client_id)
 
 
 def _create_client(

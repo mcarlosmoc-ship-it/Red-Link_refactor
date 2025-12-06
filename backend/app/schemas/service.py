@@ -165,6 +165,41 @@ class ClientServiceListResponse(PaginatedResponse[ClientServiceRead]):
     pass
 
 
+class ContractedServiceSummary(BaseModel):
+    """Aggregated view of a client's contracted services and debt."""
+
+    id: str
+    client_id: str
+    plan_name: str
+    category: ClientServiceType
+    status: ClientServiceStatus
+    debt_amount: Decimal
+    debt_months: Decimal
+    next_billing_date: Optional[date] = None
+    period_key: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ClientContractsResponse(BaseModel):
+    """List of contracted services with aggregated debt data."""
+
+    items: list[ContractedServiceSummary]
+    total_debt_amount: Decimal
+    total_debt_months: Decimal
+
+
+class ProrationPreview(BaseModel):
+    """Result of simulating proration or plan adjustments."""
+
+    client_service_id: str
+    applied_plan_id: int
+    effective_price: Decimal
+    next_billing_date: Optional[date] = None
+    added_debt_months: Decimal
+    added_debt_amount: Decimal
+
+
 class ServiceDebtRead(BaseModel):
     """Standalone view for service-level debt tracking."""
 
