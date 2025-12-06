@@ -51,7 +51,7 @@ _Errores típicos_: `400` cuando la validación del contrato falla (detalles en 
 _Respuestas_: `201` al crear, `400` en inconsistencias (fechas invertidas, montos fuera de rango o reglas de negocio), `404` si el ID no existe.
 
 ## Recordatorios de pago
-No existe un endpoint HTTP dedicado; los recordatorios se envían mediante una tarea en segundo plano activada con `ENABLE_PAYMENT_REMINDERS=1`. Para lanzarlos manualmente desde consola:
+No existe un endpoint HTTP dedicado; los recordatorios se envían mediante una tarea en segundo plano. Para que se ejecute al iniciar la API define `PAYMENT_REMINDER_SCHEDULER_ENABLED=1`. Si necesitas desactivar por completo el hilo en entornos de prueba usa `ENABLE_PAYMENT_REMINDERS=0`, que evita que FastAPI intente iniciarlo. Para lanzarlos manualmente desde consola:
 ```bash
 cd backend
 python -m backend.app.scripts.payment_reminder_job --days-ahead 3 --dry-run
