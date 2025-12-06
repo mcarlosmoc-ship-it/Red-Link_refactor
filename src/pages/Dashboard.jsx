@@ -9,7 +9,6 @@ import {
   peso,
   formatPeriodLabel,
   diffPeriods,
-  addMonthsToPeriod,
 } from '../utils/formatters.js'
 import { useDashboardMetrics } from '../hooks/useDashboardMetrics.js'
 import { useClients } from '../hooks/useClients.js'
@@ -18,6 +17,17 @@ import { useToast } from '../hooks/useToast.js'
 import { CLIENT_PRICE, useBackofficeStore } from '../store/useBackofficeStore.js'
 import { useBackofficeRefresh } from '../contexts/BackofficeRefreshContext.jsx'
 import DashboardSkeleton from './DashboardSkeleton.jsx'
+import {
+  CLIENT_TYPE_LABELS,
+  SERVICE_STATUS_LABELS,
+  formatServiceStatus,
+  getClientDebtSummary,
+  getClientMonthlyFee,
+  getFractionalDebt,
+  getOutstandingPeriodKeys,
+  getPrimaryService,
+  isInternetLikeService,
+} from '../features/clients/utils.js'
 
 const periodsFormatter = new Intl.NumberFormat('es-MX', { maximumFractionDigits: 2 })
 const printDateFormatter = new Intl.DateTimeFormat('es-MX', {
@@ -55,59 +65,6 @@ const createEmptyPaymentForm = () => ({
   method: 'Efectivo',
   note: '',
 })
-
-const CLIENT_TYPE_LABELS = {
-  residential: 'Cliente residencial',
-  token: 'Punto con antena pública',
-}
-
-const SERVICE_STATUS_LABELS = {
-  active: 'Activo',
-  suspended: 'Suspendido',
-  cancelled: 'Baja',
-}
-
-const formatServiceStatus = (status) => SERVICE_STATUS_LABELS[status] ?? 'Desconocido'
-
-const isInternetLikeService = (serviceType) =>
-  serviceType === 'internet' || serviceType === 'hotspot'
-
-const getPrimaryService = (client) => {
-  const services = Array.isArray(client?.services) ? client.services : []
-  if (services.length === 0) {
-    return null
-  }
-  return services.find((service) => isInternetLikeService(service.type)) ?? services[0]
-}
-
-const getOutstandingPeriodKeys = (anchorPeriod, debtMonths) => {
-  const normalizedAnchor = typeof anchorPeriod === 'string' ? anchorPeriod : null
-  const numericDebt = Number(debtMonths ?? 0)
-
-  if (!normalizedAnchor || !Number.isFinite(numericDebt) || numericDebt <= 0.0001) {
-    return []
-  }
-
-  const completeMonths = Math.max(Math.floor(numericDebt), 0)
-  const keys = []
-
-  for (let index = 0; index < completeMonths; index += 1) {
-    keys.push(addMonthsToPeriod(normalizedAnchor, -index))
-  }
-
-  return keys
-}
-
-const getFractionalDebt = (debtMonths) => {
-  const numericDebt = Number(debtMonths ?? 0)
-
-  if (!Number.isFinite(numericDebt)) {
-    return 0
-  }
-
-  const fractional = Math.abs(numericDebt - Math.floor(numericDebt))
-  return fractional > 0.0001 ? fractional : 0
-}
 
 export default function DashboardPage() {
   const initializeStatus = useBackofficeStore((state) => state.status.initialize)
@@ -165,7 +122,9 @@ export default function DashboardPage() {
 
   const pendingClients = useMemo(
     () =>
-      clients.filter((client) => Number(client.debtMonths ?? 0) > 0.0001),
+      clients.filter(
+        (client) => getClientDebtSummary(client, CLIENT_PRICE).debtMonths > 0.0001,
+      ),
     [clients],
   )
 
@@ -273,18 +232,11 @@ export default function DashboardPage() {
   const handlePrintPendingClients = useCallback(() => {
     const summaries = pendingClients
       .map((client) => {
-        const debtMonths = Number(client.debtMonths ?? 0)
+        const { debtMonths, totalDue } = getClientDebtSummary(client, CLIENT_PRICE)
 
-        if (!Number.isFinite(debtMonths) || debtMonths <= 0.0001) {
+        if (debtMonths <= 0.0001) {
           return null
         }
-
-        const primaryService = getPrimaryService(client)
-        const servicePrice = Number(primaryService?.price)
-        const monthlyFee = Number.isFinite(servicePrice) && servicePrice > 0
-          ? servicePrice
-          : client.monthlyFee ?? CLIENT_PRICE
-        const totalDue = debtMonths * monthlyFee
 
         return {
           name: client.name ?? 'Sin nombre',
@@ -429,17 +381,14 @@ export default function DashboardPage() {
     () => getPrimaryService(activeClient),
     [activeClient],
   )
-  const activeMonthlyFee = useMemo(() => {
-    const servicePrice = Number(activeClientPrimaryService?.price)
-    if (Number.isFinite(servicePrice) && servicePrice > 0) {
-      return servicePrice
-    }
-    const mappedFee = Number(activeClient?.monthlyFee)
-    if (Number.isFinite(mappedFee) && mappedFee > 0) {
-      return mappedFee
-    }
-    return CLIENT_PRICE
-  }, [activeClientPrimaryService?.price, activeClient?.monthlyFee])
+  const activeMonthlyFee = useMemo(
+    () => getClientMonthlyFee(activeClient, CLIENT_PRICE),
+    [activeClient],
+  )
+  const activeDebtSummary = useMemo(
+    () => getClientDebtSummary(activeClient, CLIENT_PRICE),
+    [activeClient],
+  )
 
   useEffect(() => {
     if (!expandedClientId) {
@@ -488,12 +437,8 @@ export default function DashboardPage() {
   const handleOpenPaymentForm = (client) => {
     if (!isCurrentPeriod) return
 
-    const debtMonths = Number(client.debtMonths ?? 0)
+    const { debtMonths, monthlyFee } = getClientDebtSummary(client, CLIENT_PRICE)
     const primaryService = getPrimaryService(client)
-    const servicePrice = Number(primaryService?.price)
-    const monthlyFee = Number.isFinite(servicePrice) && servicePrice > 0
-      ? servicePrice
-      : client.monthlyFee ?? CLIENT_PRICE
     const baseMonths = debtMonths > 0 ? debtMonths : 1
 
     setPaymentForm({
@@ -509,7 +454,7 @@ export default function DashboardPage() {
     setPaymentErrors({})
   }
 
-  const outstandingAmount = (activeClient?.debtMonths ?? 0) * activeMonthlyFee
+  const outstandingAmount = activeDebtSummary.totalDue
   const plannedAmount =
     paymentForm.mode === 'amount'
       ? Number(paymentForm.amount) || 0
@@ -521,7 +466,7 @@ export default function DashboardPage() {
         : 0
       : Number(paymentForm.months) || 0
   const remainingBalance = Math.max(0, outstandingAmount - plannedAmount)
-  const additionalAhead = Math.max(0, plannedMonths - (activeClient?.debtMonths ?? 0))
+  const additionalAhead = Math.max(0, plannedMonths - activeDebtSummary.debtMonths)
   const detailAnchorPeriod = selectedPeriod ?? currentPeriod ?? null
 
   const handleSubmitPayment = async (event) => {
@@ -1150,10 +1095,8 @@ export default function DashboardPage() {
                     ? formatServiceStatus(primaryService.status)
                     : client.service
                   const isPrimaryActive = primaryService?.status === 'active'
-                  const primaryServicePrice = Number(primaryService?.price)
-                  const displayMonthlyFee = Number.isFinite(primaryServicePrice) && primaryServicePrice > 0
-                    ? primaryServicePrice
-                    : client.monthlyFee ?? CLIENT_PRICE
+                  const displayMonthlyFee = getClientMonthlyFee(client, CLIENT_PRICE)
+                  const debtSummary = getClientDebtSummary(client, displayMonthlyFee)
                   const isExpanded = expandedClientId === client.id
                   return (
                     <React.Fragment key={client.id}>
@@ -1184,10 +1127,8 @@ export default function DashboardPage() {
                         <td className="px-3 py-2 text-slate-600">{peso(displayMonthlyFee)}</td>
                         <td className="px-3 py-2">
                           {(() => {
-                            const debtMonths = Number(client.debtMonths ?? 0)
+                            const { debtMonths, totalDue } = debtSummary
                             const hasDebt = debtMonths > 0.0001
-                            const monthlyFee = displayMonthlyFee
-                            const totalDue = debtMonths * monthlyFee
 
                             return (
                               <div className="flex flex-col gap-1">
@@ -1236,9 +1177,7 @@ export default function DashboardPage() {
                         <tr id={`client-details-${client.id}`}>
                           <td colSpan={5} className="bg-slate-50 px-3 py-3">
                             {(() => {
-                              const debtMonths = Number(client.debtMonths ?? 0)
-                              const monthlyFee = displayMonthlyFee
-                              const totalDue = debtMonths * monthlyFee
+                              const { debtMonths, totalDue, fractionalDebt } = debtSummary
                               const outstandingPeriodKeys = getOutstandingPeriodKeys(
                                 detailAnchorPeriod,
                                 debtMonths,
@@ -1246,7 +1185,6 @@ export default function DashboardPage() {
                               const outstandingPeriodLabels = outstandingPeriodKeys.map((periodKey) =>
                                 formatPeriodLabel(periodKey),
                               )
-                              const fractionalDebt = getFractionalDebt(debtMonths)
                               const paidMonthsAhead = Number(client.paidMonthsAhead ?? 0)
                               const clientTypeLabel = CLIENT_TYPE_LABELS[client.type] ?? 'Sin especificar'
 
