@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import Button from '../../components/ui/Button.jsx'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card.jsx'
-import { getPrimaryService, normalizeId } from './utils.js'
+import { formatServiceStatus, getPrimaryService, normalizeId } from './utils.js'
 
 const SelectionActionReport = ({ report, onClear }) => {
   if (!report || !Array.isArray(report.results) || report.results.length === 0) {
@@ -53,6 +53,8 @@ const filtersInitialState = {
   term: '',
   location: 'all',
   status: 'all',
+  servicePlanId: 'all',
+  serviceStatus: 'all',
 }
 
 export default function ClientsList({
@@ -115,9 +117,15 @@ export default function ClientsList({
   const filteredClients = useMemo(() => {
     return clients.filter((client) => {
       const searchValues = [client.name, client.location, client.zoneId]
+      const primaryService = getPrimaryService(client)
+      const primaryPlanId =
+        primaryService?.servicePlanId ?? primaryService?.plan?.id ?? primaryService?.planId ?? null
+      const normalizedPrimaryPlanName = primaryService?.plan?.name?.toLowerCase?.() ?? ''
+
       if (
         normalizedSearchTerm &&
-        !searchValues.some((value) => value?.toString().toLowerCase().includes(normalizedSearchTerm))
+        !searchValues.some((value) => value?.toString().toLowerCase().includes(normalizedSearchTerm)) &&
+        !normalizedPrimaryPlanName.includes(normalizedSearchTerm)
       ) {
         return false
       }
@@ -136,9 +144,25 @@ export default function ClientsList({
         return (client.debtMonths ?? 0) === 0
       }
 
+      if (filters.servicePlanId !== 'all') {
+        return String(primaryPlanId ?? '') === String(filters.servicePlanId)
+      }
+
+      if (filters.serviceStatus !== 'all') {
+        const serviceStatus = primaryService?.status ?? 'unknown'
+        return serviceStatus === filters.serviceStatus
+      }
+
       return true
     })
-  }, [clients, filters.location, filters.status, normalizedSearchTerm])
+  }, [
+    clients,
+    filters.location,
+    filters.servicePlanId,
+    filters.serviceStatus,
+    filters.status,
+    normalizedSearchTerm,
+  ])
 
   useEffect(() => {
     updateSelection((prev) =>
@@ -149,7 +173,13 @@ export default function ClientsList({
   useEffect(() => {
     setCurrentPage(1)
     updateSelection([])
-  }, [filters.location, filters.status, filters.term])
+  }, [
+    filters.location,
+    filters.servicePlanId,
+    filters.serviceStatus,
+    filters.status,
+    filters.term,
+  ])
 
   useEffect(() => {
     updateSelection([])
@@ -286,7 +316,7 @@ export default function ClientsList({
         </div>
       </CardHeader>
       <CardContent className="space-y-4 p-4 sm:p-6">
-        <div className="grid grid-cols-1 gap-2 md:grid-cols-4">
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-5 lg:grid-cols-6">
           <input
             aria-label="Buscar clientes"
             data-testid="search-clients"
@@ -320,6 +350,32 @@ export default function ClientsList({
             <option value="all">Todos</option>
             <option value="ok">Al corriente</option>
             <option value="debt">Con adeudo</option>
+          </select>
+          <select
+            aria-label="Filtro plan de servicio"
+            data-testid="service-plan-filter"
+            className="rounded border border-slate-200 p-2"
+            value={filters.servicePlanId}
+            onChange={(event) => handleChangeFilter('servicePlanId', event.target.value)}
+          >
+            <option value="all">Todos los planes</option>
+            {availablePlans.map((plan) => (
+              <option key={plan.id} value={plan.id}>
+                {plan.name}
+              </option>
+            ))}
+          </select>
+          <select
+            aria-label="Filtro estado del servicio"
+            data-testid="service-status-filter"
+            className="rounded border border-slate-200 p-2"
+            value={filters.serviceStatus}
+            onChange={(event) => handleChangeFilter('serviceStatus', event.target.value)}
+          >
+            <option value="all">Todos los servicios</option>
+            <option value="active">Activos</option>
+            <option value="suspended">Suspendidos</option>
+            <option value="cancelled">Baja</option>
           </select>
           <Button variant="ghost" disabled={!isDirty} onClick={() => setFilters(filtersInitialState)}>
             Limpiar filtros
@@ -413,6 +469,7 @@ export default function ClientsList({
                 </th>
                 <th className="px-3 py-2">Nombre</th>
                 <th className="px-3 py-2">Ubicación</th>
+                <th className="px-3 py-2">Servicio principal</th>
                 <th className="px-3 py-2">Estado</th>
                 <th className="px-3 py-2">Acciones</th>
               </tr>
@@ -428,6 +485,15 @@ export default function ClientsList({
                       (service) => Number(service.debtMonths ?? 0) > 0 || Number(service.debtAmount ?? 0) > 0,
                     )
                   : []
+                const planName = primaryService?.plan?.name ?? 'Sin servicio'
+                const serviceStatusLabel = primaryService?.status
+                  ? formatServiceStatus(primaryService.status)
+                  : 'Sin estado'
+                const baseLabel = primaryService?.baseId
+                  ? `Base ${primaryService.baseId}`
+                  : client.zoneId
+                    ? `Zona ${client.zoneId}`
+                    : null
                 return (
                   <tr
                     key={id}
@@ -447,7 +513,28 @@ export default function ClientsList({
                     <td className="px-3 py-2 font-medium">{client.name}</td>
                     <td className="px-3 py-2">{client.location || 'Sin ubicación'}</td>
                     <td className="px-3 py-2">
-                      {primaryService?.status === 'suspended' ? 'Suspendido' : 'Activo'}
+                      <div className="flex flex-col gap-1 text-sm">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-semibold text-slate-800">{planName}</span>
+                          {primaryService?.status && (
+                            <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-700">
+                              {serviceStatusLabel}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs text-slate-600">
+                          {baseLabel ? <span>{baseLabel}</span> : <span>Base sin especificar</span>}
+                          {primaryService?.ipAddress && (
+                            <span className="ml-2 inline-flex items-center gap-1 rounded bg-slate-50 px-2 py-0.5">
+                              <span className="h-2 w-2 rounded-full bg-emerald-400" aria-hidden />
+                              {primaryService.ipAddress}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-3 py-2">
+                      {primaryService?.status ? serviceStatusLabel : 'Sin servicio asignado'}
                       {servicesWithDebt.length > 0 && (
                         <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
                           Adeudo
@@ -480,7 +567,7 @@ export default function ClientsList({
               })}
               {paginatedClients.length === 0 && (
                 <tr>
-                  <td className="px-3 py-4 text-center text-slate-500" colSpan={5}>
+                  <td className="px-3 py-4 text-center text-slate-500" colSpan={6}>
                     No se encontraron clientes con los filtros actuales.
                   </td>
                 </tr>
