@@ -6,6 +6,7 @@ from calendar import monthrange
 from datetime import date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from math import ceil
+from time import perf_counter
 from typing import Iterable, Optional, Tuple
 
 from sqlalchemy import func
@@ -15,6 +16,7 @@ from sqlalchemy.orm import Session, selectinload
 from .. import models, schemas
 from .billing_periods import BillingPeriodService
 from .financial_snapshots import FinancialSnapshotService
+from .observability import MetricOutcome, ObservabilityService
 
 
 class PaymentServiceError(RuntimeError):
@@ -115,75 +117,131 @@ class PaymentService:
     def create_payment(
         cls, db: Session, data: schemas.ServicePaymentCreate
     ) -> models.ServicePayment:
-        service = cls._resolve_service(db, data.client_service_id)
-        client = service.client
-
-        period_key = None
-        if data.period_key:
-            period_key = BillingPeriodService.ensure_period(db, data.period_key).period_key
-            cls._ensure_no_duplicate_payment(db, service.id, period_key)
-
-        amount = cls._normalize_amount(data.amount)
-        months_paid = cls._normalize_months(data.months_paid)
-        if months_paid is None:
-            months_paid = cls._infer_months_from_amount(amount, service.effective_price)
-
-        outstanding_debt_months = Decimal(service.debt_months or 0)
-        outstanding_debt_amount = Decimal(service.debt_amount or 0)
-
-        if outstanding_debt_months > Decimal("0"):
-            if months_paid is None or months_paid < outstanding_debt_months:
-                raise ValueError(
-                    "Debes cubrir los meses vencidos antes de registrar meses adelantados."
-                )
-
-        if outstanding_debt_amount > Decimal("0") and amount < outstanding_debt_amount:
-            raise ValueError("El monto no cubre el adeudo pendiente del servicio.")
-
-        payment = models.ServicePayment(
-            client_service_id=service.id,
-            client_id=client.id,
-            period_key=period_key,
-            paid_on=data.paid_on,
-            amount=amount,
-            months_paid=months_paid,
-            method=data.method,
-            note=data.note,
-            recorded_by=data.recorded_by,
-        )
-
-        if period_key:
-            FinancialSnapshotService.apply_payment(db, period_key, amount)
-
-        cls._apply_client_balances(service, client, months_paid or Decimal("0"))
-        cls._apply_service_debt(service, amount, months_paid)
-        cls._update_next_billing(service, data.paid_on, months_paid, amount)
-
-        db.add(payment)
-        db.add(client)
-        db.add(service)
-
-        audit_entry = models.PaymentAuditLog(
-            payment=payment,
-            action=models.PaymentAuditAction.CREATED,
-            snapshot={
-                "amount": str(amount),
-                "months_paid": str(months_paid) if months_paid is not None else None,
-                "method": payment.method,
-                "paid_on": str(payment.paid_on),
-            },
-        )
-        db.add(audit_entry)
+        start = perf_counter()
+        tags: dict[str, object] = {
+            "client_service_id": data.client_service_id,
+            "has_period_key": bool(data.period_key),
+            "payment_method": str(data.method.value),
+        }
 
         try:
+            service = cls._resolve_service(db, data.client_service_id)
+            client = service.client
+
+            tags.update(
+                {
+                    "client_id": str(client.id),
+                    "service_type": getattr(service.service_plan, "category", None),
+                }
+            )
+
+            period_key = None
+            if data.period_key:
+                period_key = BillingPeriodService.ensure_period(db, data.period_key).period_key
+                cls._ensure_no_duplicate_payment(db, service.id, period_key)
+
+            amount = cls._normalize_amount(data.amount)
+            months_paid = cls._normalize_months(data.months_paid)
+            if months_paid is None:
+                months_paid = cls._infer_months_from_amount(amount, service.effective_price)
+
+            outstanding_debt_months = Decimal(service.debt_months or 0)
+            outstanding_debt_amount = Decimal(service.debt_amount or 0)
+
+            if outstanding_debt_months > Decimal("0"):
+                if months_paid is None or months_paid < outstanding_debt_months:
+                    raise ValueError(
+                        "Debes cubrir los meses vencidos antes de registrar meses adelantados."
+                    )
+
+            if outstanding_debt_amount > Decimal("0") and amount < outstanding_debt_amount:
+                raise ValueError("El monto no cubre el adeudo pendiente del servicio.")
+
+            payment = models.ServicePayment(
+                client_service_id=service.id,
+                client_id=client.id,
+                period_key=period_key,
+                paid_on=data.paid_on,
+                amount=amount,
+                months_paid=months_paid,
+                method=data.method,
+                note=data.note,
+                recorded_by=data.recorded_by,
+            )
+
+            if period_key:
+                FinancialSnapshotService.apply_payment(db, period_key, amount)
+
+            cls._apply_client_balances(service, client, months_paid or Decimal("0"))
+            cls._apply_service_debt(service, amount, months_paid)
+            cls._update_next_billing(service, data.paid_on, months_paid, amount)
+
+            db.add(payment)
+            db.add(client)
+            db.add(service)
+
+            audit_entry = models.PaymentAuditLog(
+                payment=payment,
+                action=models.PaymentAuditAction.CREATED,
+                snapshot={
+                    "amount": str(amount),
+                    "months_paid": str(months_paid) if months_paid is not None else None,
+                    "method": payment.method,
+                    "paid_on": str(payment.paid_on),
+                },
+            )
+            db.add(audit_entry)
+
             db.commit()
+
+            db.refresh(payment)
+            db.refresh(client)
+
+            ObservabilityService.record_event(
+                db,
+                "payments.captured",
+                MetricOutcome.SUCCESS,
+                duration_ms=(perf_counter() - start) * 1000,
+                tags=tags,
+                metadata={
+                    "period_key": period_key,
+                    "months_paid": str(months_paid) if months_paid is not None else None,
+                    "amount": str(amount),
+                },
+            )
+
+            return payment
+        except ValueError as exc:
+            ObservabilityService.record_validation_result(
+                db,
+                "payments.validation_failed",
+                outcome=MetricOutcome.REJECTED,
+                reason=str(exc),
+                tags=tags,
+                duration_ms=(perf_counter() - start) * 1000,
+            )
+            raise
+        except PaymentServiceError as exc:
+            ObservabilityService.record_validation_result(
+                db,
+                "payments.persistence_failed",
+                outcome=MetricOutcome.ERROR,
+                reason=str(exc),
+                tags=tags,
+                duration_ms=(perf_counter() - start) * 1000,
+            )
+            raise
         except SQLAlchemyError as exc:
             db.rollback()
+            ObservabilityService.record_validation_result(
+                db,
+                "payments.persistence_failed",
+                outcome=MetricOutcome.ERROR,
+                reason=str(exc),
+                tags=tags,
+                duration_ms=(perf_counter() - start) * 1000,
+            )
             raise PaymentServiceError("Unable to record payment at this time.") from exc
-
-        db.refresh(payment)
-        db.refresh(client)
-        return payment
 
     @staticmethod
     def _infer_months_from_amount(

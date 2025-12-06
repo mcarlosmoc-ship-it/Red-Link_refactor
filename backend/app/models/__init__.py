@@ -32,6 +32,7 @@ from .payment_reminder import (
     ReminderType,
 )
 from .pos import PosProduct, PosSale, PosSaleItem
+from .operational_metric import OperationalMetricEvent
 from .reseller import Reseller
 from .reseller_delivery import (
     DeliverySettlementStatus,
@@ -77,6 +78,7 @@ __all__ = [
     "PosProduct",
     "PosSale",
     "PosSaleItem",
+    "OperationalMetricEvent",
     "VoucherType",
     "VoucherPrice",
     "Voucher",

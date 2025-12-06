@@ -20,6 +20,7 @@ from .metrics import MetricsService
 from .pos import PosService, PosServiceError
 from .billing_periods import BillingPeriodService
 from .operating_costs import OperatingCostService
+from .observability import ObservabilityService, MetricOutcome
 from .financial_snapshots import FinancialSnapshotService
 from .payment_reminders import (
     PaymentReminderService,
@@ -53,6 +54,8 @@ __all__ = [
     "PosServiceError",
     "BillingPeriodService",
     "OperatingCostService",
+    "ObservabilityService",
+    "MetricOutcome",
     "FinancialSnapshotService",
     "PaymentReminderService",
     "build_notification_client_from_env",

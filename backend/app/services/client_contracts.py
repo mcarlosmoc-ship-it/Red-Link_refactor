@@ -11,6 +11,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 
 from .. import models, schemas
+from .observability import MetricOutcome, ObservabilityService
 
 
 DEFAULT_PLAN_REQUIREMENTS: dict[models.ClientServiceType, dict[str, bool]] = {
@@ -513,6 +514,8 @@ class ClientContractService:
     def update_service(
         cls, db: Session, service: models.ClientService, data: schemas.ClientServiceUpdate
     ) -> models.ClientService:
+        previous_plan_id = service.service_plan_id
+        previous_status = service.status
         update_data, plan, effective_price = cls._normalize_payload(
             db, data, client=service.client, existing=service
         )
@@ -540,6 +543,35 @@ class ClientContractService:
             raise ClientContractError("No se pudo actualizar el servicio.") from exc
 
         db.refresh(service)
+
+        if previous_plan_id != service.service_plan_id:
+            ObservabilityService.record_event(
+                db,
+                "services.plan_change",
+                MetricOutcome.SUCCESS,
+                tags={
+                    "client_id": str(service.client_id),
+                    "client_service_id": str(service.id),
+                    "from_plan": previous_plan_id,
+                    "to_plan": service.service_plan_id,
+                },
+            )
+
+        if (
+            previous_status != models.ClientServiceStatus.ACTIVE
+            and service.status == models.ClientServiceStatus.ACTIVE
+        ):
+            ObservabilityService.record_event(
+                db,
+                "services.reconnected",
+                MetricOutcome.SUCCESS,
+                tags={
+                    "client_id": str(service.client_id),
+                    "client_service_id": str(service.id),
+                    "previous_status": previous_status.value,
+                },
+            )
+
         return service
 
     @staticmethod
