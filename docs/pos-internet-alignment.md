@@ -18,53 +18,21 @@ Este documento resume los acuerdos alcanzados tras la revisión de propuestas pa
 - Prototipar el flujo de pago rápido en POS reutilizando el endpoint actual.
 - Mapear rutas con `clientId`, `view`, paginación y filtros antes de reordenar el menú.
 
-## Tareas sugeridas (por flujo)
-
-### Dashboard (KPIs y accesos rápidos)
-- Listar métricas disponibles y validarlas con producto/diseño.
-- Definir límites de periodo por defecto (ej. mes actual) y criterios de filtrado.
-- Ajustar accesos rápidos sin reintroducir tablas completas.
-- Entregable: wireframes del Dashboard con KPIs finales y accesos rápidos aprobados.
-
-### Pago rápido en POS
-- Documentar el endpoint reutilizado y parámetros mínimos requeridos.
-- Preparar mock de UI mínima (campos visibles, feedback esperado) y revisar errores comunes.
-- Confirmar estados de éxito/falla reutilizando los toasts/notificaciones actuales.
-- Entregable: prototipo aprobado + nota técnica de validaciones compartidas con Internet.
-
-### Rutas y menú
-- Inventariar rutas que usan `clientId`/`view` y registrar dependencias cruzadas.
-- Proponer nueva jerarquía de menú con equivalencia de slugs y redirecciones necesarias.
-- Definir plan de comunicación/migración para bookmarks y enlaces compartidos.
-- Entregable: mapa de rutas actual vs. propuesta y plan de redirecciones.
-
-### Inventario bajo Internet
-- Mapear hooks y endpoints que consumen datos de inventario desde otros módulos.
-- Identificar cambios de ruta o aliases necesarios para no romper integraciones.
-- Validar impacto en permisos/roles antes de mover vistas.
-- Entregable: tabla de dependencias + decisión de movimiento con plan de mitigación.
-
-### Clientes (panel lateral/modal)
-- Inventariar vistas que dependen de paginación y `clientId/view` para mantener estado.
-- Diseñar panel lateral/modal con acciones principales visibles sin recargar tabla.
-- Probar impacto en rendimiento con dataset paginado y filtros actuales.
-- Entregable: prototipo con checklist de compatibilidad de estado/paginación.
-
-### Revendedores (pestañas)
-- Priorizar pestañas: Liquidaciones, Entregas, Historial y Revendedores base.
-- Definir datos mínimos y acciones rápidas por pestaña para no duplicar formularios.
-- Validar permisos/roles por pestaña y navegación con deep-links.
-- Entregable: esquema de pestañas con rutas y permisos asignados.
-
-### Finanzas centralizado
-- Confirmar identificadores comunes (cliente, servicio, canal) en ingresos POS/ISP.
-- Diseñar vista consolidada de ingresos/gastos con filtros por origen.
-- Revisar reportes existentes para evitar duplicación o ETL interno.
-- Entregable: especificación de modelos/reportes consolidados.
-
-### Configuración
-- Listar configuraciones globales vs. dependientes de cliente/servicio.
-- Proponer estructura de secciones para concentrar ajustes generales.
-- Validar dependencias con POS/Internet antes de mover configuraciones sensibles.
-- Entregable: árbol de configuración con ownership y dependencias.
+## Tareas sugeridas
+- **Dashboard (KPIs y accesos rápidos)**
+  - Listar métricas disponibles y validarlas con producto/diseño.
+  - Definir límites de periodo por defecto (ej. mes actual) y criterios de filtrado.
+  - Ajustar accesos rápidos sin reintroducir tablas completas.
+- **Pago rápido en POS**
+  - Documentar el endpoint reutilizado y parámetros mínimos requeridos.
+  - Preparar mock de UI mínima (campos visibles, feedback esperado) y revisar errores comunes.
+  - Confirmar estados de éxito/falla reutilizando los toasts/notificaciones actuales.
+- **Rutas y menú**
+  - Inventariar rutas que usan `clientId`/`view` y registrar dependencias cruzadas.
+  - Proponer nueva jerarquía de menú con equivalencia de slugs y redirecciones necesarias.
+  - Definir plan de comunicación/migración para bookmarks y enlaces compartidos.
+- **Inventario bajo Internet**
+  - Mapear hooks y endpoints que consumen datos de inventario desde otros módulos.
+  - Identificar cambios de ruta o aliases necesarios para no romper integraciones.
+  - Validar impacto en permisos/roles antes de mover vistas.
 
