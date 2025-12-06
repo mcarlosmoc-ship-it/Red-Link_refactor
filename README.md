@@ -31,7 +31,7 @@ Para un flujo completamente automatizado en entornos Unix, ejecuta `./dev.sh` de
 - Ejecuta `npm install` cuando aún no existe `node_modules/`.
 - Aplica `alembic upgrade head` reutilizando la misma `DATABASE_URL` que usa la API.
 - Corre `npm run lint`, `npm run test -- --run` y `pytest` (puedes omitirlos con `--skip-checks`). Si alguna comprobación falla, el script se detiene para que puedas corregir el problema antes de continuar.
-- Levanta FastAPI y Vite en paralelo; al terminar verás el backend en `http://localhost:8000` y el frontend en `http://localhost:5173`.
+- Levanta FastAPI y Vite en paralelo; al terminar verás el backend (`http://localhost:8000`) y el frontend (`http://localhost:5173`).
 
 Opcionalmente puedes acelerar la preparación con:
 
