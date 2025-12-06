@@ -195,6 +195,9 @@ class ServicePayment(Base):
     amount = Column(Numeric(12, 2), nullable=False)
     months_paid = Column(Numeric(6, 2), nullable=True)
     method = Column(PAYMENT_METHOD_ENUM, nullable=False)
+    method_breakdown = Column(
+        JSON().with_variant(SQLiteJSON(), "sqlite"), nullable=True
+    )
     note = Column(Text, nullable=True)
     recorded_by = Column(String(120), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

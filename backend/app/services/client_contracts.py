@@ -579,6 +579,97 @@ class ClientContractService:
         db.commit()
 
     @staticmethod
+    def contracted_services_summary(
+        db: Session, client_id: str
+    ) -> schemas.ClientContractsResponse:
+        services = (
+            db.query(models.ClientService)
+            .options(selectinload(models.ClientService.service_plan))
+            .filter(models.ClientService.client_id == client_id)
+            .all()
+        )
+
+        summaries: list[schemas.ContractedServiceSummary] = []
+        total_debt_amount = Decimal("0")
+        total_debt_months = Decimal("0")
+        for service in services:
+            period_key = None
+            if service.next_billing_date:
+                period_key = f"{service.next_billing_date.year:04d}-{service.next_billing_date.month:02d}"
+
+            summary = schemas.ContractedServiceSummary(
+                id=str(service.id),
+                client_id=str(service.client_id),
+                plan_name=service.service_plan.name if service.service_plan else "",
+                category=service.service_plan.category
+                if service.service_plan
+                else models.ClientServiceType.OTHER,
+                status=service.status,
+                debt_amount=Decimal(service.debt_amount or 0),
+                debt_months=Decimal(service.debt_months or 0),
+                next_billing_date=service.next_billing_date,
+                period_key=period_key,
+            )
+            total_debt_amount += summary.debt_amount
+            total_debt_months += summary.debt_months
+            summaries.append(summary)
+
+        return schemas.ClientContractsResponse(
+            items=summaries,
+            total_debt_amount=total_debt_amount.quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            ),
+            total_debt_months=total_debt_months.quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            ),
+        )
+
+    @classmethod
+    def preview_proration(
+        cls,
+        db: Session,
+        service: models.ClientService,
+        *,
+        start_date: Optional[date] = None,
+        target_plan_id: Optional[int] = None,
+    ) -> schemas.ProrationPreview:
+        reference_plan_id = target_plan_id or service.service_plan_id
+        plan = cls._resolve_service_plan(db, reference_plan_id)
+        payload = schemas.ClientServiceUpdate(
+            service_id=plan.id,
+            billing_day=service.billing_day,
+            start_date=start_date or date.today(),
+            apply_prorate=True,
+            custom_price=service.custom_price,
+            debt_amount=service.debt_amount,
+            debt_months=service.debt_months,
+        )
+
+        normalized, _, effective_price = cls._normalize_payload(
+            db, payload, client=service.client, existing=service
+        )
+
+        added_debt_amount = Decimal(normalized.get("debt_amount", service.debt_amount or 0)) - Decimal(
+            service.debt_amount or 0
+        )
+        added_debt_months = Decimal(normalized.get("debt_months", service.debt_months or 0)) - Decimal(
+            service.debt_months or 0
+        )
+
+        return schemas.ProrationPreview(
+            client_service_id=str(service.id),
+            applied_plan_id=plan.id,
+            effective_price=effective_price,
+            next_billing_date=normalized.get("next_billing_date", service.next_billing_date),
+            added_debt_amount=added_debt_amount.quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            ),
+            added_debt_months=added_debt_months.quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            ),
+        )
+
+    @staticmethod
     def _compute_next_billing_date(billing_day: int, base_date: Optional[date] = None) -> date:
         today = base_date or date.today()
         target_month = today.month
