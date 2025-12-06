@@ -226,6 +226,77 @@ El CLI acepta los mismos parámetros como banderas (`--sendgrid-api-key`,
 último momento. Además, `--dry-run` fuerza el modo consola sin modificar la
 base de datos remota ni contactar proveedores externos.
 
+### Ejemplos listos para copiar
+
+#### Envío por SendGrid (correo electrónico)
+
+```
+PAYMENT_REMINDER_TRANSPORT=sendgrid
+SENDGRID_API_KEY=sg.xxxxxx
+SENDGRID_SENDER_EMAIL=notificaciones@example.com
+SENDGRID_SENDER_NAME=Recordatorios RedLink
+# Opcional: activa el modo sandbox para pruebas sin correo real
+SENDGRID_SANDBOX_MODE=true
+PAYMENT_REMINDER_DAYS_AHEAD=3
+PAYMENT_REMINDER_RUN_HOUR=9
+PAYMENT_REMINDER_RUN_MINUTE=0
+PAYMENT_REMINDER_RUN_ON_START=0
+```
+
+Ejecución de prueba sin tocar la base de datos ni contactar SendGrid:
+
+```bash
+cd backend
+python -m backend.app.scripts.payment_reminder_job --dry-run \
+  --payment-reminder-transport sendgrid \
+  --sendgrid-api-key "$SENDGRID_API_KEY" \
+  --sendgrid-sender-email "$SENDGRID_SENDER_EMAIL"
+```
+
+#### Envío por Twilio (SMS/WhatsApp)
+
+```
+PAYMENT_REMINDER_TRANSPORT=twilio
+TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+TWILIO_AUTH_TOKEN=tu_token
+TWILIO_FROM_NUMBER=whatsapp:+12345678900
+PAYMENT_REMINDER_DAYS_AHEAD=2
+PAYMENT_REMINDER_RUN_HOUR=14
+PAYMENT_REMINDER_RUN_MINUTE=30
+PAYMENT_REMINDER_RUN_ON_START=1
+```
+
+Ejecución de prueba en modo consola (no contacta Twilio) usando los mismos
+parámetros que usará cron:
+
+```bash
+cd backend
+python -m backend.app.scripts.payment_reminder_job --dry-run \
+  --payment-reminder-transport twilio \
+  --twilio-account-sid "$TWILIO_ACCOUNT_SID" \
+  --twilio-auth-token "$TWILIO_AUTH_TOKEN" \
+  --twilio-from-number "$TWILIO_FROM_NUMBER"
+```
+
+#### Cron/servicio externo recomendado
+
+Si prefieres desactivar el programador interno y usar cron, define
+`PAYMENT_REMINDER_SCHEDULER_ENABLED=0` y programa el comando manual. Ejemplo de
+cron en UTC usando el entorno virtual local y registrando logs separados por
+fecha:
+
+```cron
+0 9 * * * cd /ruta/al/repositorio/backend && \
+  PAYMENT_REMINDER_SCHEDULER_ENABLED=0 \
+  ./.venv/bin/python -m backend.app.scripts.payment_reminder_job \
+  >> logs/payment-reminder-$(date +\%F).log 2>&1
+```
+
+Para servicios como `systemd`, crea un `EnvironmentFile=/ruta/backend/.env`
+con las variables anteriores y usa `ExecStart=/ruta/backend/.venv/bin/python -m
+backend.app.scripts.payment_reminder_job`. Ajusta la zona horaria del host o el
+timer para alinearlo con tus usuarios.
+
 ## Checklist para cambios de esquema
 
 Cuando necesites reestructurar la base de datos sigue el
