@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from __future__ import annotations
-
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
+from time import perf_counter
 from typing import Any, Iterable, Optional, Tuple
 
 from sqlalchemy import func
@@ -11,6 +10,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 
 from .. import models, schemas
+from .observability import MetricOutcome, ObservabilityService
 
 CENTS = Decimal("0.01")
 QUANTITY_STEP = Decimal("0.001")
@@ -163,126 +163,172 @@ class PosService:
 
     @classmethod
     def create_sale(cls, db: Session, data: schemas.PosSaleCreate) -> models.PosSale:
-        if not data.items:
-            raise ValueError("La venta debe incluir al menos un artículo")
-
-        sold_at = data.sold_at or datetime.now(timezone.utc)
-        client = cls._ensure_client(db, data.client_id)
-
-        line_items: list[dict[str, Any]] = []
-        subtotal = Decimal("0")
-
-        for item in data.items:
-            quantity = cls._normalize_decimal(Decimal(item.quantity), QUANTITY_STEP)
-            if quantity <= 0:
-                raise ValueError("La cantidad debe ser mayor que cero")
-
-            unit_price = None
-            description = None
-            product: Optional[models.PosProduct] = None
-
-            if item.product_id:
-                product = (
-                    db.query(models.PosProduct)
-                    .filter(models.PosProduct.id == str(item.product_id))
-                    .with_for_update()
-                    .first()
-                )
-                if product is None or not product.is_active:
-                    raise ValueError("Producto no disponible")
-
-                source_price = item.unit_price or product.unit_price
-                unit_price = cls._normalize_decimal(Decimal(source_price), CENTS)
-                description = (item.description or product.name).strip()
-            else:
-                if not item.description:
-                    raise ValueError(
-                        "Los artículos personalizados requieren una descripción"
-                    )
-                if not item.unit_price:
-                    raise ValueError("Ingresa un precio unitario para el artículo personalizado")
-
-                unit_price = cls._normalize_decimal(Decimal(item.unit_price), CENTS)
-                description = item.description.strip()
-
-            if unit_price <= 0:
-                raise ValueError("El precio unitario debe ser mayor que cero")
-
-            line_total = cls._normalize_decimal(unit_price * quantity, CENTS)
-            subtotal += line_total
-
-            line_items.append(
-                {
-                    "product": product,
-                    "description": description,
-                    "quantity": quantity,
-                    "unit_price": unit_price,
-                    "total": line_total,
-                }
-            )
-
-        discount = cls._normalize_decimal(Decimal(data.discount_amount or 0), CENTS)
-        tax = cls._normalize_decimal(Decimal(data.tax_amount or 0), CENTS)
-
-        if discount > subtotal:
-            raise ValueError("El descuento no puede ser mayor al subtotal")
-
-        total = subtotal - discount + tax
-        total = cls._normalize_decimal(total, CENTS)
-        if total < 0:
-            raise ValueError("El total no puede ser negativo")
-
-        notes = data.notes.strip() if data.notes else None
-        client_name = (
-            data.client_name.strip()
-            if data.client_name
-            else (client.name if client else None)
-        )
-
-        ticket_number = cls._generate_ticket_number(db, sold_at)
-
-        sale = models.PosSale(
-            ticket_number=ticket_number,
-            sold_at=sold_at,
-            client=client,
-            client_name=client_name,
-            subtotal=subtotal,
-            discount_amount=discount,
-            tax_amount=tax,
-            total=total,
-            payment_method=data.payment_method,
-            notes=notes,
-        )
-
-        for item in line_items:
-            sale_item = models.PosSaleItem(
-                description=item["description"],
-                quantity=item["quantity"],
-                unit_price=item["unit_price"],
-                total=item["total"],
-                product=item["product"],
-            )
-            sale.items.append(sale_item)
-
-            product = item["product"]
-            if product and product.stock_quantity is not None:
-                remaining = cls._normalize_decimal(
-                    Decimal(product.stock_quantity) - item["quantity"],
-                    QUANTITY_STEP,
-                )
-                if remaining < 0:
-                    raise ValueError(
-                        f"Inventario insuficiente para {product.name}. Disponible: {product.stock_quantity}"
-                    )
-                product.stock_quantity = remaining
-
-        db.add(sale)
+        start = perf_counter()
+        item_categories: dict[str, int] = {}
 
         try:
+            if not data.items:
+                raise ValueError("La venta debe incluir al menos un artículo")
+
+            sold_at = data.sold_at or datetime.now(timezone.utc)
+            client = cls._ensure_client(db, data.client_id)
+
+            line_items: list[dict[str, Any]] = []
+            subtotal = Decimal("0")
+
+            for item in data.items:
+                quantity = cls._normalize_decimal(Decimal(item.quantity), QUANTITY_STEP)
+                if quantity <= 0:
+                    raise ValueError("La cantidad debe ser mayor que cero")
+
+                unit_price = None
+                description = None
+                product: Optional[models.PosProduct] = None
+                item_type = "custom"
+
+                if item.product_id:
+                    product = (
+                        db.query(models.PosProduct)
+                        .filter(models.PosProduct.id == str(item.product_id))
+                        .with_for_update()
+                        .first()
+                    )
+                    if product is None or not product.is_active:
+                        raise ValueError("Producto no disponible")
+
+                    source_price = item.unit_price or product.unit_price
+                    unit_price = cls._normalize_decimal(Decimal(source_price), CENTS)
+                    description = (item.description or product.name).strip()
+                    item_type = (product.category or "desconocido").lower()
+                else:
+                    if not item.description:
+                        raise ValueError(
+                            "Los artículos personalizados requieren una descripción"
+                        )
+                    if not item.unit_price:
+                        raise ValueError("Ingresa un precio unitario para el artículo personalizado")
+
+                    unit_price = cls._normalize_decimal(Decimal(item.unit_price), CENTS)
+                    description = item.description.strip()
+
+                if unit_price <= 0:
+                    raise ValueError("El precio unitario debe ser mayor que cero")
+
+                item_categories[item_type] = item_categories.get(item_type, 0) + 1
+
+                line_total = cls._normalize_decimal(unit_price * quantity, CENTS)
+                subtotal += line_total
+
+                line_items.append(
+                    {
+                        "product": product,
+                        "description": description,
+                        "quantity": quantity,
+                        "unit_price": unit_price,
+                        "total": line_total,
+                    }
+                )
+
+            discount = cls._normalize_decimal(Decimal(data.discount_amount or 0), CENTS)
+            tax = cls._normalize_decimal(Decimal(data.tax_amount or 0), CENTS)
+
+            if discount > subtotal:
+                raise ValueError("El descuento no puede ser mayor al subtotal")
+
+            total = subtotal - discount + tax
+            total = cls._normalize_decimal(total, CENTS)
+            if total < 0:
+                raise ValueError("El total no puede ser negativo")
+
+            notes = data.notes.strip() if data.notes else None
+            client_name = (
+                data.client_name.strip()
+                if data.client_name
+                else (client.name if client else None)
+            )
+
+            ticket_number = cls._generate_ticket_number(db, sold_at)
+
+            sale = models.PosSale(
+                ticket_number=ticket_number,
+                sold_at=sold_at,
+                client=client,
+                client_name=client_name,
+                subtotal=subtotal,
+                discount_amount=discount,
+                tax_amount=tax,
+                total=total,
+                payment_method=data.payment_method,
+                notes=notes,
+            )
+
+            for item in line_items:
+                sale_item = models.PosSaleItem(
+                    description=item["description"],
+                    quantity=item["quantity"],
+                    unit_price=item["unit_price"],
+                    total=item["total"],
+                    product=item["product"],
+                )
+                sale.items.append(sale_item)
+
+                product = item["product"]
+                if product and product.stock_quantity is not None:
+                    remaining = cls._normalize_decimal(
+                        Decimal(product.stock_quantity) - item["quantity"],
+                        QUANTITY_STEP,
+                    )
+                    if remaining < 0:
+                        raise ValueError(
+                            f"Inventario insuficiente para {product.name}. Disponible: {product.stock_quantity}"
+                        )
+                    product.stock_quantity = remaining
+
+            db.add(sale)
+
             db.commit()
+            db.refresh(sale)
+
+            ObservabilityService.record_event(
+                db,
+                "pos.sale.captured",
+                MetricOutcome.SUCCESS,
+                duration_ms=(perf_counter() - start) * 1000,
+                tags={
+                    "has_client": bool(client),
+                    "payment_method": str(data.payment_method.value),
+                    "item_types": sorted(item_categories.keys()),
+                },
+                metadata={"ticket_number": ticket_number, "totals": str(total)},
+            )
+
+            return sale
+        except (ValueError, PosServiceError) as exc:
+            ObservabilityService.record_validation_result(
+                db,
+                "pos.sale.validation_failed",
+                outcome=MetricOutcome.REJECTED,
+                reason=str(exc),
+                tags={
+                    "has_client": bool(data.client_id),
+                    "payment_method": str(data.payment_method.value),
+                    "item_types": sorted(item_categories.keys()),
+                },
+                duration_ms=(perf_counter() - start) * 1000,
+            )
+            raise
         except SQLAlchemyError as exc:
             db.rollback()
+            ObservabilityService.record_validation_result(
+                db,
+                "pos.sale.persistence_failed",
+                outcome=MetricOutcome.ERROR,
+                reason=str(exc),
+                tags={
+                    "has_client": bool(data.client_id),
+                    "payment_method": str(data.payment_method.value),
+                    "item_types": sorted(item_categories.keys()),
+                },
+                duration_ms=(perf_counter() - start) * 1000,
+            )
             raise PosServiceError("No se pudo registrar la venta en este momento.") from exc
-
-        db.refresh(sale)
-        return sale
