@@ -21,7 +21,7 @@
 - Asegurar que las reglas de `resolvePlanRequirements` se reflejen en validaciones de frontend y backend (IPs/base/equipo/credenciales) y que los errores se muestren antes de enviar. 【F:src/features/clients/ServicesAssignments.jsx†L105-L153】【F:src/utils/serviceFormValidation.js†L1-L132】
 
 2) **Plantilla y flujo de importación**
-- Migrar la descarga de plantilla a `GET /clients/import/template` con presets de columnas y mantener la selección de opcionales; documentar el modelo 1 fila = 1 servicio en la plantilla. 【F:src/components/clients/ImportClientsModal.jsx†L62-L120】【F:docs/isp_review.md†L26-L77】
+- La descarga de plantilla ahora usa `GET /clients/import/template` e incluye presets (básico, avanzado y solo servicios) para seleccionar columnas opcionales manteniendo la documentación de 1 fila = 1 servicio. 【F:src/components/clients/ImportClientsModal.jsx†L62-L166】【F:docs/isp_review.md†L26-L77】
 
 3) **Resumen operativo en la lista de clientes**
 - Incorporar vista compacta del servicio principal (plan, estado, IP/base) y filtros por servicio en la tabla de clientes para alinear con Wisphub/Splynx. 【F:docs/isp_review.md†L44-L50】
