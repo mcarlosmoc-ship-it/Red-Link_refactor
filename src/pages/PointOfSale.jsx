@@ -1,5 +1,5 @@
 /* global Blob, URL */
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import {
   BadgeCheck,
   Box,
@@ -18,8 +18,12 @@ import Button from '../components/ui/Button.jsx'
 import { Card, CardContent } from '../components/ui/Card.jsx'
 import { usePosCatalog } from '../hooks/usePosCatalog.js'
 import { usePosSales } from '../hooks/usePosSales.js'
+import { useClients } from '../hooks/useClients.js'
+import { usePayments } from '../hooks/usePayments.js'
 import { useToast } from '../hooks/useToast.js'
-import { peso } from '../utils/formatters.js'
+import { getClientDebtSummary, getClientMonthlyFee, getPrimaryService } from '../features/clients/utils.js'
+import { CLIENT_PRICE, useBackofficeStore } from '../store/useBackofficeStore.js'
+import { formatDate, peso } from '../utils/formatters.js'
 
 const PAYMENT_METHODS = ['Efectivo', 'Transferencia', 'Tarjeta', 'Revendedor', 'Otro']
 
@@ -84,9 +88,20 @@ const parseOptionalNumber = (value) => {
   return Number.isFinite(parsed) ? parsed : undefined
 }
 
+const toInputValue = (value, decimals = 2) => {
+  const numericValue = Number(value)
+  if (!Number.isFinite(numericValue)) {
+    return ''
+  }
+  return numericValue.toFixed(decimals)
+}
+
 export default function PointOfSalePage() {
   const { products, isLoading: isLoadingProducts, createProduct } = usePosCatalog()
   const { sales, recordSale } = usePosSales({ limit: 8 })
+  const { clients, isLoading: isLoadingClients } = useClients()
+  const { payments, status: paymentsStatus, reload: reloadPayments } = usePayments()
+  const recordPayment = useBackofficeStore((state) => state.recordPayment)
   const { showToast } = useToast()
 
   const [activeTab, setActiveTab] = useState('ventas')
@@ -106,6 +121,14 @@ export default function PointOfSalePage() {
   const [newProductForm, setNewProductForm] = useState(INITIAL_NEW_PRODUCT_FORM)
   const [newProductError, setNewProductError] = useState(null)
   const [isCreatingProduct, setIsCreatingProduct] = useState(false)
+  const [paymentSearch, setPaymentSearch] = useState('')
+  const [paymentClientId, setPaymentClientId] = useState('')
+  const [paymentMonths, setPaymentMonths] = useState('')
+  const [paymentAmount, setPaymentAmount] = useState('')
+  const [paymentMethodPos, setPaymentMethodPos] = useState(PAYMENT_METHODS[0])
+  const [paymentNote, setPaymentNote] = useState('')
+  const [isSubmittingClientPayment, setIsSubmittingClientPayment] = useState(false)
+  const [isRefreshingPayments, setIsRefreshingPayments] = useState(false)
 
   const filteredSalesProducts = useMemo(() => {
     const term = salesSearchTerm.trim().toLowerCase()
@@ -128,6 +151,79 @@ export default function PointOfSalePage() {
       return haystack.includes(term)
     })
   }, [products, productSearchTerm])
+
+  const sortedClients = useMemo(() => {
+    return [...clients].sort((a, b) => a.name.localeCompare(b.name))
+  }, [clients])
+
+  const filteredClients = useMemo(() => {
+    const term = paymentSearch.trim().toLowerCase()
+    if (!term) {
+      return sortedClients
+    }
+    return sortedClients.filter((client) => {
+      const haystack = `${client.name} ${client.location ?? ''}`.toLowerCase()
+      return haystack.includes(term)
+    })
+  }, [paymentSearch, sortedClients])
+
+  const clientOptions = useMemo(() => filteredClients.slice(0, 40), [filteredClients])
+
+  const selectedPaymentClient = useMemo(
+    () => sortedClients.find((client) => String(client.id) === String(paymentClientId)) ?? null,
+    [paymentClientId, sortedClients],
+  )
+
+  const selectedPaymentService = useMemo(
+    () => (selectedPaymentClient ? getPrimaryService(selectedPaymentClient) : null),
+    [selectedPaymentClient],
+  )
+
+  const selectedPaymentDebt = useMemo(
+    () => (selectedPaymentClient ? getClientDebtSummary(selectedPaymentClient, CLIENT_PRICE) : null),
+    [selectedPaymentClient],
+  )
+
+  const selectedPaymentMonthlyFee = useMemo(
+    () => (selectedPaymentClient ? getClientMonthlyFee(selectedPaymentClient, CLIENT_PRICE) : CLIENT_PRICE),
+    [selectedPaymentClient],
+  )
+
+  const isLoadingPayments = Boolean(paymentsStatus?.isLoading && payments.length === 0)
+
+  const recentPayments = useMemo(() => {
+    const toDateValue = (value) => {
+      const parsed = new Date(value)
+      return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime()
+    }
+
+    const base = selectedPaymentClient
+      ? payments.filter((payment) => String(payment.clientId) === String(selectedPaymentClient.id))
+      : payments
+
+    return [...base]
+      .sort((a, b) => toDateValue(b.date) - toDateValue(a.date))
+      .slice(0, 10)
+  }, [payments, selectedPaymentClient])
+
+  useEffect(() => {
+    if (!selectedPaymentClient) {
+      setPaymentMonths('')
+      setPaymentAmount('')
+      setPaymentNote('')
+      return
+    }
+
+    const baseMonths = selectedPaymentDebt?.debtMonths > 0 ? selectedPaymentDebt.debtMonths : 1
+    const baseAmount =
+      selectedPaymentDebt?.totalDue && selectedPaymentDebt.totalDue > 0
+        ? selectedPaymentDebt.totalDue
+        : selectedPaymentMonthlyFee
+
+    setPaymentMonths(toInputValue(baseMonths, 2))
+    setPaymentAmount(toInputValue(baseAmount, 2))
+    setPaymentNote('')
+  }, [selectedPaymentClient, selectedPaymentDebt, selectedPaymentMonthlyFee])
 
   const addProductToCart = (product) => {
     setCartItems((current) => {
@@ -277,6 +373,102 @@ export default function PointOfSalePage() {
       })
     } finally {
       setIsSubmittingSale(false)
+    }
+  }
+
+  const handleSubmitClientPayment = async (event) => {
+    event.preventDefault()
+
+    if (!selectedPaymentClient) {
+      showToast({
+        type: 'warning',
+        title: 'Selecciona un cliente',
+        description: 'Elige a quién registrar el pago desde el panel de punto de venta.',
+      })
+      return
+    }
+
+    if (!selectedPaymentService) {
+      showToast({
+        type: 'warning',
+        title: 'Agrega un servicio al cliente',
+        description: 'Asigna un servicio mensual al cliente para registrar pagos desde aquí.',
+      })
+      return
+    }
+
+    const amountValue = Number(paymentAmount)
+    const monthsValue = Number(paymentMonths)
+    const hasValidAmount = Number.isFinite(amountValue) && amountValue > 0
+    const hasValidMonths = Number.isFinite(monthsValue) && monthsValue > 0
+
+    if (!hasValidAmount && !hasValidMonths) {
+      showToast({
+        type: 'warning',
+        title: 'Captura un monto o periodos',
+        description: 'Ingresa el monto a pagar o los periodos que se cubrirán.',
+      })
+      return
+    }
+
+    const monthlyFee = selectedPaymentMonthlyFee > 0 ? selectedPaymentMonthlyFee : CLIENT_PRICE
+    const monthsToRegister = hasValidMonths
+      ? monthsValue
+      : monthlyFee > 0
+        ? amountValue / monthlyFee
+        : 1
+    const amountToRegister = hasValidAmount ? amountValue : monthsToRegister * monthlyFee
+
+    setIsSubmittingClientPayment(true)
+    try {
+      await recordPayment({
+        clientId: selectedPaymentClient.id,
+        serviceId: selectedPaymentService.id,
+        months: monthsToRegister,
+        amount: amountToRegister,
+        method: paymentMethodPos,
+        note: paymentNote,
+      })
+
+      showToast({
+        type: 'success',
+        title: 'Pago registrado',
+        description: `${selectedPaymentClient.name} quedó al día con un pago de ${peso(amountToRegister)}.`,
+      })
+
+      setPaymentAmount('')
+      setPaymentMonths('')
+      setPaymentNote('')
+      setPaymentClientId('')
+      setPaymentSearch('')
+    } catch (error) {
+      showToast({
+        type: 'error',
+        title: 'No se pudo registrar el pago',
+        description: error?.message ?? 'Intenta nuevamente.',
+      })
+    } finally {
+      setIsSubmittingClientPayment(false)
+    }
+  }
+
+  const handleRefreshPayments = async () => {
+    setIsRefreshingPayments(true)
+    try {
+      await reloadPayments({ force: true })
+      showToast({
+        type: 'success',
+        title: 'Pagos actualizados',
+        description: 'Los movimientos recientes se sincronizaron correctamente.',
+      })
+    } catch (error) {
+      showToast({
+        type: 'error',
+        title: 'No se pudieron cargar los pagos',
+        description: error?.message ?? 'Intenta nuevamente.',
+      })
+    } finally {
+      setIsRefreshingPayments(false)
     }
   }
 
@@ -689,19 +881,223 @@ export default function PointOfSalePage() {
                       </div>
                     </dl>
 
-                    {formError ? <p className="text-sm text-red-600">{formError}</p> : null}
+                  {formError ? <p className="text-sm text-red-600">{formError}</p> : null}
 
-                    <Button type="submit" className="w-full" disabled={isSubmittingSale}>
-                      <Receipt className="mr-2 h-4 w-4" aria-hidden /> Registrar cobro
-                    </Button>
-                  </form>
-                </CardContent>
-              </Card>
+                  <Button type="submit" className="w-full" disabled={isSubmittingSale}>
+                    <Receipt className="mr-2 h-4 w-4" aria-hidden /> Registrar cobro
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
 
-              <Card>
-                <CardContent className="space-y-4">
-                  <header className="space-y-1">
-                    <h2 className="text-lg font-semibold text-slate-900">Artículo personalizado</h2>
+            <Card>
+              <CardContent className="space-y-4">
+                <header className="space-y-1">
+                  <h2 className="text-lg font-semibold text-slate-900">Pagos rápidos de clientes</h2>
+                  <p className="text-xs text-slate-500">
+                    Cobra mensualidades de internet o servicios asociados sin salir del punto de venta.
+                  </p>
+                </header>
+
+                <form className="space-y-4" onSubmit={handleSubmitClientPayment}>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <label className="grid gap-1 text-xs font-medium text-slate-600">
+                      Buscar cliente
+                      <input
+                        type="search"
+                        value={paymentSearch}
+                        onChange={(event) => setPaymentSearch(event.target.value)}
+                        placeholder="Nombre, ubicación o referencia"
+                        className="rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                      />
+                    </label>
+                    <label className="grid gap-1 text-xs font-medium text-slate-600">
+                      Cliente
+                      <select
+                        value={paymentClientId}
+                        onChange={(event) => setPaymentClientId(event.target.value)}
+                        className="rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                      >
+                        <option value="">Selecciona un cliente</option>
+                        {clientOptions.map((client) => (
+                          <option key={client.id} value={client.id}>
+                            {client.name}
+                          </option>
+                        ))}
+                      </select>
+                      <span className="text-[11px] text-slate-400">
+                        Mostrando {clientOptions.length} resultado(s) coincidentes.
+                      </span>
+                    </label>
+                  </div>
+
+                  {isLoadingClients ? (
+                    <p className="text-sm text-slate-500">Cargando clientes…</p>
+                  ) : selectedPaymentClient ? (
+                    <div className="space-y-3">
+                      <div className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600">
+                        <p className="font-semibold text-slate-800">{selectedPaymentClient.name}</p>
+                        <p className="text-xs text-slate-500">
+                          Servicio: {selectedPaymentService?.name ?? 'Sin servicio configurado'} · Tarifa{' '}
+                          {peso(selectedPaymentMonthlyFee)}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          Adeudo estimado: {peso(selectedPaymentDebt?.totalDue ?? 0)} ({
+                            toInputValue(selectedPaymentDebt?.debtMonths ?? 0, 2)
+                          }{' '}
+                          meses)
+                        </p>
+                        {!selectedPaymentService && (
+                          <p className="mt-1 text-xs text-amber-600">
+                            Asigna un servicio mensual para habilitar el cobro rápido.
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <label className="grid gap-1 text-xs font-medium text-slate-600">
+                          Periodos a pagar
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={paymentMonths}
+                            onChange={(event) => setPaymentMonths(event.target.value)}
+                            className="rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                            placeholder="Ej. 1"
+                          />
+                        </label>
+                        <label className="grid gap-1 text-xs font-medium text-slate-600">
+                          Monto a pagar
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={paymentAmount}
+                            onChange={(event) => setPaymentAmount(event.target.value)}
+                            className="rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                            placeholder="Ej. 300"
+                            required={!paymentMonths}
+                          />
+                        </label>
+                      </div>
+
+                      <label className="grid gap-1 text-xs font-medium text-slate-600">
+                        Método de pago
+                        <select
+                          value={paymentMethodPos}
+                          onChange={(event) => setPaymentMethodPos(event.target.value)}
+                          className="rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                        >
+                          {PAYMENT_METHODS.map((method) => (
+                            <option key={method} value={method}>
+                              {method}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+
+                      <label className="grid gap-1 text-xs font-medium text-slate-600">
+                        Nota (opcional)
+                        <textarea
+                          value={paymentNote}
+                          onChange={(event) => setPaymentNote(event.target.value)}
+                          className="min-h-[60px] rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                          placeholder="Referencia rápida del pago"
+                        />
+                      </label>
+
+                      <Button
+                        type="submit"
+                        className="w-full"
+                        disabled={!selectedPaymentService || isSubmittingClientPayment}
+                      >
+                        {isSubmittingClientPayment ? 'Registrando pago…' : 'Registrar pago'}
+                      </Button>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-slate-500">
+                      Selecciona un cliente para registrar cobros de servicios desde aquí.
+                    </p>
+                  )}
+                </form>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="space-y-4">
+                <header className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-lg font-semibold text-slate-900">Pagos registrados</h2>
+                    <p className="text-xs text-slate-500">
+                      {selectedPaymentClient
+                        ? `Últimos pagos de ${selectedPaymentClient.name}`
+                        : 'Movimientos recientes registrados desde cualquier módulo.'}
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleRefreshPayments}
+                    disabled={isRefreshingPayments}
+                    className="border border-slate-200 bg-white"
+                  >
+                    {isRefreshingPayments ? 'Actualizando…' : 'Actualizar'}
+                  </Button>
+                </header>
+
+                {isLoadingPayments ? (
+                  <p className="text-sm text-slate-500">Cargando pagos recientes…</p>
+                ) : recentPayments.length === 0 ? (
+                  <p className="text-sm text-slate-500">No hay pagos registrados para mostrar.</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
+                      <thead className="bg-slate-50 text-slate-600">
+                        <tr>
+                          <th scope="col" className="px-3 py-2 font-medium">
+                            Fecha
+                          </th>
+                          <th scope="col" className="px-3 py-2 font-medium">
+                            Cliente
+                          </th>
+                          <th scope="col" className="px-3 py-2 font-medium">
+                            Servicio
+                          </th>
+                          <th scope="col" className="px-3 py-2 font-medium">
+                            Método
+                          </th>
+                          <th scope="col" className="px-3 py-2 font-medium">
+                            Monto
+                          </th>
+                          <th scope="col" className="px-3 py-2 font-medium">
+                            Nota
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {recentPayments.map((payment) => (
+                          <tr key={payment.id}>
+                            <td className="px-3 py-2 text-slate-600">{formatDate(payment.date)}</td>
+                            <td className="px-3 py-2 text-slate-700">{payment.clientName}</td>
+                            <td className="px-3 py-2 text-slate-600">{payment.serviceName}</td>
+                            <td className="px-3 py-2 text-slate-600">{payment.method}</td>
+                            <td className="px-3 py-2 text-slate-600">{peso(payment.amount)}</td>
+                            <td className="px-3 py-2 text-slate-500">{payment.note || '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="space-y-4">
+                <header className="space-y-1">
+                  <h2 className="text-lg font-semibold text-slate-900">Artículo personalizado</h2>
                     <p className="text-xs text-slate-500">
                       Registra un artículo rápido para esta venta y guárdalo si quieres usarlo después.
                     </p>
