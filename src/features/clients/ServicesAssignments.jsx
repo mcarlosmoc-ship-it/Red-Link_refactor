@@ -31,6 +31,8 @@ export default function ServicesAssignments({
   const [editState, setEditState] = useState(null)
   const [error, setError] = useState('')
   const [editError, setEditError] = useState('')
+  const [assignErrors, setAssignErrors] = useState({})
+  const [editErrors, setEditErrors] = useState({})
 
   useEffect(() => {
     setServiceState(createInitialServiceState(client?.zoneId))
@@ -129,12 +131,15 @@ export default function ServicesAssignments({
 
   const handleAssign = () => {
     setError('')
+    setAssignErrors({})
     const selectedPlan = findPlanById(serviceState.servicePlanId)
     const errors = computeServiceFormErrors(serviceState, {
       plan: selectedPlan,
       validateTechnicalFields: false,
+      clientBaseId: client?.zoneId,
     })
 
+    setAssignErrors(errors)
     const firstError = Object.values(errors)[0]
     if (firstError) {
       setError(firstError)
@@ -144,10 +149,12 @@ export default function ServicesAssignments({
     if (!serviceState.servicePlanId) return
     onAssign?.(mapServicePayload(serviceState, { clientId: client.id }))
     setServiceState(createInitialServiceState(client.zoneId))
+    setAssignErrors({})
   }
 
   const startEdit = (service) => {
     setEditError('')
+    setEditErrors({})
     setEditState({
       id: service.id,
       servicePlanId: service.servicePlanId ?? service.plan?.id ?? '',
@@ -170,12 +177,15 @@ export default function ServicesAssignments({
   const handleEditSave = () => {
     if (!editState?.id) return
     setEditError('')
+    setEditErrors({})
     const selectedPlan = findPlanById(editState.servicePlanId)
     const errors = computeServiceFormErrors(editState, {
       plan: selectedPlan,
       validateTechnicalFields: false,
+      clientBaseId: client?.zoneId,
     })
 
+    setEditErrors(errors)
     const firstError = Object.values(errors)[0]
     if (firstError) {
       setEditError(firstError)
@@ -186,6 +196,7 @@ export default function ServicesAssignments({
 
     onUpdateService?.(editState.id, payload)
     setEditState(null)
+    setEditErrors({})
   }
 
   const handlePlanChange = (event) => {
@@ -205,6 +216,7 @@ export default function ServicesAssignments({
       modemModel: requirements.requiresEquipment ? prev.modemModel : '',
       notes: prev.notes,
     }))
+    setAssignErrors({})
   }
 
   const handleServiceStateChange = (key, value) => {
@@ -214,6 +226,34 @@ export default function ServicesAssignments({
   const { requiresBase, requiresIp, requiresCredentials, requiresEquipment } =
     selectedPlanRequirements
   const showEquipmentFields = requiresEquipment || requiresIp
+
+  const renderRequirementBadges = (requirements, prefix) => (
+    <div
+      className="flex flex-wrap gap-2 text-xs text-slate-700"
+      data-testid={`${prefix}-requirements`}
+    >
+      {requirements.requiresBase && (
+        <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-1 font-semibold text-slate-800">
+          Base obligatoria
+        </span>
+      )}
+      {requirements.requiresIp && (
+        <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-1 font-semibold text-blue-700">
+          IP requerida
+        </span>
+      )}
+      {requirements.requiresEquipment && (
+        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 font-semibold text-emerald-700">
+          Equipo registrado
+        </span>
+      )}
+      {requirements.requiresCredentials && (
+        <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 font-semibold text-amber-800">
+          Credenciales/Notas
+        </span>
+      )}
+    </div>
+  )
 
   return (
     <Card data-testid="services-assignments">
@@ -282,6 +322,11 @@ export default function ServicesAssignments({
                     placeholder="ID de base/torre"
                   />
                 </div>
+              )}
+              {assignErrors.baseId && (
+                <p className="text-xs font-medium text-red-600" data-testid="assignment-base-error">
+                  {assignErrors.baseId}
+                </p>
               )}
 
               <div className="space-y-1">
@@ -362,11 +407,21 @@ export default function ServicesAssignments({
                   )}
                 </div>
               )}
+              {(assignErrors.ipAddress || assignErrors.antennaModel || assignErrors.notes) && (
+                <div className="space-y-1 text-xs font-medium text-red-600">
+                  {assignErrors.ipAddress && <p data-testid="assignment-ip-error">{assignErrors.ipAddress}</p>}
+                  {assignErrors.antennaModel && (
+                    <p data-testid="assignment-equipment-error">{assignErrors.antennaModel}</p>
+                  )}
+                  {assignErrors.notes && <p data-testid="assignment-notes-error">{assignErrors.notes}</p>}
+                </div>
+              )}
               {error && <p className="text-xs text-red-600">{error}</p>}
             </div>
           )}
           {selectedPlan && (
             <div className="mt-3 space-y-2">
+              {renderRequirementBadges(selectedPlanRequirements, 'assignment')}
               <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
                 <div className="rounded border border-slate-200 bg-slate-50 p-3">
                   <p className="text-sm font-semibold text-slate-800">Precio del plan</p>
@@ -575,6 +630,7 @@ export default function ServicesAssignments({
                     </div>
                     {editState?.id === service.id && (
                       <div className="mt-2 space-y-2 rounded border border-slate-200 p-2">
+                        {renderRequirementBadges(planRequirements, `edit-${service.id}`)}
                         <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
                           <input
                             type="number"
@@ -618,6 +674,11 @@ export default function ServicesAssignments({
                             </label>
                           )}
                         </div>
+                        {editErrors.baseId && (
+                          <p className="text-xs font-medium text-red-600" data-testid={`edit-base-error-${service.id}`}>
+                            {editErrors.baseId}
+                          </p>
+                        )}
                         <div className="space-y-1">
                           <label className="text-sm font-medium" htmlFor={`edit-price-${service.id}`}>
                             Tarifa mensual
@@ -693,6 +754,18 @@ export default function ServicesAssignments({
                             )}
                           </div>
                         )}
+                        {(editErrors.ipAddress || editErrors.antennaModel) && (
+                          <div className="space-y-1 text-xs font-medium text-red-600">
+                            {editErrors.ipAddress && (
+                              <p data-testid={`edit-ip-error-${service.id}`}>{editErrors.ipAddress}</p>
+                            )}
+                            {editErrors.antennaModel && (
+                              <p data-testid={`edit-equipment-error-${service.id}`}>
+                                {editErrors.antennaModel}
+                              </p>
+                            )}
+                          </div>
+                        )}
                         {planRequirements.requiresCredentials && (
                           <div>
                             <label className="text-sm font-medium" htmlFor={`edit-notes-${service.id}`}>
@@ -707,6 +780,11 @@ export default function ServicesAssignments({
                               }
                             />
                           </div>
+                        )}
+                        {editErrors.notes && (
+                          <p className="text-xs font-medium text-red-600" data-testid={`edit-notes-error-${service.id}`}>
+                            {editErrors.notes}
+                          </p>
                         )}
                         <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
                           <div>

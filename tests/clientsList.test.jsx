@@ -26,6 +26,7 @@ describe('ClientsList', () => {
 
     expect(screen.getByTestId('search-clients')).toBeInTheDocument()
     expect(screen.getByTestId('location-filter')).toBeInTheDocument()
+    expect(screen.getByTestId('service-presence-filter')).toBeInTheDocument()
     expect(container.innerHTML).toContain('Ana')
     expect(container.innerHTML).toContain('Luis')
     expect(screen.getByTestId('select-1')).toBeInTheDocument()

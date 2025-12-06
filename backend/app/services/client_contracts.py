@@ -13,6 +13,71 @@ from sqlalchemy.orm import Session, selectinload
 from .. import models, schemas
 
 
+DEFAULT_PLAN_REQUIREMENTS: dict[models.ClientServiceType, dict[str, bool]] = {
+    models.ClientServiceType.INTERNET: {
+        "requires_ip": True,
+        "requires_base": True,
+        "requires_credentials": False,
+        "requires_equipment": True,
+    },
+    models.ClientServiceType.HOTSPOT: {
+        "requires_ip": True,
+        "requires_base": True,
+        "requires_credentials": False,
+        "requires_equipment": True,
+    },
+    models.ClientServiceType.STREAMING: {
+        "requires_ip": False,
+        "requires_base": False,
+        "requires_credentials": True,
+        "requires_equipment": False,
+    },
+    models.ClientServiceType.POINT_OF_SALE: {
+        "requires_ip": False,
+        "requires_base": False,
+        "requires_credentials": False,
+        "requires_equipment": False,
+    },
+    models.ClientServiceType.OTHER: {
+        "requires_ip": False,
+        "requires_base": False,
+        "requires_credentials": False,
+        "requires_equipment": False,
+    },
+}
+
+
+def _resolve_plan_requirements(
+    plan: models.ServicePlan, service_metadata: Optional[dict[str, object]] = None
+) -> dict[str, bool]:
+    metadata = service_metadata or {}
+
+    def _from_metadata(keys: list[str]) -> Optional[bool]:
+        for key in keys:
+            value = metadata.get(key)
+            if isinstance(value, bool):
+                return value
+        return None
+
+    defaults = DEFAULT_PLAN_REQUIREMENTS.get(
+        plan.category, DEFAULT_PLAN_REQUIREMENTS[models.ClientServiceType.OTHER]
+    )
+
+    return {
+        "requires_ip": _from_metadata(["requires_ip", "requiresIp"]) or plan.requires_ip,
+        "requires_base": _from_metadata(["requires_base", "requiresBase"])
+        or plan.requires_base,
+        "requires_credentials": _from_metadata(
+            ["requires_credentials", "requiresCredentials", "requireCredentials"]
+        )
+        or defaults["requires_credentials"],
+        "requires_equipment": _from_metadata(
+            ["requires_equipment", "requiresEquipment", "requireEquipment"]
+        )
+        or defaults["requires_equipment"],
+    }
+
+
 class ClientContractError(RuntimeError):
     """Raised when service contract operations cannot be completed."""
 
@@ -117,17 +182,48 @@ class ClientContractService:
         if payload.get("status") is None and existing is None:
             payload["status"] = models.ClientServiceStatus.ACTIVE
 
-        if client and payload.get("zone_id") is None and plan.requires_base:
+        service_metadata = payload.get("service_metadata") if isinstance(payload.get("service_metadata"), dict) else None
+        requirements = _resolve_plan_requirements(plan, service_metadata)
+
+        if client and payload.get("zone_id") is None and requirements["requires_base"]:
             payload["zone_id"] = client.zone_id
 
-        if plan.requires_base and payload.get("zone_id") is None:
+        if requirements["requires_base"] and payload.get("zone_id") is None:
             raise ClientContractError("Este servicio requiere asignar una zona.")
 
-        if plan.requires_ip:
+        if requirements["requires_ip"]:
             if not payload.get("ip_address") and existing and existing.ip_address:
                 payload.setdefault("ip_address", existing.ip_address)
             if not payload.get("ip_address"):
                 raise ClientContractError("Este servicio requiere asignar una dirección IP.")
+
+        if requirements["requires_equipment"]:
+            antenna_model = payload.get("antenna_model")
+            modem_model = payload.get("modem_model")
+            if antenna_model is None and existing is not None:
+                antenna_model = existing.antenna_model
+                payload.setdefault("antenna_model", antenna_model)
+            if modem_model is None and existing is not None:
+                modem_model = existing.modem_model
+                payload.setdefault("modem_model", modem_model)
+
+            has_equipment = bool(
+                (antenna_model and str(antenna_model).strip())
+                or (modem_model and str(modem_model).strip())
+            )
+            if not has_equipment:
+                raise ClientContractError("Este servicio requiere registrar el equipo instalado.")
+
+        if requirements["requires_credentials"]:
+            notes = payload.get("notes")
+            if notes is None and existing is not None:
+                notes = existing.notes
+                if existing.notes:
+                    payload.setdefault("notes", existing.notes)
+            if notes is None or str(notes).strip() == "":
+                raise ClientContractError(
+                    "Este servicio requiere registrar credenciales o notas de acceso."
+                )
 
         plan_monthly_price = (
             Decimal(str(plan.monthly_price))

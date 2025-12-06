@@ -1,5 +1,7 @@
 from decimal import Decimal
 
+from decimal import Decimal
+
 from backend.app import models
 
 
@@ -33,6 +35,21 @@ def _create_limited_plan(session, *, capacity_limit, name="Plan Limitado"):
         requires_base=True,
         capacity_type=models.CapacityType.LIMITED,
         capacity_limit=capacity_limit,
+        status=models.ServicePlanStatus.ACTIVE,
+    )
+    session.add(plan)
+    session.flush()
+    return plan
+
+
+def _create_streaming_plan(session, name="Plan Streaming"):
+    plan = models.ServicePlan(
+        name=name,
+        category=models.ClientServiceType.STREAMING,
+        monthly_price=Decimal("180"),
+        description="Plan de streaming",
+        requires_ip=False,
+        requires_base=False,
         status=models.ServicePlanStatus.ACTIVE,
     )
     session.add(plan)
@@ -108,3 +125,40 @@ def test_bulk_assign_services_reports_partial_capacity(client, db_session):
     failed_clients = detail["failed_clients"]
     assert len(failed_clients) == 1
     assert failed_clients[0]["name"] == pending_clients[-1].full_name
+
+
+def test_create_streaming_service_requires_credentials(client, db_session):
+    zone = _create_base(db_session, code="BASE-STREAM")
+    plan = _create_streaming_plan(db_session)
+    customer = _create_client(db_session, zone, "Cliente Streaming")
+
+    payload = {
+        "client_id": str(customer.id),
+        "service_id": plan.id,
+        "status": models.ClientServiceStatus.ACTIVE.value,
+        "billing_day": 8,
+        "zone_id": zone.id,
+    }
+
+    response = client.post("/client-services/", json=payload)
+    assert response.status_code == 400, response.json()
+    assert "credenciales" in response.json()["detail"].lower()
+
+
+def test_create_internet_service_requires_equipment(client, db_session):
+    zone = _create_base(db_session, code="BASE-EQUIP")
+    plan = _create_limited_plan(db_session, capacity_limit=5, name="Plan Equipo")
+    customer = _create_client(db_session, zone, "Cliente Equipo")
+
+    payload = {
+        "client_id": str(customer.id),
+        "service_id": plan.id,
+        "status": models.ClientServiceStatus.ACTIVE.value,
+        "billing_day": 10,
+        "zone_id": zone.id,
+        "ip_address": "10.0.0.10",
+    }
+
+    response = client.post("/client-services/", json=payload)
+    assert response.status_code == 400, response.json()
+    assert "equipo" in response.json()["detail"].lower()

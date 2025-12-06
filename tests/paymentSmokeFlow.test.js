@@ -137,6 +137,18 @@ beforeEach(() => {
       return Promise.resolve({ data: { summary: {}, clients: [], base_costs: {} } })
     }
 
+    if (url === '/metrics/consistency/payments') {
+      return Promise.resolve({
+        data: {
+          client_counters: [],
+          service_counters: [],
+          payments_without_service: [],
+          payments_with_mismatched_client: [],
+          services_without_client: [],
+        },
+      })
+    }
+
     return Promise.resolve({ data: {} })
   })
 
@@ -182,5 +194,12 @@ describe('Smoke de pagos desde dashboard', () => {
       '/payments',
       expect.objectContaining({ client_service_id: 'service-1', client_id: 'client-1' }),
     )
+
+    const consistency = await useBackofficeStore.getState().checkPaymentsConsistency()
+    expect(consistency).toMatchObject({
+      client_counters: [],
+      payments_without_service: [],
+    })
+    expect(getMock).toHaveBeenCalledWith('/metrics/consistency/payments')
   })
 })

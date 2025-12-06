@@ -1,6 +1,6 @@
 import React from 'react'
 import { describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import ServicesAssignments from '../src/features/clients/ServicesAssignments.jsx'
 
 const client = {
@@ -11,6 +11,7 @@ const client = {
 const plans = [
   { id: 'plan-1', name: 'Plan Básico', serviceType: 'internet' },
   { id: 'plan-2', name: 'Token', category: 'token' },
+  { id: 'plan-3', name: 'Streaming', category: 'streaming', metadata: { requiresCredentials: true } },
 ]
 
 describe('ServicesAssignments', () => {
@@ -35,5 +36,24 @@ describe('ServicesAssignments', () => {
     expect(container.innerHTML).toContain('Plan Básico')
     expect(screen.getByTestId('assignment-plan')).toBeInTheDocument()
     expect(screen.getByTestId('delete-service-s1')).toBeInTheDocument()
+  })
+
+  it('muestra errores cuando faltan campos obligatorios por plan', () => {
+    const onAssign = vi.fn()
+
+    render(
+      <ServicesAssignments
+        client={client}
+        servicePlans={plans}
+        onAssign={onAssign}
+        isProcessing={false}
+      />,
+    )
+
+    fireEvent.change(screen.getByTestId('assignment-plan'), { target: { value: 'plan-3' } })
+    fireEvent.click(screen.getByTestId('assign-service'))
+
+    expect(screen.getByTestId('assignment-notes-error')).toBeInTheDocument()
+    expect(onAssign).not.toHaveBeenCalled()
   })
 })

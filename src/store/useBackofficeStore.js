@@ -1054,6 +1054,10 @@ export const useBackofficeStore = create((set, get) => ({
       get().loadMetrics({ force: true, retries: 1, periodKey }),
     ])
   },
+  checkPaymentsConsistency: async () => {
+    const response = await apiClient.get('/metrics/consistency/payments')
+    return response?.data ?? null
+  },
   addExpense: async (expense) => {
     await runMutation({
       set,
