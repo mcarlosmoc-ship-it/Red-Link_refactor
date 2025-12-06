@@ -286,7 +286,7 @@ def _decode_jwt(token: str, key: bytes) -> dict[str, Any]:
 def _resolve_access_token_expiry() -> timedelta:
     raw = os.getenv(ACCESS_TOKEN_EXPIRE_MINUTES_ENV)
     if not raw:
-        return timedelta(minutes=30)
+        return timedelta(minutes=15)
     try:
         minutes = int(raw)
     except ValueError as exc:  # pragma: no cover - defensive branch
