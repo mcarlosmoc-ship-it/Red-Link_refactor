@@ -62,6 +62,7 @@ export const computeServiceFormErrors = (
     validateTechnicalFields = false,
     validateBillingDay = true,
     validateBase = true,
+    clientBaseId = null,
   } = {},
 ) => {
   const errors = {}
@@ -120,7 +121,12 @@ export const computeServiceFormErrors = (
   const shouldUseClientBase = Boolean(state?.useClientBase ?? state?.shouldUseClientBase)
   const baseIdValue = state?.baseId
   if (validateBase) {
-    if (requirements.requiresBase && !shouldUseClientBase) {
+    if (requirements.requiresBase && shouldUseClientBase) {
+      const parsedBase = Number(clientBaseId)
+      if (!Number.isInteger(parsedBase) || parsedBase < 1) {
+        errors.baseId = 'El cliente no tiene base asignada para este plan.'
+      }
+    } else if (requirements.requiresBase && !shouldUseClientBase) {
       const parsedBase = Number(baseIdValue)
       if (!Number.isInteger(parsedBase) || parsedBase < 1) {
         errors.baseId = 'Selecciona una base válida.'

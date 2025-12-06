@@ -55,6 +55,7 @@ const filtersInitialState = {
   status: 'all',
   servicePlanId: 'all',
   serviceStatus: 'all',
+  servicePresence: 'all',
 }
 
 export default function ClientsList({
@@ -153,6 +154,14 @@ export default function ClientsList({
         return serviceStatus === filters.serviceStatus
       }
 
+      if (filters.servicePresence === 'with') {
+        return Boolean(primaryService)
+      }
+
+      if (filters.servicePresence === 'without') {
+        return !primaryService
+      }
+
       return true
     })
   }, [
@@ -160,6 +169,7 @@ export default function ClientsList({
     filters.location,
     filters.servicePlanId,
     filters.serviceStatus,
+    filters.servicePresence,
     filters.status,
     normalizedSearchTerm,
   ])
@@ -177,6 +187,7 @@ export default function ClientsList({
     filters.location,
     filters.servicePlanId,
     filters.serviceStatus,
+    filters.servicePresence,
     filters.status,
     filters.term,
   ])
@@ -290,8 +301,9 @@ export default function ClientsList({
     () =>
       filters.term !== filtersInitialState.term ||
       filters.location !== filtersInitialState.location ||
-      filters.status !== filtersInitialState.status,
-    [filters.location, filters.status, filters.term],
+      filters.status !== filtersInitialState.status ||
+      filters.servicePresence !== filtersInitialState.servicePresence,
+    [filters.location, filters.servicePresence, filters.status, filters.term],
   )
 
   const isSelectionActionRunning = isProcessingSelection || isRunningSelectionAction
@@ -316,7 +328,7 @@ export default function ClientsList({
         </div>
       </CardHeader>
       <CardContent className="space-y-4 p-4 sm:p-6">
-        <div className="grid grid-cols-1 gap-2 md:grid-cols-5 lg:grid-cols-6">
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-6 lg:grid-cols-7">
           <input
             aria-label="Buscar clientes"
             data-testid="search-clients"
@@ -376,6 +388,17 @@ export default function ClientsList({
             <option value="active">Activos</option>
             <option value="suspended">Suspendidos</option>
             <option value="cancelled">Baja</option>
+          </select>
+          <select
+            aria-label="Filtro presencia de servicio"
+            data-testid="service-presence-filter"
+            className="rounded border border-slate-200 p-2"
+            value={filters.servicePresence}
+            onChange={(event) => handleChangeFilter('servicePresence', event.target.value)}
+          >
+            <option value="all">Con y sin servicio</option>
+            <option value="with">Solo con servicio</option>
+            <option value="without">Solo sin servicio</option>
           </select>
           <Button variant="ghost" disabled={!isDirty} onClick={() => setFilters(filtersInitialState)}>
             Limpiar filtros
@@ -469,8 +492,9 @@ export default function ClientsList({
                 </th>
                 <th className="px-3 py-2">Nombre</th>
                 <th className="px-3 py-2">Ubicación</th>
-                <th className="px-3 py-2">Servicio principal</th>
-                <th className="px-3 py-2">Estado</th>
+                <th className="px-3 py-2">Plan principal</th>
+                <th className="px-3 py-2">Estado del servicio</th>
+                <th className="px-3 py-2">Base / IP</th>
                 <th className="px-3 py-2">Acciones</th>
               </tr>
             </thead>
@@ -488,7 +512,7 @@ export default function ClientsList({
                 const planName = primaryService?.plan?.name ?? 'Sin servicio'
                 const serviceStatusLabel = primaryService?.status
                   ? formatServiceStatus(primaryService.status)
-                  : 'Sin estado'
+                  : 'Sin servicio asignado'
                 const baseLabel = primaryService?.baseId
                   ? `Base ${primaryService.baseId}`
                   : client.zoneId
@@ -514,33 +538,37 @@ export default function ClientsList({
                     <td className="px-3 py-2">{client.location || 'Sin ubicación'}</td>
                     <td className="px-3 py-2">
                       <div className="flex flex-col gap-1 text-sm">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-semibold text-slate-800">{planName}</span>
-                          {primaryService?.status && (
-                            <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-700">
-                              {serviceStatusLabel}
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-xs text-slate-600">
-                          {baseLabel ? <span>{baseLabel}</span> : <span>Base sin especificar</span>}
-                          {primaryService?.ipAddress && (
-                            <span className="ml-2 inline-flex items-center gap-1 rounded bg-slate-50 px-2 py-0.5">
-                              <span className="h-2 w-2 rounded-full bg-emerald-400" aria-hidden />
-                              {primaryService.ipAddress}
-                            </span>
-                          )}
-                        </div>
+                        <span className="font-semibold text-slate-800">{planName}</span>
+                        {primaryService?.plan?.category && (
+                          <span className="text-xs text-slate-600">{primaryService.plan.category}</span>
+                        )}
                       </div>
                     </td>
                     <td className="px-3 py-2">
-                      {primaryService?.status ? serviceStatusLabel : 'Sin servicio asignado'}
+                      {primaryService?.status ? (
+                        <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-700">
+                          {serviceStatusLabel}
+                        </span>
+                      ) : (
+                        <span className="text-sm text-slate-600">{serviceStatusLabel}</span>
+                      )}
                       {servicesWithDebt.length > 0 && (
                         <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
                           Adeudo
                           {servicesWithDebt.length > 1 && `(${servicesWithDebt.length})`}
                         </span>
                       )}
+                    </td>
+                    <td className="px-3 py-2 text-sm text-slate-700">
+                      <div className="flex flex-col gap-1 text-xs">
+                        <span>{baseLabel ? baseLabel : 'Base sin especificar'}</span>
+                        {primaryService?.ipAddress && (
+                          <span className="inline-flex items-center gap-1 rounded bg-slate-50 px-2 py-0.5">
+                            <span className="h-2 w-2 rounded-full bg-emerald-400" aria-hidden />
+                            {primaryService.ipAddress}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-3 py-2">
                       <div className="flex gap-2">
@@ -567,7 +595,7 @@ export default function ClientsList({
               })}
               {paginatedClients.length === 0 && (
                 <tr>
-                  <td className="px-3 py-4 text-center text-slate-500" colSpan={6}>
+                  <td className="px-3 py-4 text-center text-slate-500" colSpan={7}>
                     No se encontraron clientes con los filtros actuales.
                   </td>
                 </tr>
