@@ -21,8 +21,6 @@ import {
   CLIENT_TYPE_LABELS,
   SERVICE_STATUS_LABELS,
   formatServiceStatus,
-  getClientDebtSummary,
-  getClientMonthlyFee,
   getFractionalDebt,
   getOutstandingPeriodKeys,
   getPrimaryService,
