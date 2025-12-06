@@ -9,7 +9,9 @@ from typing import Optional
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 
 from .. import schemas
 from ..database import get_db
@@ -132,20 +134,27 @@ def list_payments(
             detail="min_amount cannot be greater than max_amount",
         )
 
-    items, total = PaymentService.list_payments(
-        db,
-        client_id=client_id,
-        client_service_id=client_service_id,
-        service_type=service_type,
-        period_key=period_key,
-        start_date=start_date,
-        end_date=end_date,
-        method=method,
-        min_amount=min_amount,
-        max_amount=max_amount,
-        skip=skip,
-        limit=limit,
-    )
+    try:
+        items, total = PaymentService.list_payments(
+            db,
+            client_id=client_id,
+            client_service_id=client_service_id,
+            service_type=service_type,
+            period_key=period_key,
+            start_date=start_date,
+            end_date=end_date,
+            method=method,
+            min_amount=min_amount,
+            max_amount=max_amount,
+            skip=skip,
+            limit=limit,
+        )
+    except (PaymentServiceError, SQLAlchemyError) as exc:
+        LOGGER.exception("Failed to list payments", exc_info=exc)
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"detail": "No se pudieron cargar los pagos. Inténtalo de nuevo más tarde."},
+        )
     return schemas.ServicePaymentListResponse(
         items=items, total=total, limit=limit, skip=skip
     )

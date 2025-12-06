@@ -10,7 +10,7 @@ from sqlalchemy.orm import sessionmaker
 
 from backend.app import models
 from backend.app.database import Base, get_db
-from backend.app.main import app
+from backend.app.main import LOCAL_DEVELOPMENT_ORIGIN, app
 from backend.app.models import BillingPeriod
 from backend.app.security import generate_totp_code
 
@@ -54,6 +54,22 @@ def test_create_payment_updates_client_balance(client, db_session, seed_basic_da
     assert Decimal(updated_client.debt_months) == Decimal("1")
     assert Decimal(updated_client.paid_months_ahead) == Decimal("0")
     assert updated_client.service_status == models.ServiceStatus.SUSPENDED
+
+
+def test_payment_listing_returns_cors_headers_on_failure(client, monkeypatch):
+    def fail_listing(*_args, **_kwargs):
+        raise SQLAlchemyError("boom")
+
+    monkeypatch.setattr(
+        "backend.app.services.payments.PaymentService.list_payments",
+        fail_listing,
+    )
+
+    response = client.get("/payments", headers={"Origin": LOCAL_DEVELOPMENT_ORIGIN})
+
+    assert response.status_code == 500
+    assert response.headers.get("access-control-allow-origin") == LOCAL_DEVELOPMENT_ORIGIN
+    assert response.json()["detail"] == "No se pudieron cargar los pagos. Inténtalo de nuevo más tarde."
 
 
 def test_delete_payment_restores_client_and_snapshots(client, db_session, seed_basic_data):
