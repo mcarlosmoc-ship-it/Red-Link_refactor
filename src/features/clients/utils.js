@@ -1,4 +1,5 @@
 import { addMonthsToPeriod } from '../../utils/formatters.js'
+import { CLIENT_PRICE } from '../../store/constants.js'
 
 export const normalizeId = (value) => {
   if (value === null || value === undefined) {
@@ -131,4 +132,44 @@ export const getFractionalDebt = (debtMonths) => {
 
   const fractional = Math.abs(numericDebt - Math.floor(numericDebt))
   return fractional > 0.0001 ? fractional : 0
+}
+
+export const getClientMonthlyFee = (client, fallback = CLIENT_PRICE) => {
+  if (!client) return fallback
+
+  const primaryService = getPrimaryService(client)
+  const rawMonthlyFee =
+    primaryService?.effectivePrice ??
+    primaryService?.price ??
+    primaryService?.customPrice ??
+    client?.monthlyFee
+
+  const numericMonthlyFee = Number(rawMonthlyFee)
+  return Number.isFinite(numericMonthlyFee) ? numericMonthlyFee : fallback
+}
+
+export const getClientDebtSummary = (client, fallbackMonthlyFee = CLIENT_PRICE) => {
+  if (!client) {
+    return {
+      debtMonths: 0,
+      debtAmount: 0,
+      monthlyFee: fallbackMonthlyFee,
+      fractionalDebt: 0,
+      totalDue: 0,
+    }
+  }
+
+  const monthlyFee = getClientMonthlyFee(client, fallbackMonthlyFee)
+  const debtMonths = Math.max(Number(client.debtMonths ?? 0), 0)
+  const debtAmount = Math.max(Number(client.debtAmount ?? 0), 0)
+  const fractionalDebt = getFractionalDebt(debtMonths)
+  const totalDue = debtMonths * monthlyFee + debtAmount
+
+  return {
+    debtMonths,
+    debtAmount,
+    monthlyFee,
+    fractionalDebt,
+    totalDue,
+  }
 }
