@@ -1,5 +1,5 @@
 /* global Blob, URL */
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   BadgeCheck,
   Box,
