@@ -218,6 +218,13 @@ Ambos métodos persisten el token entre recargas; si necesitas cerrarlo puedes
 ejecutar `window.__RED_LINK_API_CLIENT__.clearAccessToken()` o eliminar la
 entrada manualmente desde las herramientas de almacenamiento del navegador.
 
+## Despliegue recomendado
+
+Consulta la guía [docs/deployment.md](docs/deployment.md) para un checklist de
+producción: requisitos de sistema, configuración de `DATABASE_URL` para
+PostgreSQL, provisión de secretos, ejecución de migraciones, uso de un process
+manager y ejemplos de proxy inverso (Nginx/Caddy) con HTTPS.
+
 ## Base de datos
 
 - El esquema completo de tablas, índices y datos iniciales se encuentra en
