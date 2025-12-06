@@ -1,12 +1,12 @@
 # Estado actual de la carga masiva de clientes
 
-La importación CSV vuelve a estar expuesta en la UI y soporta clientes con varios servicios por fila:
+La importación CSV ahora permite mezclar datos del cliente con hasta dos servicios por fila, alineada con el flujo esperado de Wisphub:
 
-- El botón **Importar CSV** está disponible en la cabecera de la lista de clientes y abre `ImportClientsModal` con instrucciones y resumen de resultados.
-- El store `useBackofficeStore` mantiene la acción `importClients(file)`, que valida el CSV, envía el contenido al endpoint `/clients/import` y luego actualiza clientes y métricas.
-- La plantilla ahora incluye bloques hasta `service_3_*` (plan, estado, día de cobro, base, IP, equipo y precio personalizado) para reflejar múltiples servicios por cliente y valida que las IPs no estén repetidas.
+- El botón **Importar CSV** sigue disponible en la lista de clientes y abre `ImportClientsModal`, que explica las columnas `service_1_*`/`service_2_*`, permite descargar la plantilla autenticada y muestra resultados por fila con opción de descargar errores. 【F:src/components/clients/ImportClientsModal.jsx†L48-L202】【F:src/components/clients/ImportClientsModal.jsx†L220-L347】
+- El store `useBackofficeStore` conserva la acción `importClients(file)` para validar y enviar el CSV al endpoint `/clients/import`, refrescando clientes y métricas tras la carga. 【F:src/store/useBackofficeStore.js†L1011-L1044】
+- La plantilla generada por `/clients/import/template` incluye bloques `service_1_*` y `service_2_*` (plan, estado, día de cobro, base, IP y precio) además de datos del cliente, facilitando altas con múltiples servicios en una sola fila. 【F:backend/app/services/clients.py†L80-L135】【F:backend/app/routers/clients.py†L185-L214】
 
-## Pasos requeridos para igualar el flujo de Wisphub
-- **Plantilla mixta cliente + servicios.** Extender la CSV para permitir múltiples servicios por cliente en la misma carga (columnas `service_1_plan`, `service_1_price`, `service_1_ip`, etc., o filas adicionales), validando duplicados de IP/cliente igual que Wisphub.
-- **Proceso doble en backend.** Ajustar `/clients/import` para crear el cliente y luego iterar sus servicios hijos en una sola transacción, devolviendo un resumen de altas/errores por servicio.
-- **UI con feedback granular.** Actualizar el modal para describir el formato tipo Wisphub, mostrar conteos por servicio y resaltar filas con errores específicos (plan inexistente, IP duplicada, falta de precio) antes de permitir reintentar.
+## Alcance cubierto
+- **Plantilla mixta cliente + servicios.** El CSV soporta múltiples servicios en la misma fila o filas duplicadas para añadir más de dos servicios al mismo cliente, validando duplicados de IP y consistencia de datos por cliente. 【F:backend/app/services/clients.py†L365-L512】【F:backend/app/services/clients.py†L520-L671】
+- **Proceso doble en backend.** `/clients/import` agrupa filas por cliente, crea la cuenta y registra todos sus servicios en una transacción, devolviendo conteos y errores por fila/servicio. 【F:backend/app/services/clients.py†L404-L477】【F:backend/app/services/clients.py†L520-L671】【F:backend/app/services/clients.py†L800-L872】
+- **UI con feedback granular.** El modal explica el formato, permite descargar la plantilla autenticada y expone resúmenes por fila con descarga CSV de errores antes de reintentar. 【F:src/components/clients/ImportClientsModal.jsx†L102-L347】

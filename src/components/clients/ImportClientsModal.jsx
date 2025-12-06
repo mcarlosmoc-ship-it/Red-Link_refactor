@@ -12,15 +12,19 @@ const CLIENT_REQUIRED_COLUMNS = [
   { key: 'tipo_cliente', label: 'tipo_cliente' },
 ]
 
-const SERVICE_REQUIRED_COLUMNS = [
-  { key: 'service_plan', label: 'service_plan' },
-  { key: 'custom_price', label: 'custom_price' },
-  { key: 'dia_corte', label: 'dia_corte' },
-  { key: 'estado_servicio', label: 'estado_servicio' },
-  { key: 'ip_principal', label: 'ip_principal' },
-  { key: 'ip_antena', label: 'ip_antena' },
-  { key: 'ip_modem', label: 'ip_modem' },
-  { key: 'router_model', label: 'router_model' },
+const SERVICE_COLUMNS = [
+  { key: 'service_1_plan_id', label: 'service_1_plan_id' },
+  { key: 'service_1_status', label: 'service_1_status' },
+  { key: 'service_1_billing_day', label: 'service_1_billing_day' },
+  { key: 'service_1_zone_id', label: 'service_1_zone_id' },
+  { key: 'service_1_ip_address', label: 'service_1_ip_address' },
+  { key: 'service_1_custom_price', label: 'service_1_custom_price' },
+  { key: 'service_2_plan_id', label: 'service_2_plan_id' },
+  { key: 'service_2_status', label: 'service_2_status' },
+  { key: 'service_2_billing_day', label: 'service_2_billing_day' },
+  { key: 'service_2_zone_id', label: 'service_2_zone_id' },
+  { key: 'service_2_ip_address', label: 'service_2_ip_address' },
+  { key: 'service_2_custom_price', label: 'service_2_custom_price' },
 ]
 
 const OPTIONAL_COLUMNS = [
@@ -126,7 +130,7 @@ export default function ImportClientsModal({
     try {
       const columns = [
         ...CLIENT_REQUIRED_COLUMNS.map((column) => column.key),
-        ...SERVICE_REQUIRED_COLUMNS.map((column) => column.key),
+        ...SERVICE_COLUMNS.map((column) => column.key),
         ...Array.from(selectedColumns),
       ]
       const { data } = await apiClient.get('/clients/import/template', {
@@ -219,12 +223,12 @@ export default function ImportClientsModal({
                         activa) y ábrela en Excel o Google Sheets.
                       </li>
                       <li>
-                        Cada fila representa <strong>un servicio</strong>. Si un cliente tiene varios servicios, repite sus datos en
-                        filas distintas.
+                        Cada fila puede incluir hasta dos servicios utilizando columnas <code>service_1_*</code> y
+                        <code>service_2_*</code>. Si necesitas más servicios, duplica la fila con el mismo cliente.
                       </li>
                       <li>
                         La importación agrupa automáticamente las filas que comparten cliente (por código externo o por
-                        nombre y dirección).
+                        nombre y dirección) y creará todos los servicios listados.
                       </li>
                       <li>
                         Las columnas opcionales (contacto, coordenadas, comentarios y meses adelantados/adeudados)
@@ -318,9 +322,9 @@ export default function ImportClientsModal({
                     </div>
                   </div>
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Datos del servicio</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Datos de servicios</p>
                     <div className="mt-2 flex flex-wrap gap-2">
-                      {SERVICE_REQUIRED_COLUMNS.map((column) => (
+                      {SERVICE_COLUMNS.map((column) => (
                         <span
                           key={column.key}
                           className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700"
@@ -332,8 +336,8 @@ export default function ImportClientsModal({
                   </div>
                 </div>
                 <p className="mt-3 text-xs text-slate-500">
-                  Para múltiples servicios de un mismo cliente, repite sus datos en filas independientes. El sistema agrupará los
-                  servicios en una sola cuenta al importar.
+                  Usa la columna <code>service_1_plan_id</code> (u opciones similares) para cada servicio del cliente. Si el plan
+                  requiere IP/base, completa <code>service_*_ip_address</code> y <code>service_*_zone_id</code>.
                 </p>
               </div>
 
