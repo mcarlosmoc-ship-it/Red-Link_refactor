@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import date
-from decimal import Decimal
+from datetime import date, timedelta
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Dict, Iterable, Optional, Tuple
 
 from sqlalchemy import func
@@ -162,6 +162,8 @@ class ClientContractService:
         existing: Optional[models.ClientService] = None,
     ) -> tuple[dict, models.ServicePlan, Decimal]:
         payload = data.model_dump(exclude_unset=True, by_alias=True)
+        start_date = payload.pop("start_date", None)
+        apply_prorate = bool(payload.pop("apply_prorate", True))
         if existing is not None:
             client = client or existing.client
 
@@ -261,10 +263,41 @@ class ClientContractService:
             raw_notes = payload.get("debt_notes")
             payload["debt_notes"] = raw_notes if raw_notes is not None else None
 
+        billing_day = payload.get("billing_day")
+        if start_date and billing_day is None:
+            billing_day = start_date.day
+            payload["billing_day"] = billing_day
+
         if effective_price <= Decimal("0"):
             payload["billing_day"] = None
             payload.pop("next_billing_date", None)
             payload["next_billing_date"] = None
+            return payload, plan, effective_price
+
+        if start_date and apply_prorate and payload.get("billing_day"):
+            billing_day = int(payload["billing_day"])
+            next_billing = cls._compute_next_billing_date(
+                billing_day, base_date=start_date
+            )
+            previous_billing = cls._compute_previous_billing_date(
+                billing_day, base_date=next_billing
+            )
+            cycle_days = (next_billing - previous_billing).days
+            used_days = (next_billing - start_date).days
+
+            if cycle_days > 0 and 0 < used_days < cycle_days:
+                fraction = Decimal(used_days) / Decimal(cycle_days)
+                prorated_months = fraction.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                current_debt_months = Decimal(str(payload.get("debt_months") or 0))
+                current_debt_amount = Decimal(str(payload.get("debt_amount") or 0))
+
+                payload["debt_months"] = (
+                    current_debt_months + prorated_months
+                ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                payload["debt_amount"] = (
+                    current_debt_amount + effective_price * fraction
+                ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                payload["next_billing_date"] = next_billing
 
         return payload, plan, effective_price
 
@@ -558,6 +591,23 @@ class ClientContractService:
                 target_month += 1
         last_day = ClientContractService._last_day_of_month(target_year, target_month)
         return date(target_year, target_month, min(billing_day, last_day))
+
+    @staticmethod
+    def _compute_previous_billing_date(
+        billing_day: int, base_date: Optional[date] = None
+    ) -> date:
+        reference = base_date or date.today()
+        year = reference.year
+        month = reference.month
+
+        if reference.day <= billing_day:
+            month -= 1
+            if month == 0:
+                month = 12
+                year -= 1
+
+        last_day = ClientContractService._last_day_of_month(year, month)
+        return date(year, month, min(billing_day, last_day))
 
     @staticmethod
     def _last_day_of_month(year: int, month: int) -> int:
