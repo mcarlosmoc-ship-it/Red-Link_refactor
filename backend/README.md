@@ -34,8 +34,8 @@ Opcionalmente puedes definir:
 
 - `ADMIN_TOTP_SECRET`: clave base32 para habilitar un segundo factor (TOTP).
   Si la omites, el backend no solicitará códigos OTP.
-- `ACCESS_TOKEN_EXPIRE_MINUTES`: minutos de vigencia de cada token (por
-  defecto `15`).
+- `ACCESS_TOKEN_EXPIRE_MINUTES`: minutos de vigencia de cada token. Si no
+  se define, los tokens expiran a los `15` minutos.
 
 Si falta cualquiera de las variables obligatorias, la aplicación aborta el
 arranque con `SecurityConfigurationError` para evitar ejecutar la API en un

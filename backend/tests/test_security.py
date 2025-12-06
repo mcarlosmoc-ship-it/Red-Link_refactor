@@ -1,7 +1,9 @@
+from datetime import timedelta
+
 import pytest
 
 from backend.app import models
-from backend.app.security import generate_totp_code
+from backend.app.security import _resolve_access_token_expiry, generate_totp_code
 from backend.app.services.backups import perform_backup
 
 
@@ -113,6 +115,14 @@ def test_admin_login_requires_otp(security_settings, client):
     )
     assert response.status_code == 200
     assert "access_token" in response.json()
+
+
+def test_access_token_expiry_defaults_to_15_minutes(monkeypatch):
+    monkeypatch.delenv("ACCESS_TOKEN_EXPIRE_MINUTES", raising=False)
+
+    expiry = _resolve_access_token_expiry()
+
+    assert expiry == timedelta(minutes=15)
 
 
 def test_perform_backup_creates_file(security_settings, tmp_path, monkeypatch):
