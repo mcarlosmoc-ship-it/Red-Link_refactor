@@ -9,7 +9,6 @@ import {
   peso,
   formatPeriodLabel,
   diffPeriods,
-  addMonthsToPeriod,
 } from '../utils/formatters.js'
 import { useDashboardMetrics } from '../hooks/useDashboardMetrics.js'
 import { useClients } from '../hooks/useClients.js'
@@ -18,6 +17,15 @@ import { useToast } from '../hooks/useToast.js'
 import { CLIENT_PRICE, useBackofficeStore } from '../store/useBackofficeStore.js'
 import { useBackofficeRefresh } from '../contexts/BackofficeRefreshContext.jsx'
 import DashboardSkeleton from './DashboardSkeleton.jsx'
+import {
+  CLIENT_TYPE_LABELS,
+  SERVICE_STATUS_LABELS,
+  formatServiceStatus,
+  getFractionalDebt,
+  getOutstandingPeriodKeys,
+  getPrimaryService,
+  isInternetLikeService,
+} from '../features/clients/utils.js'
 
 const periodsFormatter = new Intl.NumberFormat('es-MX', { maximumFractionDigits: 2 })
 const printDateFormatter = new Intl.DateTimeFormat('es-MX', {
@@ -55,59 +63,6 @@ const createEmptyPaymentForm = () => ({
   method: 'Efectivo',
   note: '',
 })
-
-const CLIENT_TYPE_LABELS = {
-  residential: 'Cliente residencial',
-  token: 'Punto con antena pública',
-}
-
-const SERVICE_STATUS_LABELS = {
-  active: 'Activo',
-  suspended: 'Suspendido',
-  cancelled: 'Baja',
-}
-
-const formatServiceStatus = (status) => SERVICE_STATUS_LABELS[status] ?? 'Desconocido'
-
-const isInternetLikeService = (serviceType) =>
-  serviceType === 'internet' || serviceType === 'hotspot'
-
-const getPrimaryService = (client) => {
-  const services = Array.isArray(client?.services) ? client.services : []
-  if (services.length === 0) {
-    return null
-  }
-  return services.find((service) => isInternetLikeService(service.type)) ?? services[0]
-}
-
-const getOutstandingPeriodKeys = (anchorPeriod, debtMonths) => {
-  const normalizedAnchor = typeof anchorPeriod === 'string' ? anchorPeriod : null
-  const numericDebt = Number(debtMonths ?? 0)
-
-  if (!normalizedAnchor || !Number.isFinite(numericDebt) || numericDebt <= 0.0001) {
-    return []
-  }
-
-  const completeMonths = Math.max(Math.floor(numericDebt), 0)
-  const keys = []
-
-  for (let index = 0; index < completeMonths; index += 1) {
-    keys.push(addMonthsToPeriod(normalizedAnchor, -index))
-  }
-
-  return keys
-}
-
-const getFractionalDebt = (debtMonths) => {
-  const numericDebt = Number(debtMonths ?? 0)
-
-  if (!Number.isFinite(numericDebt)) {
-    return 0
-  }
-
-  const fractional = Math.abs(numericDebt - Math.floor(numericDebt))
-  return fractional > 0.0001 ? fractional : 0
-}
 
 export default function DashboardPage() {
   const initializeStatus = useBackofficeStore((state) => state.status.initialize)
