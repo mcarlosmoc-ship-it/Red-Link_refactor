@@ -14,9 +14,11 @@ import { useToast } from '../hooks/useToast.js'
 import { useClients } from '../hooks/useClients.js'
 import { useBackofficeRefresh } from '../contexts/BackofficeRefreshContext.jsx'
 import PaymentsSkeleton from './PaymentsSkeleton.jsx'
+import FormField from '../components/ui/FormField.jsx'
 
 const METHODS = ['Todos', 'Efectivo', 'Transferencia', 'Tarjeta', 'Revendedor']
 const METHOD_OPTIONS = METHODS.filter((method) => method !== 'Todos')
+const PAGE_SIZE_OPTIONS = [10, 25, 50]
 
 export default function PaymentsPage() {
   const { selectedPeriod, recordPayment, initializeStatus } = useBackofficeStore((state) => ({
@@ -42,6 +44,9 @@ export default function PaymentsPage() {
   })
   const [paymentError, setPaymentError] = useState(null)
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false)
+  const [paymentFieldErrors, setPaymentFieldErrors] = useState({})
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(PAGE_SIZE_OPTIONS[0])
 
   const isLoadingPayments = Boolean(paymentsStatus?.isLoading && payments.length === 0)
   const isSyncingPayments = Boolean(paymentsStatus?.isLoading)
@@ -134,15 +139,79 @@ export default function PaymentsPage() {
     return Number.isFinite(parsed) ? parsed : 0
   }, [selectedService])
 
-  const handlePaymentSubmit = async (event) => {
-    event.preventDefault()
-    if (!paymentForm.clientId) {
-      setPaymentError('Selecciona un cliente para registrar el pago.')
-      return
+  const monthsValue = Number(paymentForm.months)
+  const amountValue = Number(paymentForm.amount)
+  const hasMonthsValue = Number.isFinite(monthsValue) && monthsValue > 0
+  const hasAmountValue = Number.isFinite(amountValue) && amountValue > 0
+
+  const resolveSelectedClientFromForm = (formData) =>
+    clients.find((client) => String(client.id) === String(formData.clientId)) ?? null
+
+  const resolveSelectedServiceFromForm = (formData) => {
+    const client = resolveSelectedClientFromForm(formData)
+    if (!client?.services?.length) return null
+    return (
+      client.services.find((service) => String(service.id) === String(formData.serviceId)) ??
+      client.services[0] ??
+      null
+    )
+  }
+
+  const validatePaymentForm = (formData, service = selectedService) => {
+    const errors = {}
+    if (!formData.clientId) {
+      errors.clientId = 'Selecciona un cliente para registrar el pago.'
     }
 
-    if (!selectedService) {
-      setPaymentError('El cliente no tiene servicios disponibles para cobrar.')
+    if (!service) {
+      errors.serviceId = 'El cliente debe tener al menos un servicio activo.'
+    }
+
+    const monthsValue = Number(formData.months)
+    const amountValue = Number(formData.amount)
+    const normalizedMonths = Number.isFinite(monthsValue) && monthsValue > 0 ? monthsValue : 0
+    const normalizedAmount = Number.isFinite(amountValue) && amountValue > 0 ? amountValue : 0
+    const requiresExplicitMonths = (Number(service?.price ?? 0) <= 0 && normalizedAmount <= 0) || false
+
+    if (normalizedMonths <= 0 && normalizedAmount <= 0) {
+      errors.amount = 'Ingresa meses pagados o un monto a registrar.'
+    }
+
+    if (service && requiresExplicitMonths && normalizedMonths <= 0) {
+      errors.months = 'Define los meses cubiertos cuando no hay tarifa fija.'
+    }
+
+    return errors
+  }
+
+  const syncPaymentValidation = (nextFormData) => {
+    const service = resolveSelectedServiceFromForm(nextFormData)
+    setPaymentFieldErrors(validatePaymentForm(nextFormData, service))
+  }
+
+  const handlePaymentFieldChange = (field, value) => {
+    const nextForm = {
+      ...paymentForm,
+      [field]: value,
+    }
+
+    if (field === 'clientId') {
+      nextForm.serviceId = ''
+      nextForm.months = ''
+      nextForm.amount = ''
+    }
+
+    setPaymentForm(nextForm)
+    syncPaymentValidation(nextForm)
+    setPaymentError(null)
+  }
+
+  const handlePaymentSubmit = async (event) => {
+    event.preventDefault()
+    const validationErrors = validatePaymentForm(paymentForm, selectedService)
+    setPaymentFieldErrors(validationErrors)
+    if (Object.keys(validationErrors).length > 0) {
+      setPaymentError('Corrige los campos marcados antes de guardar.')
       return
     }
 
@@ -150,19 +219,6 @@ export default function PaymentsPage() {
     const amountValue = Number(paymentForm.amount)
     const normalizedMonths = Number.isFinite(monthsValue) && monthsValue > 0 ? monthsValue : 0
     const normalizedAmount = Number.isFinite(amountValue) && amountValue > 0 ? amountValue : 0
-    const requiresExplicitMonths = selectedServicePrice <= 0 && normalizedAmount <= 0
-
-    if (normalizedMonths <= 0 && normalizedAmount <= 0) {
-      setPaymentError('Ingresa meses pagados o un monto a registrar.')
-      return
-    }
-
-    if (requiresExplicitMonths && normalizedMonths <= 0) {
-      setPaymentError(
-        'Este cliente no tiene una tarifa mensual configurada. Ingresa los meses cubiertos.',
-      )
-      return
-    }
 
     setPaymentError(null)
     setIsSubmittingPayment(true)
@@ -185,12 +241,14 @@ export default function PaymentsPage() {
         description: 'La cobranza se actualizó correctamente.',
       })
 
-      setPaymentForm((prev) => ({
-        ...prev,
+      const nextForm = {
+        ...paymentForm,
         months: '',
         amount: '',
         note: '',
-      }))
+      }
+      setPaymentForm(nextForm)
+      syncPaymentValidation(nextForm)
     } catch (error) {
       const message = error?.message ?? 'No se pudo registrar el pago. Intenta nuevamente.'
       setPaymentError(message)
@@ -203,6 +261,10 @@ export default function PaymentsPage() {
       setIsSubmittingPayment(false)
     }
   }
+
+  useEffect(() => {
+    syncPaymentValidation(paymentForm)
+  }, [clients, paymentForm, selectedService])
 
   const handleRetry = async () => {
     setIsRetrying(true)
@@ -246,6 +308,21 @@ export default function PaymentsPage() {
       })
   }, [payments, methodFilter, searchTerm, selectedPeriod])
 
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [methodFilter, searchTerm, selectedPeriod, payments.length, pageSize])
+
+  const totalPages = Math.max(1, Math.ceil(filteredPayments.length / pageSize))
+
+  useEffect(() => {
+    setCurrentPage((prev) => Math.min(prev, totalPages))
+  }, [totalPages])
+
+  const paginatedPayments = filteredPayments.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize,
+  )
+
   const totalAmount = filteredPayments.reduce((sum, payment) => sum + (payment.amount ?? 0), 0)
 
   return (
@@ -264,18 +341,20 @@ export default function PaymentsPage() {
           <CardContent>
             <form className="space-y-4" onSubmit={handlePaymentSubmit}>
               <div className="grid gap-3 md:grid-cols-3">
-                <label className="grid gap-1 text-xs font-medium text-slate-600 md:col-span-2">
-                  Cliente
+                <FormField
+                  className="md:col-span-2"
+                  label="Cliente"
+                  htmlFor="payment-client"
+                  status={paymentFieldErrors.clientId ? 'error' : paymentForm.clientId ? 'success' : 'default'}
+                  message={
+                    paymentFieldErrors.clientId ??
+                    'Selecciona a quién se registrará el cobro.'
+                  }
+                  tooltip="Busca por nombre, base o ubicación para evitar errores de asignación."
+                >
                   <select
                     value={paymentForm.clientId}
-                    onChange={(event) =>
-                      setPaymentForm((prev) => ({
-                        ...prev,
-                        clientId: event.target.value,
-                        serviceId: '',
-                      }))
-                    }
-                    className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+                    onChange={(event) => handlePaymentFieldChange('clientId', event.target.value)}
                     disabled={isLoadingClients}
                   >
                     <option value="">
@@ -287,29 +366,38 @@ export default function PaymentsPage() {
                       </option>
                     ))}
                   </select>
-                </label>
-                <label className="grid gap-1 text-xs font-medium text-slate-600">
-                  Fecha de pago
+                </FormField>
+                <FormField
+                  label="Fecha de pago"
+                  htmlFor="payment-date"
+                  status={paymentForm.paidOn ? 'success' : 'default'}
+                  message="Define la fecha efectiva del cobro."
+                >
                   <input
                     type="date"
                     value={paymentForm.paidOn}
-                    onChange={(event) =>
-                      setPaymentForm((prev) => ({ ...prev, paidOn: event.target.value }))
-                    }
-                    className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+                    onChange={(event) => handlePaymentFieldChange('paidOn', event.target.value)}
                   />
-                </label>
+                </FormField>
               </div>
 
               <div className="grid gap-3 md:grid-cols-3">
-                <label className="grid gap-1 text-xs font-medium text-slate-600 md:col-span-2">
-                  Servicio
+                <FormField
+                  className="md:col-span-2"
+                  label="Servicio"
+                  htmlFor="payment-service"
+                  status={paymentFieldErrors.serviceId ? 'error' : paymentForm.serviceId ? 'success' : 'default'}
+                  message={
+                    paymentFieldErrors.serviceId ??
+                    (selectedClient
+                      ? 'Elige el servicio que estás cobrando.'
+                      : 'Selecciona un cliente para listar servicios.')
+                  }
+                  tooltip="Solo se muestran los servicios activos o asignados al cliente."
+                >
                   <select
                     value={paymentForm.serviceId}
-                    onChange={(event) =>
-                      setPaymentForm((prev) => ({ ...prev, serviceId: event.target.value }))
-                    }
-                    className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+                    onChange={(event) => handlePaymentFieldChange('serviceId', event.target.value)}
                     disabled={!serviceOptions.length}
                   >
                     <option value="">
@@ -325,8 +413,8 @@ export default function PaymentsPage() {
                       </option>
                     ))}
                   </select>
-                </label>
-                <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                </FormField>
+                <div className="rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-700 shadow-inner">
                   {selectedService ? (
                     <div className="space-y-1">
                       <p className="font-semibold text-slate-700">{selectedService.name}</p>
@@ -357,44 +445,55 @@ export default function PaymentsPage() {
               </div>
 
               <div className="grid gap-3 md:grid-cols-3">
-                <label className="grid gap-1 text-xs font-medium text-slate-600">
-                  Meses pagados
+                <FormField
+                  label="Meses pagados"
+                  htmlFor="payment-months"
+                  status={paymentFieldErrors.months ? 'error' : hasMonthsValue ? 'success' : 'default'}
+                  message={
+                    paymentFieldErrors.months ??
+                    'Ingresa la cobertura exacta; se aceptan medios meses.'
+                  }
+                  tooltip="Útil cuando el precio no está configurado o se cobran varios periodos."
+                >
                   <input
                     type="number"
                     min={0}
                     step="0.5"
                     value={paymentForm.months}
-                    onChange={(event) =>
-                      setPaymentForm((prev) => ({ ...prev, months: event.target.value }))
-                    }
-                    className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+                    onChange={(event) => handlePaymentFieldChange('months', event.target.value)}
                     placeholder="0"
                     disabled={!selectedService}
                   />
-                </label>
-                <label className="grid gap-1 text-xs font-medium text-slate-600">
-                  Monto recibido (MXN)
+                </FormField>
+                <FormField
+                  label="Monto recibido (MXN)"
+                  htmlFor="payment-amount"
+                  status={paymentFieldErrors.amount ? 'error' : hasAmountValue ? 'success' : 'default'}
+                  message={
+                    paymentFieldErrors.amount ??
+                    'Registra el total recibido en efectivo, transferencia o tarjeta.'
+                  }
+                  tooltip="Se registrará tal cual para reportes; incluye centavos si aplica."
+                >
                   <input
                     type="number"
                     min={0}
                     step="0.01"
                     value={paymentForm.amount}
-                    onChange={(event) =>
-                      setPaymentForm((prev) => ({ ...prev, amount: event.target.value }))
-                    }
-                    className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+                    onChange={(event) => handlePaymentFieldChange('amount', event.target.value)}
                     placeholder="0.00"
                     disabled={!selectedService}
                   />
-                </label>
-                <label className="grid gap-1 text-xs font-medium text-slate-600">
-                  Método
+                </FormField>
+                <FormField
+                  label="Método"
+                  htmlFor="payment-method"
+                  status="default"
+                  message="Define el método para auditoría y conciliación."
+                >
                   <select
                     value={paymentForm.method}
-                    onChange={(event) =>
-                      setPaymentForm((prev) => ({ ...prev, method: event.target.value }))
-                    }
-                    className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+                    onChange={(event) => handlePaymentFieldChange('method', event.target.value)}
                   >
                     {METHOD_OPTIONS.map((method) => (
                       <option key={method} value={method}>
@@ -402,21 +501,28 @@ export default function PaymentsPage() {
                       </option>
                     ))}
                   </select>
-                </label>
+                </FormField>
               </div>
 
-              <label className="grid gap-1 text-xs font-medium text-slate-600">
-                Nota (opcional)
+              <FormField
+                label="Nota (opcional)"
+                htmlFor="payment-note"
+                status={paymentForm.note ? 'success' : 'default'}
+                message={
+                  paymentForm.note
+                    ? 'Se guardará como referencia del movimiento.'
+                    : 'Agrega referencias, folios o comentarios relevantes.'
+                }
+                tooltip="Esta nota ayuda a rastrear comprobantes o aclaraciones futuras."
+              >
                 <textarea
                   value={paymentForm.note}
-                  onChange={(event) =>
-                    setPaymentForm((prev) => ({ ...prev, note: event.target.value }))
-                  }
-                  className="min-h-[80px] rounded-md border border-slate-300 px-3 py-2 text-sm"
+                  onChange={(event) => handlePaymentFieldChange('note', event.target.value)}
+                  className="min-h-[80px]"
                   placeholder="Referencia, folio o comentarios relevantes"
                   disabled={!selectedService}
                 />
-              </label>
+              </FormField>
 
               {paymentError && (
                 <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
@@ -543,7 +649,7 @@ export default function PaymentsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {filteredPayments.map((payment) => (
+                  {paginatedPayments.map((payment) => (
                     <tr key={payment.id}>
                       <td className="px-3 py-2 text-slate-600">{payment.date}</td>
                       <td className="px-3 py-2 text-slate-700">{payment.clientName}</td>
@@ -556,7 +662,7 @@ export default function PaymentsPage() {
                       <td className="px-3 py-2 text-slate-500">{payment.note || '—'}</td>
                     </tr>
                   ))}
-                  {filteredPayments.length === 0 && (
+                  {paginatedPayments.length === 0 && (
                     <tr>
                       <td colSpan={7} className="px-3 py-6 text-center text-sm text-slate-500">
                         No hay pagos registrados con los criterios seleccionados en {periodLabel}.
@@ -565,6 +671,52 @@ export default function PaymentsPage() {
                   )}
                 </tbody>
               </table>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600">
+                <label className="flex items-center gap-2 text-xs font-medium text-slate-700">
+                  Filas por página
+                  <select
+                    value={pageSize}
+                    onChange={(event) => setPageSize(Number(event.target.value))}
+                    className="rounded-md border border-slate-300 px-2 py-1 text-sm"
+                  >
+                    {PAGE_SIZE_OPTIONS.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <span className="text-xs text-slate-500">
+                  Mostrando {paginatedPayments.length} de {filteredPayments.length} registros
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                  disabled={currentPage === 1}
+                >
+                  Anterior
+                </Button>
+                <span className="text-xs font-medium text-slate-700">
+                  Página {currentPage} de {totalPages}
+                </span>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+                  disabled={currentPage === totalPages}
+                >
+                  Siguiente
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>
