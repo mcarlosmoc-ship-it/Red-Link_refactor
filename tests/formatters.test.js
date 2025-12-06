@@ -47,6 +47,7 @@ describe('addMonthsToPeriod', () => {
   it('returns null for invalid period keys or month offsets', () => {
     expect(addMonthsToPeriod('not-a-period', 1)).toBeNull()
     expect(addMonthsToPeriod('2024-01', 'abc')).toBeNull()
+    expect(addMonthsToPeriod(null, 1)).toBeNull()
   })
 })
 
@@ -65,6 +66,7 @@ describe('diffPeriods', () => {
 
   it('returns NaN when any period is invalid', () => {
     expect(Number.isNaN(diffPeriods('2024-01', 'invalid'))).toBe(true)
+    expect(Number.isNaN(diffPeriods('bad', '2024-01'))).toBe(true)
   })
 })
 
