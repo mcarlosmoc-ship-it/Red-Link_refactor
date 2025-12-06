@@ -156,11 +156,9 @@ class PaymentService:
             "payment_method": str(data.method.value),
         }
 
-        amount = cls._normalize_amount(data.amount)
-        months_paid = cls._normalize_months(data.months_paid)
-        if months_paid is None:
-            months_paid = cls._infer_months_from_amount(amount, service.effective_price)
-        method, breakdown = cls._normalize_method_breakdown(data)
+        try:
+            service = cls._resolve_service(db, data.client_service_id)
+            client = service.client
 
             period_key = None
             if data.period_key:
@@ -171,6 +169,8 @@ class PaymentService:
             months_paid = cls._normalize_months(data.months_paid)
             if months_paid is None:
                 months_paid = cls._infer_months_from_amount(amount, service.effective_price)
+
+            method, breakdown = cls._normalize_method_breakdown(data)
 
             outstanding_debt_months = Decimal(service.debt_months or 0)
             outstanding_debt_amount = Decimal(service.debt_amount or 0)
@@ -191,29 +191,18 @@ class PaymentService:
                 paid_on=data.paid_on,
                 amount=amount,
                 months_paid=months_paid,
-                method=data.method,
+                method=method,
+                method_breakdown=breakdown,
                 note=data.note,
                 recorded_by=data.recorded_by,
             )
 
+            cls._apply_client_balances(service, client, months_paid or Decimal("0"))
+            cls._apply_service_debt(service, amount, months_paid)
+            cls._update_next_billing(service, payment.paid_on, months_paid, amount)
+
             if period_key:
                 FinancialSnapshotService.apply_payment(db, period_key, amount)
-
-        if outstanding_debt_amount > Decimal("0") and amount < outstanding_debt_amount:
-            raise ValueError("El monto no cubre el adeudo pendiente del servicio.")
-
-        payment = models.ServicePayment(
-            client_service_id=service.id,
-            client_id=client.id,
-            period_key=period_key,
-            paid_on=data.paid_on,
-            amount=amount,
-            months_paid=months_paid,
-            method=method,
-            method_breakdown=breakdown,
-            note=data.note,
-            recorded_by=data.recorded_by,
-        )
 
             db.add(payment)
             db.add(client)
@@ -226,26 +215,14 @@ class PaymentService:
                     "amount": str(amount),
                     "months_paid": str(months_paid) if months_paid is not None else None,
                     "method": payment.method,
+                    "method_breakdown": breakdown,
                     "paid_on": str(payment.paid_on),
+                    "recorded_by": payment.recorded_by,
                 },
             )
             db.add(audit_entry)
 
             db.commit()
-
-        audit_entry = models.PaymentAuditLog(
-            payment=payment,
-            action=models.PaymentAuditAction.CREATED,
-            snapshot={
-                "amount": str(amount),
-                "months_paid": str(months_paid) if months_paid is not None else None,
-                "method": payment.method,
-                "method_breakdown": breakdown,
-                "paid_on": str(payment.paid_on),
-                "recorded_by": payment.recorded_by,
-            },
-        )
-        db.add(audit_entry)
 
             return payment
         except ValueError as exc:
