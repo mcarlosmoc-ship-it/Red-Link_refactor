@@ -21,7 +21,7 @@ class OperationalMetricEvent(Base):
     outcome = Column(String(32), nullable=False, index=True)
     duration_ms = Column(Numeric(14, 3), nullable=True)
     tags = Column("labels", JSON().with_variant(SQLiteJSON(), "sqlite"), nullable=False, default=dict)
-    metadata = Column("details", JSON().with_variant(SQLiteJSON(), "sqlite"), nullable=True)
+    details = Column("details", JSON().with_variant(SQLiteJSON(), "sqlite"), nullable=True)
     created_at = Column(
         DateTime(timezone=True),
         server_default=func.now(),
