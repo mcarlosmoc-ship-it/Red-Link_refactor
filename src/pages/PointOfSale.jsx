@@ -19,11 +19,10 @@ import { Card, CardContent } from '../components/ui/Card.jsx'
 import { usePosCatalog } from '../hooks/usePosCatalog.js'
 import { usePosSales } from '../hooks/usePosSales.js'
 import { useClients } from '../hooks/useClients.js'
-import { usePayments } from '../hooks/usePayments.js'
 import { useToast } from '../hooks/useToast.js'
 import { getClientDebtSummary, getClientMonthlyFee, getPrimaryService } from '../features/clients/utils.js'
 import { CLIENT_PRICE, useBackofficeStore } from '../store/useBackofficeStore.js'
-import { formatDate, peso } from '../utils/formatters.js'
+import { peso } from '../utils/formatters.js'
 
 const PAYMENT_METHODS = ['Efectivo', 'Transferencia', 'Tarjeta', 'Revendedor', 'Otro']
 
@@ -100,7 +99,6 @@ export default function PointOfSalePage() {
   const { products, isLoading: isLoadingProducts, createProduct } = usePosCatalog()
   const { sales, recordSale } = usePosSales({ limit: 8 })
   const { clients, isLoading: isLoadingClients } = useClients()
-  const { payments, status: paymentsStatus, reload: reloadPayments } = usePayments()
   const recordPayment = useBackofficeStore((state) => state.recordPayment)
   const { showToast } = useToast()
 
@@ -128,7 +126,6 @@ export default function PointOfSalePage() {
   const [paymentMethodPos, setPaymentMethodPos] = useState(PAYMENT_METHODS[0])
   const [paymentNote, setPaymentNote] = useState('')
   const [isSubmittingClientPayment, setIsSubmittingClientPayment] = useState(false)
-  const [isRefreshingPayments, setIsRefreshingPayments] = useState(false)
 
   const filteredSalesProducts = useMemo(() => {
     const term = salesSearchTerm.trim().toLowerCase()
@@ -188,23 +185,6 @@ export default function PointOfSalePage() {
     () => (selectedPaymentClient ? getClientMonthlyFee(selectedPaymentClient, CLIENT_PRICE) : CLIENT_PRICE),
     [selectedPaymentClient],
   )
-
-  const isLoadingPayments = Boolean(paymentsStatus?.isLoading && payments.length === 0)
-
-  const recentPayments = useMemo(() => {
-    const toDateValue = (value) => {
-      const parsed = new Date(value)
-      return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime()
-    }
-
-    const base = selectedPaymentClient
-      ? payments.filter((payment) => String(payment.clientId) === String(selectedPaymentClient.id))
-      : payments
-
-    return [...base]
-      .sort((a, b) => toDateValue(b.date) - toDateValue(a.date))
-      .slice(0, 10)
-  }, [payments, selectedPaymentClient])
 
   useEffect(() => {
     if (!selectedPaymentClient) {
@@ -417,7 +397,9 @@ export default function PointOfSalePage() {
       : monthlyFee > 0
         ? amountValue / monthlyFee
         : 1
-    const amountToRegister = hasValidAmount ? amountValue : monthsToRegister * monthlyFee
+    const amountToRegister = hasValidAmount
+      ? amountValue
+      : monthsToRegister * selectedPaymentMonthlyFee
 
     setIsSubmittingClientPayment(true)
     try {
@@ -449,26 +431,6 @@ export default function PointOfSalePage() {
       })
     } finally {
       setIsSubmittingClientPayment(false)
-    }
-  }
-
-  const handleRefreshPayments = async () => {
-    setIsRefreshingPayments(true)
-    try {
-      await reloadPayments({ force: true })
-      showToast({
-        type: 'success',
-        title: 'Pagos actualizados',
-        description: 'Los movimientos recientes se sincronizaron correctamente.',
-      })
-    } catch (error) {
-      showToast({
-        type: 'error',
-        title: 'No se pudieron cargar los pagos',
-        description: error?.message ?? 'Intenta nuevamente.',
-      })
-    } finally {
-      setIsRefreshingPayments(false)
     }
   }
 
@@ -1021,76 +983,6 @@ export default function PointOfSalePage() {
                     </p>
                   )}
                 </form>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="space-y-4">
-                <header className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <h2 className="text-lg font-semibold text-slate-900">Pagos registrados</h2>
-                    <p className="text-xs text-slate-500">
-                      {selectedPaymentClient
-                        ? `Últimos pagos de ${selectedPaymentClient.name}`
-                        : 'Movimientos recientes registrados desde cualquier módulo.'}
-                    </p>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleRefreshPayments}
-                    disabled={isRefreshingPayments}
-                    className="border border-slate-200 bg-white"
-                  >
-                    {isRefreshingPayments ? 'Actualizando…' : 'Actualizar'}
-                  </Button>
-                </header>
-
-                {isLoadingPayments ? (
-                  <p className="text-sm text-slate-500">Cargando pagos recientes…</p>
-                ) : recentPayments.length === 0 ? (
-                  <p className="text-sm text-slate-500">No hay pagos registrados para mostrar.</p>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
-                      <thead className="bg-slate-50 text-slate-600">
-                        <tr>
-                          <th scope="col" className="px-3 py-2 font-medium">
-                            Fecha
-                          </th>
-                          <th scope="col" className="px-3 py-2 font-medium">
-                            Cliente
-                          </th>
-                          <th scope="col" className="px-3 py-2 font-medium">
-                            Servicio
-                          </th>
-                          <th scope="col" className="px-3 py-2 font-medium">
-                            Método
-                          </th>
-                          <th scope="col" className="px-3 py-2 font-medium">
-                            Monto
-                          </th>
-                          <th scope="col" className="px-3 py-2 font-medium">
-                            Nota
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {recentPayments.map((payment) => (
-                          <tr key={payment.id}>
-                            <td className="px-3 py-2 text-slate-600">{formatDate(payment.date)}</td>
-                            <td className="px-3 py-2 text-slate-700">{payment.clientName}</td>
-                            <td className="px-3 py-2 text-slate-600">{payment.serviceName}</td>
-                            <td className="px-3 py-2 text-slate-600">{payment.method}</td>
-                            <td className="px-3 py-2 text-slate-600">{peso(payment.amount)}</td>
-                            <td className="px-3 py-2 text-slate-500">{payment.note || '—'}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
               </CardContent>
             </Card>
 

@@ -104,21 +104,6 @@ export const getPrimaryService = (client) => {
   return services.find((service) => isInternetLikeService(service.type)) ?? services[0]
 }
 
-export const getClientMonthlyFee = (client, fallbackPrice = 0) => {
-  const primaryService = getPrimaryService(client)
-  const servicePrice = Number(primaryService?.price)
-  if (Number.isFinite(servicePrice) && servicePrice > 0) {
-    return servicePrice
-  }
-
-  const mappedFee = Number(client?.monthlyFee)
-  if (Number.isFinite(mappedFee) && mappedFee > 0) {
-    return mappedFee
-  }
-
-  return fallbackPrice
-}
-
 export const getOutstandingPeriodKeys = (anchorPeriod, debtMonths) => {
   const normalizedAnchor = typeof anchorPeriod === 'string' ? anchorPeriod : null
   const numericDebt = Number(debtMonths ?? 0)
@@ -146,19 +131,4 @@ export const getFractionalDebt = (debtMonths) => {
 
   const fractional = Math.abs(numericDebt - Math.floor(numericDebt))
   return fractional > 0.0001 ? fractional : 0
-}
-
-export const getClientDebtSummary = (client, fallbackPrice = 0) => {
-  const debtMonthsValue = Number(client?.debtMonths ?? 0)
-  const debtMonths = Number.isFinite(debtMonthsValue) ? Math.max(0, debtMonthsValue) : 0
-  const monthlyFee = getClientMonthlyFee(client, fallbackPrice)
-  const totalDue = debtMonths * monthlyFee
-  const fractionalDebt = getFractionalDebt(debtMonths)
-
-  return {
-    debtMonths,
-    monthlyFee,
-    totalDue,
-    fractionalDebt,
-  }
 }
