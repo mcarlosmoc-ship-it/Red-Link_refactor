@@ -34,6 +34,7 @@ import { peso } from '../utils/formatters.js'
 import { getServiceTypeLabel } from '../constants/serviceTypes.js'
 
 const PAYMENT_METHODS = ['Efectivo', 'Transferencia', 'Tarjeta', 'Revendedor', 'Otro']
+const POS_CHECKOUT_METHODS = ['Efectivo', 'Tarjeta', 'Transferencia', 'Vales']
 
 const MAIN_TABS = [
   { id: 'ventas', label: 'Ventas', icon: ShoppingCart },
@@ -116,6 +117,9 @@ const toInputValue = (value, decimals = 2) => {
   return numericValue.toFixed(decimals)
 }
 
+const normalizePaymentMethodForApi = (method) =>
+  PAYMENT_METHODS.includes(method) ? method : method === 'Vales' ? 'Otro' : PAYMENT_METHODS[0]
+
 const formatDate = (value) => {
   if (!value) return ''
   const date = value instanceof Date ? value : new Date(value)
@@ -170,7 +174,6 @@ export default function PointOfSalePage() {
   const [salesSearchTerm, setSalesSearchTerm] = useState('')
   const [productSearchTerm, setProductSearchTerm] = useState('')
   const [cartItems, setCartItems] = useState([])
-  const [paymentMethod, setPaymentMethod] = useState(PAYMENT_METHODS[0])
   const [clientName, setClientName] = useState('')
   const [selectedClientId, setSelectedClientId] = useState('')
   const [clientSearchTerm, setClientSearchTerm] = useState('')
@@ -181,6 +184,14 @@ export default function PointOfSalePage() {
   const [saleResult, setSaleResult] = useState(null)
   const [formError, setFormError] = useState(null)
   const [isSubmittingSale, setIsSubmittingSale] = useState(false)
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false)
+  const [paymentSplits, setPaymentSplits] = useState([
+    { id: generateLineId(), method: POS_CHECKOUT_METHODS[0], amount: '', reference: '' },
+  ])
+  const [paymentModalError, setPaymentModalError] = useState('')
+  const [cashReceived, setCashReceived] = useState('')
+  const [lastPaymentBreakdown, setLastPaymentBreakdown] = useState([])
+  const [lastSaleContext, setLastSaleContext] = useState(null)
   const [newProductForm, setNewProductForm] = useState(INITIAL_NEW_PRODUCT_FORM)
   const [newProductError, setNewProductError] = useState(null)
   const [isCreatingProduct, setIsCreatingProduct] = useState(false)
@@ -378,6 +389,23 @@ export default function PointOfSalePage() {
     discountValue,
     taxValue,
   ])
+
+  const paymentTotals = useMemo(() => {
+    const normalizedSplits = paymentSplits.map((split) => clamp(normalizeNumericInput(split.amount, 0), 0))
+    const assignedTotal = normalizedSplits.reduce((sum, amount) => sum + amount, 0)
+    const cashSplitAmount = paymentSplits.reduce(
+      (sum, split, index) => (split.method === 'Efectivo' ? sum + normalizedSplits[index] : sum),
+      0,
+    )
+    const cashReceivedValue = clamp(normalizeNumericInput(cashReceived, 0), 0)
+    return {
+      assignedTotal,
+      remaining: total - assignedTotal,
+      cashSplitAmount,
+      cashReceivedValue,
+      change: Math.max(0, cashReceivedValue - cashSplitAmount),
+    }
+  }, [cashReceived, paymentSplits, total])
 
   const getBillingCategoryForItem = (item) =>
     item.billingCategory ?? getDefaultBillingCategory(item.type, item.category)
@@ -738,48 +766,116 @@ export default function PointOfSalePage() {
     return validation
   }, [cartItems, clientServicesByClient, productLookup, selectedClient])
 
-  const handleCheckout = async (event) => {
-    event.preventDefault()
+  const ensureCartReadyForPayment = () => {
     if (cartItems.length === 0) {
       setFormError('Agrega al menos un artículo antes de registrar la venta.')
+      return false
+    }
+
+    const hasErrors = Object.keys(cartValidation).length > 0
+    if (hasErrors) {
+      setFormError('Revisa los artículos con alertas antes de registrar la venta.')
+      return false
+    }
+
+    setFormError(null)
+    return true
+  }
+
+  const handleOpenPaymentModal = (event) => {
+    event.preventDefault()
+    if (!ensureCartReadyForPayment()) return
+
+    setPaymentModalError('')
+    setCashReceived('')
+    setPaymentSplits([
+      {
+        id: generateLineId(),
+        method: POS_CHECKOUT_METHODS[0],
+        amount: toInputValue(total),
+        reference: '',
+      },
+    ])
+    setIsPaymentModalOpen(true)
+  }
+
+  const handleCheckout = async () => {
+    if (!ensureCartReadyForPayment()) return
+
+    const normalizedSplits = paymentSplits.map((split) => ({
+      ...split,
+      amount: clamp(normalizeNumericInput(split.amount, 0), 0),
+      reference: split.reference?.trim() ?? '',
+    }))
+
+    const totalAssigned = normalizedSplits.reduce((sum, split) => sum + split.amount, 0)
+    const cashSplitAmount = normalizedSplits
+      .filter((split) => split.method === 'Efectivo')
+      .reduce((sum, split) => sum + split.amount, 0)
+    const cashReceivedValue = clamp(normalizeNumericInput(cashReceived, 0), 0)
+    const change = Math.max(0, cashReceivedValue - cashSplitAmount)
+
+    if (totalAssigned <= 0) {
+      setPaymentModalError('Distribuye el total entre los métodos de pago disponibles.')
       return
     }
 
-    const discountAmount = discountValue
-    const taxAmount = taxValue
+    if (Math.abs(totalAssigned - total) > 0.01) {
+      setPaymentModalError('La suma de los métodos debe igualar el total a cobrar.')
+      return
+    }
 
     setIsSubmittingSale(true)
-    setFormError(null)
+    setPaymentModalError('')
+
+    const primaryMethod = normalizePaymentMethodForApi(
+      normalizedSplits.find((split) => split.amount > 0)?.method ?? PAYMENT_METHODS[0],
+    )
+
+    const payload = {
+      payment_method: primaryMethod,
+      client_name: clientName.trim() || selectedClient?.name || undefined,
+      notes: notes.trim() || undefined,
+      discount_amount: discountValue || 0,
+      tax_amount: taxValue || 0,
+      payment_breakdown: normalizedSplits,
+      cash_received: cashReceivedValue || undefined,
+      cash_change: change || undefined,
+      items: cartItems.map((item) => ({
+        product_id: item.productId ?? undefined,
+        description: item.productId ? undefined : `${item.name} (${item.category})`,
+        quantity: item.quantity,
+        unit_price: item.unitPrice,
+      })),
+    }
+
+    const saleSnapshot = {
+      subtotal,
+      discount: discountValue,
+      tax: taxValue,
+      total,
+      items: cartItems,
+      categories: cartCategoriesSummary,
+      notes: notes.trim(),
+      clientName: clientName.trim() || selectedClient?.name || '',
+      cashReceived: cashReceivedValue,
+      change,
+    }
 
     try {
-      const payload = {
-        payment_method: paymentMethod,
-        client_name: clientName.trim() || selectedClient?.name || undefined,
-        notes: notes.trim() || undefined,
-        discount_amount: discountAmount || 0,
-        tax_amount: taxAmount || 0,
-        items: cartItems.map((item) => ({
-          product_id: item.productId ?? undefined,
-          description: item.productId ? undefined : `${item.name} (${item.category})`,
-          quantity: item.quantity,
-          unit_price: item.unitPrice,
-        })),
-      }
-
-      const hasErrors = Object.keys(cartValidation).length > 0
-      if (hasErrors) {
-        setFormError('Revisa los artículos con alertas antes de registrar la venta.')
-        setIsSubmittingSale(false)
-        return
-      }
-
       const sale = await recordSale(payload)
       setSaleResult(sale)
+      setLastPaymentBreakdown(normalizedSplits)
+      setLastSaleContext({ ...saleSnapshot, sale })
       setCartItems([])
       setDiscount('')
       setTax('')
       setNotes('')
       setClientName('')
+      setPaymentSplits([
+        { id: generateLineId(), method: POS_CHECKOUT_METHODS[0], amount: '', reference: '' },
+      ])
+      setIsPaymentModalOpen(false)
 
       showToast({
         type: 'success',
@@ -788,6 +884,7 @@ export default function PointOfSalePage() {
       })
     } catch (error) {
       const message = error?.message ?? 'No se pudo registrar la venta. Intenta nuevamente.'
+      setPaymentModalError(message)
       setFormError(message)
       showToast({
         type: 'error',
@@ -797,6 +894,80 @@ export default function PointOfSalePage() {
     } finally {
       setIsSubmittingSale(false)
     }
+  }
+
+  const handlePaymentSplitChange = (splitId, field, value) => {
+    setPaymentSplits((current) =>
+      current.map((split) => (split.id === splitId ? { ...split, [field]: value } : split)),
+    )
+  }
+
+  const handleAddPaymentSplit = () => {
+    setPaymentSplits((current) => [
+      ...current,
+      { id: generateLineId(), method: POS_CHECKOUT_METHODS[0], amount: '', reference: '' },
+    ])
+  }
+
+  const handleRemovePaymentSplit = (splitId) => {
+    setPaymentSplits((current) => (current.length === 1 ? current : current.filter((split) => split.id !== splitId)))
+  }
+
+  const handleDownloadReceipt = () => {
+    if (!lastSaleContext?.sale) return
+
+    const { sale, subtotal, discount, tax, total: totalSale, items, categories, notes: saleNotes, clientName: saleClient } =
+      lastSaleContext
+
+    const lines = []
+    lines.push(`Ticket: ${sale.ticketNumber ?? sale.ticket_number ?? 'N/A'}`)
+    lines.push(`Fecha: ${formatDateTime(sale.soldAt ?? sale.sold_at)}`)
+    lines.push(`Cliente: ${saleClient || 'Consumidor general'}`)
+    lines.push('')
+    lines.push('Conceptos:')
+    items.forEach((item) => {
+      lines.push(`- ${item.name} x${item.quantity} · ${peso(item.unitPrice * item.quantity)}`)
+    })
+
+    lines.push('')
+    lines.push('Resumen por categoría:')
+    categories.forEach((category) => {
+      lines.push(`- ${category.label}: ${peso(category.amount)}`)
+    })
+
+    lines.push('')
+    lines.push(`Subtotal: ${peso(subtotal)}`)
+    lines.push(`Descuento: ${peso(discount)}`)
+    lines.push(`Impuestos: ${peso(tax)}`)
+    lines.push(`Total cobrado: ${peso(totalSale)}`)
+
+    if (lastPaymentBreakdown.length > 0) {
+      lines.push('')
+      lines.push('Pagos:')
+      lastPaymentBreakdown.forEach((payment) => {
+        lines.push(
+          `- ${payment.method}: ${peso(payment.amount)}${payment.reference ? ` · Ref: ${payment.reference}` : ''}`,
+        )
+      })
+    }
+
+    if (lastSaleContext.cashReceived) {
+      lines.push(`Efectivo recibido: ${peso(lastSaleContext.cashReceived)}`)
+      lines.push(`Cambio entregado: ${peso(lastSaleContext.change ?? 0)}`)
+    }
+
+    if (saleNotes) {
+      lines.push('')
+      lines.push(`Notas: ${saleNotes}`)
+    }
+
+    const blob = new Blob([lines.join('\n')], { type: 'text/plain' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `recibo-${sale.ticketNumber ?? sale.ticket_number ?? 'venta'}.txt`
+    link.click()
+    URL.revokeObjectURL(url)
   }
 
   const handleQuickCreateClient = async (event) => {
@@ -1520,7 +1691,7 @@ export default function PointOfSalePage() {
                     </ul>
                   )}
 
-                  <form className="space-y-4" onSubmit={handleCheckout}>
+                  <form className="space-y-4" onSubmit={handleOpenPaymentModal}>
                     <div className="grid gap-3 md:grid-cols-2">
                       <label className="grid gap-1 text-xs font-medium text-slate-600">
                         Cliente (opcional)
@@ -1532,20 +1703,28 @@ export default function PointOfSalePage() {
                           className="rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
                         />
                       </label>
-                      <label className="grid gap-1 text-xs font-medium text-slate-600">
-                        Método de pago
-                        <select
-                          value={paymentMethod}
-                          onChange={(event) => setPaymentMethod(event.target.value)}
-                          className="rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                        >
-                          {PAYMENT_METHODS.map((method) => (
-                            <option key={method} value={method}>
-                              {method}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
+                      <div className="grid gap-1 text-xs font-medium text-slate-600">
+                        <span>Métodos de pago</span>
+                        <div className="flex items-center justify-between gap-3 rounded-md border border-slate-200 px-3 py-2 text-sm">
+                          <div className="space-y-0.5 text-left">
+                            {paymentSplits.length === 1 && !paymentSplits[0].amount ? (
+                              <p className="text-slate-500">Define cómo se dividirá el cobro.</p>
+                            ) : (
+                              paymentSplits.map((split) => (
+                                <p key={split.id} className="text-slate-700">
+                                  {split.method}: {split.amount ? peso(normalizeNumericInput(split.amount, 0)) : peso(0)}
+                                </p>
+                              ))
+                            )}
+                          </div>
+                          <Button type="button" variant="outline" size="sm" onClick={handleOpenPaymentModal}>
+                            Dividir pago
+                          </Button>
+                        </div>
+                        <span className="text-[11px] text-slate-500">
+                          Divide el total entre efectivo, tarjeta, transferencia o vales.
+                        </span>
+                      </div>
                     </div>
 
                     <div className="grid gap-3 md:grid-cols-2">
@@ -1866,16 +2045,39 @@ export default function PointOfSalePage() {
 
               {saleResult ? (
                 <Card>
-                  <CardContent className="space-y-2 text-sm text-slate-600">
+                  <CardContent className="space-y-3 text-sm text-slate-600">
                     <h3 className="text-sm font-semibold text-slate-900">Última venta registrada</h3>
                     <p>
                       Ticket <strong>{saleResult.ticketNumber ?? saleResult.ticket_number}</strong> ·{' '}
                       {formatDateTime(saleResult.soldAt ?? saleResult.sold_at)}
                     </p>
                     <p>Total cobrado: {peso(saleResult.total ?? 0)}</p>
+                    {lastPaymentBreakdown.length ? (
+                      <div className="space-y-1 rounded-md bg-slate-50 p-3">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Pago dividido</p>
+                        <ul className="space-y-0.5">
+                          {lastPaymentBreakdown.map((payment) => (
+                            <li key={payment.id} className="text-xs text-slate-600">
+                              {payment.method}: {peso(payment.amount)}{' '}
+                              {payment.reference ? <span className="text-slate-400">· Ref: {payment.reference}</span> : null}
+                            </li>
+                          ))}
+                        </ul>
+                        {lastSaleContext?.cashReceived ? (
+                          <p className="text-xs text-slate-500">
+                            Cambio entregado: {peso(lastSaleContext.change ?? 0)}
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : null}
                     <p className="text-xs text-slate-400">
                       Usa esta referencia para resolver dudas rápidas con el cliente.
                     </p>
+                    <div className="flex flex-wrap gap-2">
+                      <Button type="button" variant="secondary" onClick={handleDownloadReceipt}>
+                        <Download className="mr-2 h-4 w-4" aria-hidden /> Descargar recibo
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
               ) : null}
@@ -2218,6 +2420,177 @@ export default function PointOfSalePage() {
           )}
         </div>
       )}
+      {isPaymentModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4">
+          <div className="w-full max-w-4xl rounded-lg bg-white shadow-2xl">
+            <div className="flex items-start justify-between border-b border-slate-200 px-6 py-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Registrar cobro</p>
+                <h3 className="text-lg font-semibold text-slate-900">Divide el monto por método de pago</h3>
+                <p className="text-sm text-slate-500">
+                  Selecciona efectivo, tarjeta, transferencia o vales y captura notas o referencias antes de confirmar.
+                </p>
+              </div>
+              <Button variant="ghost" onClick={() => setIsPaymentModalOpen(false)}>
+                Cancelar
+              </Button>
+            </div>
+
+            <div className="grid gap-6 px-6 py-4 lg:grid-cols-[1.3fr,1fr]">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-900">
+                  <span>Total a cobrar</span>
+                  <span>{peso(total)}</span>
+                </div>
+
+                <div className="space-y-3">
+                  {paymentSplits.map((split) => (
+                    <div key={split.id} className="rounded-md border border-slate-200 p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <label className="grid flex-1 gap-1 text-xs font-medium text-slate-600">
+                          Método
+                          <select
+                            value={split.method}
+                            onChange={(event) => handlePaymentSplitChange(split.id, 'method', event.target.value)}
+                            className="rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                          >
+                            {POS_CHECKOUT_METHODS.map((method) => (
+                              <option key={method} value={method}>
+                                {method}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="grid flex-1 gap-1 text-xs font-medium text-slate-600">
+                          Monto
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={split.amount}
+                            onChange={(event) => handlePaymentSplitChange(split.id, 'amount', event.target.value)}
+                            className="rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                            placeholder="0.00"
+                          />
+                        </label>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          className="self-end"
+                          onClick={() => handleRemovePaymentSplit(split.id)}
+                          disabled={paymentSplits.length === 1}
+                        >
+                          <Trash2 className="h-4 w-4" aria-hidden />
+                        </Button>
+                      </div>
+                      <label className="mt-3 block text-xs font-medium text-slate-600">
+                        Referencia o nota del pago
+                        <input
+                          type="text"
+                          value={split.reference}
+                          onChange={(event) => handlePaymentSplitChange(split.id, 'reference', event.target.value)}
+                          className="mt-1 w-full rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                          placeholder="Terminal, folio o referencia"
+                        />
+                      </label>
+                    </div>
+                  ))}
+
+                  <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+                    <Button type="button" variant="outline" onClick={handleAddPaymentSplit}>
+                      <Plus className="mr-2 h-4 w-4" aria-hidden /> Agregar método
+                    </Button>
+                    <div className="text-right text-slate-600">
+                      <p className="text-xs uppercase tracking-wide text-slate-400">Asignado</p>
+                      <p className="text-sm font-semibold text-slate-900">{peso(paymentTotals.assignedTotal)}</p>
+                      <p className="text-xs text-slate-500">
+                        Restante: {peso(paymentTotals.remaining)}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <label className="grid gap-1 text-xs font-medium text-slate-600">
+                      Efectivo recibido
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={cashReceived}
+                        onChange={(event) => setCashReceived(event.target.value)}
+                        className="rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                        placeholder="0.00"
+                      />
+                    </label>
+                    <div className="grid content-end rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                      <p className="text-xs uppercase tracking-wide text-slate-500">Cambio estimado</p>
+                      <p className="text-base font-semibold text-slate-900">{peso(paymentTotals.change)}</p>
+                      <p className="text-[11px] text-slate-500">
+                        Calculado con el monto asignado a efectivo.
+                      </p>
+                    </div>
+                  </div>
+
+                  <label className="grid gap-1 text-xs font-medium text-slate-600">
+                    Notas o referencias del cobro
+                    <textarea
+                      value={notes}
+                      onChange={(event) => setNotes(event.target.value)}
+                      className="rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                      rows={2}
+                      placeholder="Detalles adicionales del pago o del cliente"
+                    />
+                  </label>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Resumen por categoría</p>
+                  <div className="mt-2 space-y-2">
+                    {cartCategoriesSummary.map((category) => (
+                      <div key={category.key} className="flex items-center justify-between">
+                        <div>
+                          <p className="text-xs font-semibold text-slate-700">{category.label}</p>
+                          <p className="text-[11px] text-slate-500">{describeBillingCategory(category.key)}</p>
+                        </div>
+                        <span className="text-sm font-semibold text-slate-900">{peso(category.amount)}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-3 space-y-1 text-xs text-slate-600">
+                    <p>Subtotal: {peso(subtotal)}</p>
+                    <p>Descuento: {peso(discountValue)}</p>
+                    <p>Impuestos: {peso(taxValue)}</p>
+                    <p className="font-semibold text-slate-900">Total: {peso(total)}</p>
+                  </div>
+                </div>
+
+                <div className="rounded-md border border-dashed border-blue-200 bg-blue-50/60 p-3 text-sm text-slate-700">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-700">
+                    Validación antes de emitir recibo
+                  </p>
+                  <p className="mt-1 text-xs text-slate-600">
+                    Confirma que el monto asignado coincide con el total y agrega referencias claras. El recibo se emitirá al
+                    guardar.
+                  </p>
+                </div>
+
+                {paymentModalError ? <p className="text-sm text-red-600">{paymentModalError}</p> : null}
+
+                <div className="flex flex-wrap justify-end gap-3">
+                  <Button type="button" variant="ghost" onClick={() => setIsPaymentModalOpen(false)}>
+                    Volver
+                  </Button>
+                  <Button type="button" onClick={handleCheckout} disabled={isSubmittingSale}>
+                    {isSubmittingSale ? 'Guardando…' : 'Confirmar y emitir recibo'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
