@@ -25,9 +25,19 @@ export const SERVICE_STATUS_OPTIONS = [
   { value: 'cancelled', label: 'Baja' },
 ]
 
-export const SERVICE_STATUS_LABELS = SERVICE_STATUS_OPTIONS.reduce((acc, option) => {
-  acc[option.value] = option.label
-  return acc
-}, {})
+const EXTRA_SERVICE_STATUS_LABELS = {
+  pending_installation: 'Por instalar',
+  installation_pending: 'Por instalar',
+  billing_blocked: 'Bloqueo de facturación',
+  blocked: 'Bloqueado',
+}
+
+export const SERVICE_STATUS_LABELS = SERVICE_STATUS_OPTIONS.reduce(
+  (acc, option) => {
+    acc[option.value] = option.label
+    return acc
+  },
+  { ...EXTRA_SERVICE_STATUS_LABELS },
+)
 
 export const getServiceStatusLabel = (status) => SERVICE_STATUS_LABELS[status] ?? 'Desconocido'
