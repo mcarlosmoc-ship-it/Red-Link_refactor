@@ -88,6 +88,18 @@ const normalizeNumericInput = (value, fallback = 0) => {
   return Number.isFinite(parsed) ? parsed : fallback
 }
 
+const BILLING_CATEGORIES = {
+  ONE_TIME: 'one-time',
+  MONTHLY: 'current-monthly',
+  DEBT: 'debt',
+  ADJUSTMENT: 'adjustment',
+}
+
+const BILLING_TIMINGS = {
+  IMMEDIATE: 'immediate',
+  FUTURE: 'future',
+}
+
 const clamp = (value, min = 0, max = Number.POSITIVE_INFINITY) =>
   Math.min(Math.max(value, min), max)
 
@@ -110,6 +122,39 @@ const formatDate = (value) => {
   if (Number.isNaN(date.getTime())) return ''
   return new Intl.DateTimeFormat('es-MX', { dateStyle: 'medium' }).format(date)
 }
+
+const getDefaultBillingCategory = (itemType, categoryName = '') => {
+  const normalizedCategory = String(categoryName).toLowerCase()
+  if (normalizedCategory.includes('adeudo')) {
+    return BILLING_CATEGORIES.DEBT
+  }
+  if (normalizedCategory.includes('recargo') || normalizedCategory.includes('bonific')) {
+    return BILLING_CATEGORIES.ADJUSTMENT
+  }
+  if (itemType === 'monthly-service') {
+    return BILLING_CATEGORIES.MONTHLY
+  }
+  return BILLING_CATEGORIES.ONE_TIME
+}
+
+const getDefaultChargeTiming = (itemType) =>
+  itemType === 'monthly-service' ? BILLING_TIMINGS.FUTURE : BILLING_TIMINGS.IMMEDIATE
+
+const describeBillingCategory = (category) => {
+  switch (category) {
+    case BILLING_CATEGORIES.MONTHLY:
+      return 'Mensualidad actual'
+    case BILLING_CATEGORIES.DEBT:
+      return 'Adeudo pendiente'
+    case BILLING_CATEGORIES.ADJUSTMENT:
+      return 'Recargo o bonificación'
+    default:
+      return 'Producto o servicio puntual'
+  }
+}
+
+const describeChargeTiming = (timing) =>
+  timing === BILLING_TIMINGS.FUTURE ? 'Cargo futuro' : 'Cobro inmediato'
 
 export default function PointOfSalePage() {
   const { products, isLoading: isLoadingProducts, createProduct } = usePosCatalog()
@@ -286,6 +331,8 @@ export default function PointOfSalePage() {
           unitPrice: product.unitPrice,
           quantity: 1,
           type: 'product',
+          billingCategory: getDefaultBillingCategory('product', product.category),
+          chargeTiming: getDefaultChargeTiming('product'),
         },
       ]
     })
@@ -332,6 +379,54 @@ export default function PointOfSalePage() {
     taxValue,
   ])
 
+  const getBillingCategoryForItem = (item) =>
+    item.billingCategory ?? getDefaultBillingCategory(item.type, item.category)
+
+  const getChargeTimingForItem = (item) => item.chargeTiming ?? getDefaultChargeTiming(item.type)
+
+  const cartTotalsByCategory = useMemo(() => {
+    const totals = {
+      [BILLING_CATEGORIES.ONE_TIME]: 0,
+      [BILLING_CATEGORIES.MONTHLY]: 0,
+      [BILLING_CATEGORIES.DEBT]: 0,
+      [BILLING_CATEGORIES.ADJUSTMENT]: 0,
+    }
+
+    cartItems.forEach((item) => {
+      const lineTotal = item.unitPrice * item.quantity
+      const billingCategory = getBillingCategoryForItem(item)
+      totals[billingCategory] = (totals[billingCategory] ?? 0) + lineTotal
+    })
+
+    return totals
+  }, [cartItems])
+
+  const cartCategoriesSummary = useMemo(
+    () => [
+      {
+        key: BILLING_CATEGORIES.ONE_TIME,
+        label: 'Productos y puntuales',
+        amount: cartTotalsByCategory[BILLING_CATEGORIES.ONE_TIME],
+      },
+      {
+        key: BILLING_CATEGORIES.MONTHLY,
+        label: 'Mensualidades actuales',
+        amount: cartTotalsByCategory[BILLING_CATEGORIES.MONTHLY],
+      },
+      {
+        key: BILLING_CATEGORIES.DEBT,
+        label: 'Adeudos',
+        amount: cartTotalsByCategory[BILLING_CATEGORIES.DEBT],
+      },
+      {
+        key: BILLING_CATEGORIES.ADJUSTMENT,
+        label: 'Recargos/bonificaciones',
+        amount: cartTotalsByCategory[BILLING_CATEGORIES.ADJUSTMENT],
+      },
+    ],
+    [cartTotalsByCategory],
+  )
+
   const handleAddCustomItem = (event) => {
     event.preventDefault()
     const description = customItem.description.trim()
@@ -358,6 +453,8 @@ export default function PointOfSalePage() {
         unitPrice: price,
         quantity,
         type: 'custom',
+        billingCategory: BILLING_CATEGORIES.ONE_TIME,
+        chargeTiming: BILLING_TIMINGS.IMMEDIATE,
       },
     ])
     setCustomItem({ description: '', price: '', quantity: '1' })
@@ -449,6 +546,8 @@ export default function PointOfSalePage() {
       unitPrice: entry.price,
       quantity: 1,
       productId: null,
+      billingCategory: getDefaultBillingCategory(entry.type, entry.detail),
+      chargeTiming: getDefaultChargeTiming(entry.type),
     }
 
     if (entry.type === 'punctual-service') {
@@ -1287,7 +1386,7 @@ export default function PointOfSalePage() {
                                         ? 'bg-amber-50 text-amber-700'
                                         : item.type === 'monthly-service'
                                           ? 'bg-emerald-50 text-emerald-700'
-                                          : 'bg-slate-50 text-slate-600'
+                                      : 'bg-slate-50 text-slate-600'
                                   }`}
                                 >
                                   {item.type === 'product'
@@ -1300,6 +1399,14 @@ export default function PointOfSalePage() {
                                 </span>
                               </div>
                               <p className="text-xs text-slate-500">{item.category}</p>
+                              <div className="flex flex-wrap gap-2 text-[11px] text-slate-500">
+                                <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-700">
+                                  {describeBillingCategory(getBillingCategoryForItem(item))}
+                                </span>
+                                <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 font-medium text-blue-700">
+                                  {describeChargeTiming(getChargeTimingForItem(item))}
+                                </span>
+                              </div>
                               <p className="text-xs text-slate-400">
                                 Precio unitario: <strong>{peso(item.unitPrice)}</strong>
                               </p>
@@ -1428,6 +1535,32 @@ export default function PointOfSalePage() {
                         placeholder="Anota detalles importantes del cobro"
                       />
                     </label>
+
+                    <div className="rounded-lg border border-slate-200 bg-white p-3 text-xs text-slate-600 shadow-sm">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="font-semibold text-slate-900">Totales por categoría</p>
+                        <span className="text-[11px] text-slate-500">Cobros inmediatos vs. futuros</span>
+                      </div>
+                      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                        {cartCategoriesSummary.map((category) => (
+                          <div key={category.key} className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2">
+                            <div className="space-y-1">
+                              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                                {category.label}
+                              </p>
+                              <p className="text-[11px] text-slate-500">
+                                {describeChargeTiming(
+                                  category.key === BILLING_CATEGORIES.MONTHLY
+                                    ? BILLING_TIMINGS.FUTURE
+                                    : BILLING_TIMINGS.IMMEDIATE,
+                                )}
+                              </p>
+                            </div>
+                            <span className="text-sm font-semibold text-slate-900">{peso(category.amount)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
 
                     <dl className="space-y-2 rounded-lg bg-slate-50 p-4 text-sm text-slate-600">
                       <div className="flex items-center justify-between">
