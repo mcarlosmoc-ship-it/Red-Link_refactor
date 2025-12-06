@@ -63,6 +63,7 @@ export default function ClientsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isProcessingService, setIsProcessingService] = useState(false)
   const [isProcessingSelection, setIsProcessingSelection] = useState(false)
+  const [selectionActionReport, setSelectionActionReport] = useState(null)
   const [isImportModalOpen, setIsImportModalOpen] = useState(false)
   const [importSummary, setImportSummary] = useState(null)
   const [isImporting, setIsImporting] = useState(false)
@@ -210,6 +211,19 @@ export default function ClientsPage() {
         description: errorMessage ?? 'No se pudo completar la acción.',
       })
     }
+  }
+
+  const updateSelectionActionReport = ({ title, results }) => {
+    if (!Array.isArray(results) || results.length === 0) {
+      setSelectionActionReport(null)
+      return
+    }
+
+    setSelectionActionReport({
+      title,
+      results,
+      timestamp: Date.now(),
+    })
   }
 
   const handleBulkAssignServices = async ({ clientIds, servicePlanId }) => {
@@ -428,6 +442,25 @@ export default function ClientsPage() {
       const successCount = Array.isArray(createdServices) ? createdServices.length : 0
       const failureCount = Math.max(normalizedIds.length - successCount, 0)
 
+      const serviceClientIds = Array.isArray(createdServices)
+        ? createdServices.map((service) => normalizeId(service.clientId))
+        : []
+
+      const results = normalizedIds.map((id) => {
+        const client = targetClients.find((item) => normalizeId(item.id) === id)
+        const clientName = client?.name ?? `Cliente ${id}`
+        const wasCreated = serviceClientIds.includes(id)
+
+        return {
+          clientId: id,
+          clientName,
+          status: wasCreated ? 'success' : 'error',
+          message: wasCreated
+            ? `Plan ${selectedPlan?.name ?? 'seleccionado'} asignado`
+            : 'No se pudo confirmar la asignación del plan.',
+        }
+      })
+
       buildBulkSummaryToast({
         title: 'Asignación de plan',
         action: `Plan ${selectedPlan?.name ?? 'seleccionado'} asignado`,
@@ -436,6 +469,8 @@ export default function ClientsPage() {
         total: normalizedIds.length,
         errorMessage: 'No se pudieron asignar los planes seleccionados.',
       })
+
+      updateSelectionActionReport({ title: 'Asignación de plan', results })
     } catch (error) {
       showToast({
         type: 'error',
@@ -460,22 +495,41 @@ export default function ClientsPage() {
     let successCount = 0
     let failureCount = 0
     let firstError = null
+    const resultEntries = []
 
     for (const client of targetClients) {
       const primaryService = getPrimaryService(client)
       if (!primaryService?.id) {
         failureCount += 1
+        resultEntries.push({
+          clientId: client.id,
+          clientName: client.name,
+          status: 'error',
+          message: 'Sin servicio principal para actualizar estado.',
+        })
         continue
       }
 
       try {
         await updateClientServiceStatus(client.id, primaryService.id, nextStatus)
         successCount += 1
+        resultEntries.push({
+          clientId: client.id,
+          clientName: client.name,
+          status: 'success',
+          message: `Servicio ${nextStatus === 'suspended' ? 'suspendido' : 'activado'}`,
+        })
       } catch (error) {
         failureCount += 1
         if (!firstError) {
           firstError = error
         }
+        resultEntries.push({
+          clientId: client.id,
+          clientName: client.name,
+          status: 'error',
+          message: resolveApiErrorMessage(error, 'No se pudo actualizar el servicio.'),
+        })
       }
     }
 
@@ -486,6 +540,11 @@ export default function ClientsPage() {
       failureCount,
       total: normalizedIds.length,
       errorMessage: resolveApiErrorMessage(firstError, 'No se pudieron actualizar los servicios.'),
+    })
+
+    updateSelectionActionReport({
+      title: 'Actualización masiva de estado',
+      results: resultEntries,
     })
 
     setIsProcessingSelection(false)
@@ -510,6 +569,21 @@ export default function ClientsPage() {
       const failureCount = results.length - successCount
       const firstError = results.find((result) => result.status === 'rejected')?.reason
 
+      const detailedResults = results.map((result, index) => {
+        const client = targetClients[index]
+        const status = result.status === 'fulfilled' ? 'success' : 'error'
+
+        return {
+          clientId: client.id,
+          clientName: client.name,
+          status,
+          message:
+            status === 'success'
+              ? 'Cliente eliminado'
+              : resolveApiErrorMessage(result.reason, 'No se pudo eliminar el cliente.'),
+        }
+      })
+
       buildBulkSummaryToast({
         title: 'Eliminación masiva',
         action: 'Cliente eliminado',
@@ -521,6 +595,8 @@ export default function ClientsPage() {
           'No se pudieron eliminar los clientes seleccionados.',
         ),
       })
+
+      updateSelectionActionReport({ title: 'Eliminación masiva', results: detailedResults })
 
       if (failureCount === results.length && firstError) {
         throw firstError
@@ -656,6 +732,8 @@ export default function ClientsPage() {
                 onBulkDeleteClients={handleBulkDeleteClients}
                 isProcessingSelection={isProcessingSelection}
                 onOpenImport={() => setIsImportModalOpen(true)}
+                selectionActionReport={selectionActionReport}
+                onClearSelectionReport={() => setSelectionActionReport(null)}
               />
             </div>
           )}

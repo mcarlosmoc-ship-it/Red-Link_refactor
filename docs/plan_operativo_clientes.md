@@ -26,5 +26,5 @@
 3) **Resumen operativo en la lista de clientes**
 - Incorporar vista compacta del servicio principal (plan, estado, IP/base) y filtros por servicio en la tabla de clientes para alinear con Wisphub/Splynx. 【F:docs/isp_review.md†L44-L50】
 
-4) **Acciones masivas con feedback granular**
-- Mantener barra de acciones en lote para asignar planes/cambiar estado/eliminar y añadir reportes de éxito/error por cliente para evitar ambigüedad al operar con múltiples IDs. 【F:src/features/clients/ClientsList.jsx†L146-L214】
+4) **Acciones masivas con feedback granular (completado)**
+- La barra de acciones en lote mantiene la selección bloqueada y ahora muestra un reporte por cliente con éxitos/errores al asignar planes, suspender/activar o eliminar. 【F:src/features/clients/ClientsList.jsx†L1-L214】【F:src/pages/Clients.jsx†L401-L576】
