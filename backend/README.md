@@ -176,7 +176,10 @@ se define la variable:
 
 - `PAYMENT_REMINDER_SCHEDULER_ENABLED=1`
 
-Opcionalmente puedes ajustar la ventana y horario de ejecución con:
+Si necesitas deshabilitar el arranque del hilo (por ejemplo en pruebas o builds
+de CI) establece además `ENABLE_PAYMENT_REMINDERS=0`; este flag detiene FastAPI
+antes de que intente iniciar el programador. Opcionalmente puedes ajustar la
+ventana y horario de ejecución con:
 
 - `PAYMENT_REMINDER_DAYS_AHEAD` (entero, default `3`).
 - `PAYMENT_REMINDER_RUN_HOUR` y `PAYMENT_REMINDER_RUN_MINUTE` para especificar
