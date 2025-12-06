@@ -31,6 +31,27 @@ const OPTIONAL_COLUMNS = [
   { key: 'debt_months', label: 'debt_months (meses adeudados)' },
 ]
 
+const COLUMN_PRESETS = [
+  {
+    key: 'basic',
+    label: 'Básico',
+    description: 'Contacto y notas',
+    columns: ['email', 'comentarios'],
+  },
+  {
+    key: 'services',
+    label: 'Solo servicios',
+    description: 'Enfoque en saldos e IPs',
+    columns: ['paid_months_ahead', 'debt_months', 'coordenadas'],
+  },
+  {
+    key: 'advanced',
+    label: 'Avanzado',
+    description: 'Todas las opcionales',
+    columns: OPTIONAL_COLUMNS.map((column) => column.key),
+  },
+]
+
 export default function ImportClientsModal({
   isOpen,
   onClose,
@@ -108,11 +129,10 @@ export default function ImportClientsModal({
         ...SERVICE_REQUIRED_COLUMNS.map((column) => column.key),
         ...Array.from(selectedColumns),
       ]
-      const { data } = await apiClient.post(
-        '/clients/import/template',
-        { columns },
-        { responseType: 'blob' },
-      )
+      const { data } = await apiClient.get('/clients/import/template', {
+        params: { columns },
+        responseType: 'blob',
+      })
       const blob = data instanceof Blob ? data : new Blob([data])
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
@@ -130,6 +150,10 @@ export default function ImportClientsModal({
   }
 
   const allOptionalSelected = selectedColumns.size === optionalColumns.length
+
+  const applyPreset = (columns) => {
+    setSelectedColumns(new Set(columns))
+  }
 
   const isSummarySuccess = Boolean(summary && summary.failed_count === 0 && summary.created_count > 0)
   const shouldShowConfirmation = Boolean(requiresConfirmation && summary)
@@ -191,7 +215,8 @@ export default function ImportClientsModal({
                     <p className="font-medium text-slate-800">Instrucciones rápidas</p>
                     <ol className="list-decimal space-y-2 pl-5 text-slate-600">
                       <li>
-                        Descarga la plantilla personalizada desde el botón y ábrela en Excel o Google Sheets.
+                        Descarga la plantilla personalizada desde el botón (usa `GET /clients/import/template` con sesión
+                        activa) y ábrela en Excel o Google Sheets.
                       </li>
                       <li>
                         Cada fila representa <strong>un servicio</strong>. Si un cliente tiene varios servicios, repite sus datos en
@@ -240,6 +265,19 @@ export default function ImportClientsModal({
                         />
                         Seleccionar todas
                       </label>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                      {COLUMN_PRESETS.map((preset) => (
+                        <button
+                          key={preset.key}
+                          type="button"
+                          onClick={() => applyPreset(preset.columns)}
+                          className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 font-medium text-slate-700 shadow-sm transition hover:border-blue-200 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                        >
+                          <span>{preset.label}</span>
+                          <span className="text-[11px] font-normal text-slate-500">{preset.description}</span>
+                        </button>
+                      ))}
                     </div>
                     <div className="mt-3 space-y-3 text-sm text-slate-700">
                       <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
