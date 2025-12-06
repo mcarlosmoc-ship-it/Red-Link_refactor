@@ -1,4 +1,4 @@
-import { addMonthsToPeriod } from '../../utils/formatters.js'
+import { addMonthsToPeriod, parsePeriodKey } from '../../utils/formatters.js'
 import { CLIENT_PRICE } from '../../store/constants.js'
 
 export const normalizeId = (value) => {
@@ -109,7 +109,12 @@ export const getOutstandingPeriodKeys = (anchorPeriod, debtMonths) => {
   const normalizedAnchor = typeof anchorPeriod === 'string' ? anchorPeriod : null
   const numericDebt = Number(debtMonths ?? 0)
 
-  if (!normalizedAnchor || !Number.isFinite(numericDebt) || numericDebt <= 0.0001) {
+  if (
+    !normalizedAnchor ||
+    !parsePeriodKey(normalizedAnchor) ||
+    !Number.isFinite(numericDebt) ||
+    numericDebt <= 0.0001
+  ) {
     return []
   }
 
@@ -117,7 +122,11 @@ export const getOutstandingPeriodKeys = (anchorPeriod, debtMonths) => {
   const keys = []
 
   for (let index = 0; index < completeMonths; index += 1) {
-    keys.push(addMonthsToPeriod(normalizedAnchor, -index))
+    const nextKey = addMonthsToPeriod(normalizedAnchor, -index)
+
+    if (nextKey) {
+      keys.push(nextKey)
+    }
   }
 
   return keys
