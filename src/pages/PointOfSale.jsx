@@ -22,6 +22,7 @@ import { usePosSales } from '../hooks/usePosSales.js'
 import { useClients } from '../hooks/useClients.js'
 import { useServicePlans } from '../hooks/useServicePlans.js'
 import { useClientServices } from '../hooks/useClientServices.js'
+import { useClientReceipts, mapReceipt } from '../hooks/useClientReceipts.js'
 import { useToast } from '../hooks/useToast.js'
 import {
   formatServiceStatus,
@@ -30,6 +31,7 @@ import {
   getPrimaryService,
 } from '../features/clients/utils.js'
 import { CLIENT_PRICE, useBackofficeStore } from '../store/useBackofficeStore.js'
+import { apiClient } from '../services/apiClient.js'
 import { peso } from '../utils/formatters.js'
 import { getServiceTypeLabel } from '../constants/serviceTypes.js'
 
@@ -249,7 +251,10 @@ export default function PointOfSalePage() {
   const { clients, isLoading: isLoadingClients, createClient } = useClients()
   const { servicePlans, isLoading: isLoadingPlans } = useServicePlans()
   const { clientServices, isLoading: isLoadingClientServices } = useClientServices()
-  const recordPayment = useBackofficeStore((state) => state.recordPayment)
+  const { recordPayment, periods } = useBackofficeStore((state) => ({
+    recordPayment: state.recordPayment,
+    periods: state.periods,
+  }))
   const { showToast } = useToast()
 
   const [activeTab, setActiveTab] = useState('ventas')
@@ -371,6 +376,33 @@ export default function PointOfSalePage() {
     () => (selectedPaymentClient ? getClientMonthlyFee(selectedPaymentClient, CLIENT_PRICE) : CLIENT_PRICE),
     [selectedPaymentClient],
   )
+
+  const activePeriodKey = periods?.selected ?? periods?.current ?? null
+
+  const {
+    receipts: recentClientReceipts,
+    isLoading: isLoadingClientReceipts,
+    isFetching: isFetchingClientReceipts,
+    refetch: refetchClientReceipts,
+  } = useClientReceipts({ clientId: selectedPaymentClient?.id, limit: 5 })
+
+  const suspectedDuplicateReceipt = useMemo(() => {
+    if (!activePeriodKey || !recentClientReceipts.length) {
+      return null
+    }
+
+    return (
+      recentClientReceipts.find((receipt) => {
+        const matchesPeriod = receipt.period === activePeriodKey
+        const matchesService =
+          !receipt.serviceId ||
+          !selectedPaymentService?.id ||
+          String(receipt.serviceId) === String(selectedPaymentService.id)
+
+        return matchesPeriod && matchesService
+      }) ?? null
+    )
+  }, [activePeriodKey, recentClientReceipts, selectedPaymentService])
 
   useEffect(() => {
     if (!selectedPaymentClient) {
@@ -1152,6 +1184,33 @@ export default function PointOfSalePage() {
     }
   }
 
+  const fetchDuplicateReceiptFromApi = useCallback(
+    async ({ clientId, serviceId }) => {
+      if (!clientId || !activePeriodKey) {
+        return null
+      }
+
+      const response = await apiClient.get('/receipts', {
+        query: {
+          client_id: clientId,
+          client_service_id: serviceId ?? undefined,
+          period_key: activePeriodKey,
+          limit: 1,
+        },
+      })
+
+      const payload = response.data
+      const items = Array.isArray(payload?.items)
+        ? payload.items
+        : Array.isArray(payload)
+          ? payload
+          : []
+
+      return items.length > 0 ? mapReceipt(items[0]) : null
+    },
+    [activePeriodKey],
+  )
+
   const handleSubmitClientPayment = async (event) => {
     event.preventDefault()
 
@@ -1199,6 +1258,23 @@ export default function PointOfSalePage() {
 
     setIsSubmittingClientPayment(true)
     try {
+      const duplicateReceipt =
+        suspectedDuplicateReceipt ??
+        (await fetchDuplicateReceiptFromApi({
+          clientId: selectedPaymentClient.id,
+          serviceId: selectedPaymentService.id,
+        }))
+
+      if (duplicateReceipt) {
+        const duplicatePeriod = duplicateReceipt.period ?? activePeriodKey ?? 'el periodo actual'
+        showToast({
+          type: 'warning',
+          title: 'Pago ya registrado',
+          description: `Ya existe el recibo ${duplicateReceipt.folio} para ${duplicatePeriod}. Verifica antes de cobrar nuevamente.`,
+        })
+        return
+      }
+
       await recordPayment({
         clientId: selectedPaymentClient.id,
         serviceId: selectedPaymentService.id,
@@ -1207,6 +1283,8 @@ export default function PointOfSalePage() {
         method: paymentMethodPos,
         note: paymentNote,
       })
+
+      await refetchClientReceipts()
 
       showToast({
         type: 'success',
@@ -2209,6 +2287,68 @@ export default function PointOfSalePage() {
                           </p>
                         )}
                       </div>
+
+                      <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-3 text-xs text-slate-600 shadow-sm">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                              Historial rápido de recibos
+                            </p>
+                            <p className="text-[11px] text-slate-500">
+                              Últimos cobros registrados para este cliente.
+                            </p>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={refetchClientReceipts}
+                            disabled={isLoadingClientReceipts || isFetchingClientReceipts}
+                          >
+                            <ClipboardList className="mr-2 h-4 w-4" aria-hidden /> Actualizar
+                          </Button>
+                        </div>
+
+                        {isLoadingClientReceipts ? (
+                          <p className="text-[11px] text-slate-500">Cargando recibos recientes…</p>
+                        ) : recentClientReceipts.length === 0 ? (
+                          <p className="text-[11px] text-slate-500">Sin recibos previos para el cliente.</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {recentClientReceipts.map((receipt) => (
+                              <div
+                                key={receipt.id ?? receipt.folio}
+                                className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2 text-[13px] text-slate-700"
+                              >
+                                <div className="space-y-0.5">
+                                  <p className="font-semibold text-slate-900">Folio {receipt.folio}</p>
+                                  <p className="text-[11px] text-slate-500">
+                                    {(formatDateTime(receipt.issuedAt) || 'Fecha desconocida') + ' · ' + receipt.method}
+                                  </p>
+                                </div>
+                                <div className="text-right">
+                                  <p className="text-sm font-semibold text-slate-900">{peso(receipt.amount)}</p>
+                                  <p className="text-[11px] text-slate-500">Periodo {receipt.period ?? 'N/D'}</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {suspectedDuplicateReceipt ? (
+                        <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                          <AlertTriangle className="mt-0.5 h-4 w-4" aria-hidden />
+                          <div className="space-y-1">
+                            <p className="font-semibold text-amber-900">Posible cobro duplicado</p>
+                            <p>
+                              Ya se emitió el folio {suspectedDuplicateReceipt.folio} para el periodo{' '}
+                              {suspectedDuplicateReceipt.period ?? activePeriodKey ?? 'actual'}. Verifica la información antes de
+                              registrar un pago nuevo.
+                            </p>
+                          </div>
+                        </div>
+                      ) : null}
 
                       <div className="grid gap-3 md:grid-cols-2">
                         <label className="grid gap-1 text-xs font-medium text-slate-600">

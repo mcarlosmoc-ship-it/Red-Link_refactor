@@ -10,6 +10,7 @@ export const queryKeys = {
   resellers: () => ['resellers'],
   expenses: () => ['expenses'],
   inventory: () => ['inventory'],
+  clientReceipts: ({ clientId, limit = 6 } = {}) => ['client-receipts', clientId ?? 'none', limit],
   posProducts: ({ includeInactive = false } = {}) => [
     'pos',
     'products',
