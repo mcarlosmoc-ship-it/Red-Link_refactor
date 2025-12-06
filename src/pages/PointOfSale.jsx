@@ -101,6 +101,12 @@ const BILLING_TIMINGS = {
   FUTURE: 'future',
 }
 
+const COMPLEMENTARY_TYPES = {
+  INSTALLATION: 'installation',
+  RECONNECTION: 'reconnection',
+  TECHNICAL_VISIT: 'technical_visit',
+}
+
 const clamp = (value, min = 0, max = Number.POSITIVE_INFINITY) =>
   Math.min(Math.max(value, min), max)
 
@@ -160,6 +166,83 @@ const describeBillingCategory = (category) => {
 const describeChargeTiming = (timing) =>
   timing === BILLING_TIMINGS.FUTURE ? 'Cargo futuro' : 'Cobro inmediato'
 
+function PlanAdjustmentSummary({ selection, services, plans, onAdd }) {
+  const selectedService = services.find((service) => String(service.id) === String(selection.serviceId))
+  const targetPlan = plans.find((plan) => String(plan.id) === String(selection.planId))
+
+  if (!selectedService || !targetPlan) {
+    return (
+      <p className="text-[11px] text-amber-800">
+        Selecciona el servicio actual y el nuevo plan para calcular el ajuste prorrateado.
+      </p>
+    )
+  }
+
+  const parseDate = (value) => {
+    if (!value) return null
+    const date = value instanceof Date ? value : new Date(value)
+    return Number.isNaN(date.getTime()) ? null : date
+  }
+
+  const currentPrice = Number(selectedService.effectivePrice ?? selectedService.price ?? 0)
+  const targetPrice = Number(targetPlan.price ?? 0)
+  const priceDiff = targetPrice - currentPrice
+  const nextBilling = parseDate(selectedService.nextBillingDate ?? selectedService.next_billing_date)
+  const today = new Date()
+  let prorated = priceDiff
+
+  if (nextBilling) {
+    const previousBilling = new Date(nextBilling)
+    previousBilling.setMonth(previousBilling.getMonth() - 1)
+    const totalDays = Math.max(1, Math.round((nextBilling - previousBilling) / 86_400_000))
+    const remainingDays = Math.max(0, Math.round((nextBilling - today) / 86_400_000))
+    prorated = priceDiff * (remainingDays / totalDays)
+  }
+
+  const adjustmentAmount = Number(prorated.toFixed(2))
+
+  if (adjustmentAmount <= 0) {
+    return (
+      <p className="text-[11px] text-amber-800">
+        No hay diferencia de precio que prorratear con el plan seleccionado.
+      </p>
+    )
+  }
+
+  const handleAddAdjustment = () => {
+    const item = {
+      id: generateLineId(),
+      name: `Ajuste ${selectedService.name} → ${targetPlan.name}`,
+      category: 'Ajuste de plan prorrateado',
+      unitPrice: adjustmentAmount,
+      quantity: 1,
+      productId: null,
+      billingCategory: BILLING_CATEGORIES.ADJUSTMENT,
+      chargeTiming: BILLING_TIMINGS.IMMEDIATE,
+      complementaryType: 'plan-adjustment',
+    }
+    onAdd?.(item)
+  }
+
+  return (
+    <div className="rounded-md border border-amber-200 bg-white p-2 text-xs text-amber-800">
+      <p className="flex items-center justify-between gap-2 font-semibold">
+        <span>Diferencia mensual: ${priceDiff.toFixed(2)}</span>
+        <span>Prorrateo al siguiente corte: ${adjustmentAmount.toFixed(2)}</span>
+      </p>
+      <p className="mt-1 text-[11px]">
+        Se cobrará la diferencia proporcional hasta el próximo corte y se actualizará la mensualidad futura a
+        ${targetPrice.toFixed(2)}.
+      </p>
+      <div className="mt-2 flex justify-end">
+        <Button size="sm" variant="outline" onClick={handleAddAdjustment}>
+          Agregar ajuste al carrito
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 export default function PointOfSalePage() {
   const { products, isLoading: isLoadingProducts, createProduct } = usePosCatalog()
   const { sales, recordSale } = usePosSales({ limit: 8 })
@@ -206,6 +289,8 @@ export default function PointOfSalePage() {
   const [quickClientName, setQuickClientName] = useState('')
   const [quickClientLocation, setQuickClientLocation] = useState('')
   const [isCreatingClient, setIsCreatingClient] = useState(false)
+  const [refundReference, setRefundReference] = useState('')
+  const [planChangeTarget, setPlanChangeTarget] = useState({ serviceId: '', planId: '' })
 
   const filteredSalesProducts = useMemo(() => {
     const term = salesSearchTerm.trim().toLowerCase()
@@ -541,6 +626,32 @@ export default function PointOfSalePage() {
       }))
   }, [servicePlans])
 
+  const complementaryCatalog = useMemo(() => {
+    const pickByKeyword = (keywords) =>
+      punctualServices.find((service) => {
+        const normalized = service.name.toLowerCase()
+        return keywords.some((keyword) => normalized.includes(keyword))
+      })
+
+    const installation = pickByKeyword(['instal'])
+    const reconnection = pickByKeyword(['reconex'])
+    const technicalVisit = pickByKeyword(['visita', 'técnic', 'tecnic'])
+
+    const entries = []
+
+    if (installation) {
+      entries.push({ type: COMPLEMENTARY_TYPES.INSTALLATION, service: installation })
+    }
+    if (reconnection) {
+      entries.push({ type: COMPLEMENTARY_TYPES.RECONNECTION, service: reconnection })
+    }
+    if (technicalVisit) {
+      entries.push({ type: COMPLEMENTARY_TYPES.TECHNICAL_VISIT, service: technicalVisit })
+    }
+
+    return entries
+  }, [punctualServices])
+
   const monthlyServices = useMemo(() => {
     return servicePlans
       .filter((plan) => {
@@ -624,6 +735,7 @@ export default function PointOfSalePage() {
           type: 'punctual-service',
           clientId: selectedClient ? selectedClient.id : null,
           servicePlanId: entry.service?.id ?? null,
+          complementaryType: entry.complementaryType,
         },
       ])
       return
@@ -732,12 +844,17 @@ export default function PointOfSalePage() {
         } else {
           const services = clientServicesByClient[String(selectedClient.id)] ?? selectedClient.services ?? []
           const hasInstallation = services.some((service) => service.status === 'active')
+          const hasSuspended = services.some((service) => service.status === 'suspended')
           const hasCoverage = Boolean(selectedClient.zoneId || selectedClient.zone?.id)
           const alreadyAdded = cartItems.some(
             (other) => other.id !== item.id && other.type === 'punctual-service' && other.clientId === selectedClient.id,
           )
 
-          if (!hasInstallation) {
+          if (item.complementaryType === COMPLEMENTARY_TYPES.RECONNECTION && !hasSuspended) {
+            message = 'La reconexión solo está disponible para servicios suspendidos.'
+          } else if (item.complementaryType === COMPLEMENTARY_TYPES.INSTALLATION && hasInstallation) {
+            message = 'El cliente ya tiene una instalación activa.'
+          } else if (!hasInstallation && item.complementaryType !== COMPLEMENTARY_TYPES.INSTALLATION) {
             message = 'Este servicio requiere una instalación previa activa.'
           } else if (!hasCoverage) {
             message = 'No hay cobertura asignada para el cliente.'
@@ -778,8 +895,23 @@ export default function PointOfSalePage() {
       return false
     }
 
+    if (discountValue > 0 && !refundReference.trim()) {
+      setFormError('Agrega la referencia de la venta original para registrar reembolsos o cancelaciones.')
+      return false
+    }
+
     setFormError(null)
     return true
+  }
+
+  const removeFutureCharges = () => {
+    const futureItems = cartTotalsByChargeTiming[BILLING_TIMINGS.FUTURE]?.items ?? []
+    if (futureItems.length === 0) {
+      return
+    }
+    setCartItems((current) =>
+      current.filter((item) => getChargeTimingForItem(item) !== BILLING_TIMINGS.FUTURE),
+    )
   }
 
   const handleOpenPaymentModal = (event) => {
@@ -835,7 +967,12 @@ export default function PointOfSalePage() {
     const payload = {
       payment_method: primaryMethod,
       client_name: clientName.trim() || selectedClient?.name || undefined,
-      notes: notes.trim() || undefined,
+      notes:
+        (notes.trim() || refundReference.trim()
+          ? [notes.trim(), refundReference.trim() ? `Ref. original: ${refundReference.trim()}` : '']
+              .filter(Boolean)
+              .join(' · ')
+          : undefined),
       discount_amount: discountValue || 0,
       tax_amount: taxValue || 0,
       payment_breakdown: normalizedSplits,
@@ -1526,6 +1663,136 @@ export default function PointOfSalePage() {
                                     </div>
                                   ))
                                 )}
+                                {complementaryCatalog.length > 0 ? (
+                                  <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                                        Servicios complementarios
+                                      </p>
+                                      <span className="text-[11px] text-slate-500">Disponibles según el contrato</span>
+                                    </div>
+                                    <div className="mt-2 grid gap-2 md:grid-cols-3">
+                                      {complementaryCatalog.map((entry) => {
+                                        const { service, type } = entry
+                                        const normalizedServices =
+                                          clientServicesByClient[String(selectedClient.id)] ??
+                                          selectedClient.services ??
+                                          []
+                                        const hasSuspended = normalizedServices.some(
+                                          (item) => item.status === 'suspended',
+                                        )
+                                        const hasActive = normalizedServices.some(
+                                          (item) => item.status === 'active',
+                                        )
+                                        const hasPendingInstallation = normalizedServices.some((item) =>
+                                          ['pending', 'pending_installation', 'installation_pending'].includes(
+                                            item.status,
+                                          ),
+                                        )
+
+                                        let disabled = false
+                                        let helper = 'Aplica según el estado del servicio.'
+
+                                        if (type === COMPLEMENTARY_TYPES.RECONNECTION) {
+                                          disabled = !hasSuspended
+                                          helper = disabled
+                                            ? 'Requiere un servicio suspendido para reconectar.'
+                                            : 'Disponible por suspensión.'
+                                        } else if (type === COMPLEMENTARY_TYPES.INSTALLATION) {
+                                          disabled = hasActive
+                                          helper = disabled
+                                            ? 'Ya existe una instalación activa.'
+                                            : hasPendingInstallation
+                                              ? 'Pendiente de coordinar instalación.'
+                                              : 'Agrega la instalación inicial.'
+                                        } else if (type === COMPLEMENTARY_TYPES.TECHNICAL_VISIT) {
+                                          disabled = !hasActive && !hasSuspended && !hasPendingInstallation
+                                          helper = disabled
+                                            ? 'Asigna un servicio para programar la visita.'
+                                            : 'Usa para diagnósticos y soporte.'
+                                        }
+
+                                        return (
+                                          <button
+                                            key={type}
+                                            type="button"
+                                            className={`rounded-md border px-3 py-2 text-left text-sm transition ${
+                                              disabled
+                                                ? 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400'
+                                                : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                                            }`}
+                                            onClick={() =>
+                                              addSearchItemToCart({
+                                                id: `${type}-${service.id}`,
+                                                label: service.name,
+                                                detail: service.category ?? 'Servicio puntual',
+                                                price: service.price,
+                                                type: 'punctual-service',
+                                                service,
+                                                complementaryType: type,
+                                              })
+                                            }
+                                            disabled={disabled}
+                                          >
+                                            <p className="font-semibold">{service.name}</p>
+                                            <p className="text-[11px] text-slate-500">{helper}</p>
+                                          </button>
+                                        )
+                                      })}
+                                    </div>
+                                  </div>
+                                ) : null}
+
+                                {selectedClientServices.length > 0 && monthlyServices.length > 0 ? (
+                                  <div className="space-y-2 rounded-md border border-amber-200 bg-amber-50 p-3">
+                                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-amber-800">
+                                      <span className="font-semibold uppercase tracking-wide">Ajuste de plan</span>
+                                      <span>Prorratea la diferencia y actualiza la mensualidad siguiente</span>
+                                    </div>
+                                    <div className="grid gap-2 md:grid-cols-2">
+                                      <select
+                                        className="rounded border border-amber-200 p-2 text-sm"
+                                        value={planChangeTarget.serviceId}
+                                        onChange={(event) =>
+                                          setPlanChangeTarget((prev) => ({
+                                            ...prev,
+                                            serviceId: event.target.value,
+                                          }))
+                                        }
+                                      >
+                                        <option value="">Servicio actual</option>
+                                        {selectedClientServices.map((service) => (
+                                          <option key={service.id} value={service.id}>
+                                            {service.name} · {formatServiceStatus(service.status)}
+                                          </option>
+                                        ))}
+                                      </select>
+                                      <select
+                                        className="rounded border border-amber-200 p-2 text-sm"
+                                        value={planChangeTarget.planId}
+                                        onChange={(event) =>
+                                          setPlanChangeTarget((prev) => ({
+                                            ...prev,
+                                            planId: event.target.value,
+                                          }))
+                                        }
+                                      >
+                                        <option value="">Nuevo plan</option>
+                                        {monthlyServices.map((plan) => (
+                                          <option key={plan.id} value={plan.id}>
+                                            {plan.name} · ${plan.price}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                    <PlanAdjustmentSummary
+                                      selection={planChangeTarget}
+                                      services={selectedClientServices}
+                                      plans={monthlyServices}
+                                      onAdd={(adjustment) => setCartItems((current) => [...current, adjustment])}
+                                    />
+                                  </div>
+                                ) : null}
                               </div>
                             </div>
                           ) : (
@@ -1703,6 +1970,16 @@ export default function PointOfSalePage() {
                           className="rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
                         />
                       </label>
+                      <label className="grid gap-1 text-xs font-medium text-slate-600">
+                        Referencia de venta original (reembolsos/cancelaciones)
+                        <input
+                          type="text"
+                          value={refundReference}
+                          onChange={(event) => setRefundReference(event.target.value)}
+                          placeholder="Ticket o folio relacionado"
+                          className="rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                        />
+                      </label>
                       <div className="grid gap-1 text-xs font-medium text-slate-600">
                         <span>Métodos de pago</span>
                         <div className="flex items-center justify-between gap-3 rounded-md border border-slate-200 px-3 py-2 text-sm">
@@ -1816,6 +2093,28 @@ export default function PointOfSalePage() {
                             </div>
                           ))}
                         </div>
+                        {cartTotalsByChargeTiming[BILLING_TIMINGS.FUTURE]?.items?.length ? (
+                          <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <span>
+                                {cartTotalsByChargeTiming[BILLING_TIMINGS.FUTURE].items.length} cargo(s) futuro(s) en el ticket.
+                                Ingresa la referencia de la venta original para cancelarlos o reprogramarlos.
+                              </span>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                disabled={!refundReference.trim()}
+                                onClick={removeFutureCharges}
+                              >
+                                Cancelar cobros futuros
+                              </Button>
+                            </div>
+                            {!refundReference.trim() ? (
+                              <p className="mt-1 text-[10px]">Captura la referencia antes de cancelar cobros diferidos.</p>
+                            ) : null}
+                          </div>
+                        ) : null}
                       </div>
                     </div>
 
