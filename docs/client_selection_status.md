@@ -1,15 +1,13 @@
 # Estado de selección múltiple de clientes
 
-Tras el rediseño la pantalla de clientes sólo permite seleccionar un cliente a la vez para ver sus detalles y asignar servicios individuales:
+La pantalla de clientes ya soporta selección múltiple y acciones en lote:
 
-- La página `Clients.jsx` mantiene un único `selectedClientId` en estado y se lo pasa a la lista para resaltar la fila activa; no hay manejo de conjuntos de IDs.
-- El componente `ClientsList.jsx` sólo muestra acciones por fila ("Ver detalles" y "Eliminar") sin casillas de verificación ni controles para seleccionar varios clientes a la vez.
+- `ClientsList.jsx` agrega checkboxes por fila, un selector maestro por página y barra de acciones para asignar plan, suspender/reactivar o eliminar en lote. 【F:src/features/clients/ClientsList.jsx†L68-L214】
+- `Clients.jsx` controla los IDs seleccionados, los pasa a la lista y enruta las acciones a `bulkAssignClientServices` y cambios de estado. 【F:src/pages/Clients.jsx†L618-L706】【F:src/features/clients/flows.js†L1-L155】
 
-En el store sigue existiendo la acción `bulkAssignClientServices` que envía al backend `/client-services/bulk-assign` con múltiples IDs, pero ninguna vista la usa actualmente ni ofrece una UI para elegir varios clientes y disparar esa mutación.
-
-En resumen: la capacidad técnica de asignar servicios en lote persiste en el store, pero la interfaz carece de selección múltiple y botones asociados desde el rediseño, por lo que habría que reintroducir los controles de selección y la llamada a `bulkAssignClientServices` para recuperar esa función.
+Pendiente: enriquecer el feedback posterior a las acciones masivas (éxitos/errores por cliente) y mantener la selección bloqueada mientras se ejecutan las mutaciones.
 
 ## Paridad esperada con Wisphub
-- **Checkboxes en tabla.** Mostrar casillas al inicio de cada fila y un checkbox maestro para seleccionar/deseleccionar todo el listado paginado, igual que Wisphub.
-- **Barra de acciones masivas.** Al detectar selección >0, habilitar una barra de acciones en lote (asignar plan, suspender, reactivar) que use `bulkAssignClientServices` o mutaciones equivalentes.
-- **Estados bloqueantes.** Deshabilitar la barra durante la ejecución y mostrar resultados por lote (éxitos/errores) en toasts o banner, replicando el feedback inmediato que da Wisphub.
+- **Checkboxes en tabla.** Ya presentes por fila y maestro por página.
+- **Barra de acciones masivas.** Activa cuando hay selección; puede ampliarse con resultados por cliente.
+- **Estados bloqueantes.** Se deshabilitan controles durante ejecución (`isSelectionActionRunning`), pero falta mostrar resumen granular de resultados.
