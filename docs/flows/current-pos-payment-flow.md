@@ -40,3 +40,43 @@ Este documento resume cómo funciona hoy el TPV para cobrar productos y servicio
 ## Qué mejorar para un botón único
 - Unificar el panel de pagos rápidos dentro del mismo flujo del carrito para evitar la duplicidad de botones (**Cobrar** vs **Registrar pago**).
 - Reutilizar la validación del carrito y el modal de métodos de pago también para servicios mensuales, eliminando rutas paralelas.
+
+## Propuesta de flujo POS unificado (un solo botón)
+### Objetivo
+Que el punto de venta funcione con un único carrito mixto para servicios mensuales y productos, de modo que se pueda cobrar todo junto con el mismo modal y generar un ticket único.
+
+### Plan de trabajo y delegación
+1. **Cierre de diseño primero (UI/UX e interacción):**
+   - Definir el layout del carrito mixto, la lista lateral de servicios del cliente y el modal de pago único con sus estados (cargando, error, éxito).
+   - Documentar mensajes y bloqueos por validación (stock, contrato, periodo duplicado) en cada componente. Esto deja listo el handoff visual y de contenido.
+2. **Luego lógica e implementación:**
+   - Reusar la ruta `/sales/transactions` para registrar tanto servicios como productos desde el mismo ticket, manteniendo las validaciones del carrito.
+   - Incluir en el payload metadata de periodo y referencia de cliente para servicios, y disminuir inventario para productos.
+3. **Pruebas y aceptación:**
+   - Validar escenarios mixtos (solo servicios, solo productos, combinación) y los errores de duplicado/stock/contrato directamente en el flujo unificado.
+
+### Pasos de usuario
+1. **Seleccionar cliente** (opcional si solo se venden productos):
+   - Al elegir cliente, el panel lateral muestra **todos los servicios activos** (internet, TV, Spotify, etc.) con su periodo vigente y monto.
+2. **Agregar servicios al carrito**:
+   - Desde la lista de servicios activos del cliente, se seleccionan uno o varios (checkbox o botón “Agregar”).
+   - Cada servicio agregado se traduce en una línea de carrito con periodo de cobro y precio; se permite ajustar meses a pagar si la lógica de negocio lo admite.
+3. **Agregar productos del inventario**:
+   - El mismo buscador de productos/servicios permite sumar artículos de inventario al carrito actual.
+   - Se muestran alertas de stock insuficiente en la línea correspondiente.
+4. **Validaciones previas al pago** (sobre el mismo carrito):
+   - **Servicios mensuales**: requieren cliente con contrato activo y bloquean cobros duplicados del periodo seleccionado.
+   - **Productos**: validan stock disponible.
+   - El botón **Cobrar** se habilita solo si no hay alertas pendientes y existe al menos un ítem.
+5. **Cobro único**:
+   - Al pulsar **Cobrar**, se abre el modal de métodos de pago (múltiples medios/abonos parciales) sobre el total del carrito.
+   - Se registra todo en `/sales/transactions` (los servicios se tratan como líneas del ticket con su metadata de periodo) para unificar la ruta de backend.
+6. **Ticket y limpieza**:
+   - Se imprime un solo ticket con el desglose de servicios y productos pagados.
+   - El carrito se limpia y el estado de contrato/stock se actualiza según corresponda.
+
+### Consideraciones de UX y reglas
+- **Visibilidad de servicios**: si no hay cliente seleccionado, la lista de servicios no se muestra. Al cambiar de cliente, el carrito debería vaciarse o pedir confirmación para evitar mezclar servicios de distintos clientes.
+- **Periodos**: los servicios mensuales deberían permitir elegir el periodo a cubrir (mes actual, siguiente, múltiplos) y bloquear la repetición de un periodo ya cobrado.
+- **Descuentos y referencias**: si se aplica descuento o se requiere referencia de reembolso, reutilizar la lógica actual del modal sin crear validaciones paralelas.
+- **Errores unificados**: mostrar los mensajes de stock, contrato inactivo o duplicado de periodo directamente en cada línea del carrito para evitar saltos de contexto.
