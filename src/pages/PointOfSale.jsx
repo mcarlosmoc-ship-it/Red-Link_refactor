@@ -567,6 +567,7 @@ export default function PointOfSalePage() {
     discountValue,
     taxValue,
   ])
+  const cartTotal = useMemo(() => total, [total])
 
   const paymentTotals = useMemo(() => {
     const normalizedSplits = paymentSplits.map((split) => clamp(normalizeNumericInput(split.amount, 0), 0))
@@ -578,12 +579,12 @@ export default function PointOfSalePage() {
     const cashReceivedValue = clamp(normalizeNumericInput(cashReceived, 0), 0)
     return {
       assignedTotal,
-      remaining: total - assignedTotal,
+      remaining: cartTotal - assignedTotal,
       cashSplitAmount,
       cashReceivedValue,
       change: Math.max(0, cashReceivedValue - cashSplitAmount),
     }
-  }, [cashReceived, paymentSplits, total])
+  }, [cashReceived, cartTotal, paymentSplits])
 
   const getBillingCategoryForItem = (item) =>
     item.billingCategory ?? getDefaultBillingCategory(item.type, item.category)
@@ -1091,7 +1092,7 @@ export default function PointOfSalePage() {
   }
 
   const handleOpenPaymentModal = (event) => {
-    event.preventDefault()
+    event?.preventDefault()
     if (!ensureCartReadyForPayment()) return
 
     setPaymentModalError('')
@@ -1100,7 +1101,7 @@ export default function PointOfSalePage() {
       {
         id: generateLineId(),
         method: POS_CHECKOUT_METHODS[0],
-        amount: toInputValue(total),
+        amount: toInputValue(cartTotal),
         reference: '',
       },
     ])
@@ -1128,7 +1129,7 @@ export default function PointOfSalePage() {
       return
     }
 
-    if (Math.abs(totalAssigned - total) > 0.01) {
+    if (Math.abs(totalAssigned - cartTotal) > 0.01) {
       setPaymentModalError('La suma de los métodos debe igualar el total a cobrar.')
       return
     }
@@ -1166,7 +1167,7 @@ export default function PointOfSalePage() {
       subtotal,
       discount: discountValue,
       tax: taxValue,
-      total,
+      total: cartTotal,
       items: cartItems,
       categories: cartCategoriesSummary,
       notes: notes.trim(),
@@ -2504,7 +2505,7 @@ export default function PointOfSalePage() {
                       </div>
                       <div className="flex items-center justify-between border-t border-slate-200 pt-2 text-base">
                         <dt className="font-semibold text-slate-900">Total a cobrar</dt>
-                        <dd className="font-semibold text-blue-600">{peso(total)}</dd>
+                        <dd className="font-semibold text-blue-600">{peso(cartTotal)}</dd>
                       </div>
                     </dl>
 
@@ -2521,9 +2522,14 @@ export default function PointOfSalePage() {
                     <div className="flex items-center gap-4">
                       <div className="text-right">
                         <p className="text-xs uppercase tracking-wide text-slate-400">Total</p>
-                        <p className="text-2xl font-bold text-slate-900">{peso(total)}</p>
+                        <p className="text-2xl font-bold text-slate-900">{peso(cartTotal)}</p>
                       </div>
-                      <Button type="submit" size="lg" disabled={isSubmittingSale || !checkoutGuard.canCheckout}>
+                      <Button
+                        type="button"
+                        size="lg"
+                        disabled={isSubmittingSale || !checkoutGuard.canCheckout}
+                        onClick={handleOpenPaymentModal}
+                      >
                         <Receipt className="mr-2 h-4 w-4" aria-hidden /> Cobrar
                       </Button>
                     </div>
@@ -3187,7 +3193,7 @@ export default function PointOfSalePage() {
               <div className="space-y-3">
                 <div className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-900">
                   <span>Total a cobrar</span>
-                  <span>{peso(total)}</span>
+                  <span>{peso(cartTotal)}</span>
                 </div>
 
                 <div className="space-y-3">
@@ -3309,7 +3315,7 @@ export default function PointOfSalePage() {
                     <p>Subtotal: {peso(subtotal)}</p>
                     <p>Descuento: {peso(discountValue)}</p>
                     <p>Impuestos: {peso(taxValue)}</p>
-                    <p className="font-semibold text-slate-900">Total: {peso(total)}</p>
+                    <p className="font-semibold text-slate-900">Total: {peso(cartTotal)}</p>
                   </div>
                 </div>
 
