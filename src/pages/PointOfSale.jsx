@@ -35,6 +35,7 @@ import {
   getPrimaryService,
 } from '../features/clients/utils.js'
 import { CLIENT_PRICE, useBackofficeStore } from '../store/useBackofficeStore.js'
+import { usePosCart } from '../hooks/usePosCart.js'
 import { apiClient } from '../services/apiClient.js'
 import { addMonthsToPeriod, peso } from '../utils/formatters.js'
 import { getServiceTypeLabel } from '../constants/serviceTypes.js'
@@ -265,7 +266,6 @@ export default function PointOfSalePage() {
   const [activeProductTab, setActiveProductTab] = useState('nuevo')
   const [salesSearchTerm, setSalesSearchTerm] = useState('')
   const [productSearchTerm, setProductSearchTerm] = useState('')
-  const [cartItems, setCartItems] = useState([])
   const [clientName, setClientName] = useState('')
   const [selectedClientId, setSelectedClientId] = useState('')
   const [clientSearchTerm, setClientSearchTerm] = useState('')
@@ -302,7 +302,6 @@ export default function PointOfSalePage() {
   const [planChangeTarget, setPlanChangeTarget] = useState({ serviceId: '', planId: '' })
   const [lastSyncLabel] = useState(() => formatDateTime(new Date()))
   const clientSearchInputRef = useRef(null)
-  const previousClientIdRef = useRef('')
 
   const filteredSalesProducts = useMemo(() => {
     const term = salesSearchTerm.trim().toLowerCase()
@@ -334,6 +333,57 @@ export default function PointOfSalePage() {
     () => sortedClients.find((client) => String(client.id) === String(selectedClientId)) ?? null,
     [selectedClientId, sortedClients],
   )
+
+  const productLookup = useMemo(() => {
+    const map = new Map()
+    products.forEach((product) => {
+      map.set(product.id, product)
+    })
+    return map
+  }, [products])
+
+  const clientServicesByClient = useMemo(() => {
+    return clientServices.reduce((acc, service) => {
+      const key = String(service.clientId ?? '')
+      if (!acc[key]) {
+        acc[key] = []
+      }
+      acc[key].push(service)
+      return acc
+    }, {})
+  }, [clientServices])
+
+  const selectedClientServices = useMemo(() => {
+    if (!selectedClient) {
+      return []
+    }
+    return clientServicesByClient[String(selectedClient.id)] ?? selectedClient.services ?? []
+  }, [clientServicesByClient, selectedClient])
+
+  const activePeriodKey = periods?.selected ?? periods?.current ?? null
+
+  const {
+    cartItems,
+    updateCart,
+    updateItemQuantity,
+    setItemQuantity,
+    removeItem,
+    updateValidationFlags,
+  } = usePosCart({
+    selectedClientId,
+    activePeriodKey,
+    productLookup,
+    activeServices: selectedClientServices,
+    onRevertClient: (previousId) => setSelectedClientId(previousId ?? ''),
+    onClientCleared: () => {
+      showToast({
+        type: 'info',
+        title: 'Carrito reiniciado para el nuevo cliente',
+        description: 'Se eliminaron servicios y cargos vinculados al cliente anterior. Los productos se conservan.',
+      })
+      setFormError('Se limpiaron servicios del cliente anterior. Revisa el ticket antes de continuar.')
+    },
+  })
 
   const filteredSaleClients = useMemo(() => {
     const term = clientSearchTerm.trim().toLowerCase()
@@ -383,8 +433,6 @@ export default function PointOfSalePage() {
     () => (selectedPaymentClient ? getClientMonthlyFee(selectedPaymentClient, CLIENT_PRICE) : CLIENT_PRICE),
     [selectedPaymentClient],
   )
-
-  const activePeriodKey = periods?.selected ?? periods?.current ?? null
 
   const eligiblePeriods = useMemo(() => {
     const current = periods?.selected ?? periods?.current ?? null
@@ -449,44 +497,23 @@ export default function PointOfSalePage() {
   }, [clientName, selectedClient])
 
   useEffect(() => {
-    setCartItems((current) =>
+    updateCart((current) =>
       current.map((item) =>
         item.type === 'punctual-service' || item.type === 'monthly-service'
           ? { ...item, clientId: selectedClient ? selectedClient.id : null }
           : item,
       ),
     )
-  }, [selectedClient])
+  }, [selectedClient, updateCart])
 
   useEffect(() => {
-    const previousClientId = previousClientIdRef.current
-
-    if (previousClientId && previousClientId !== selectedClientId) {
-      setCartItems((current) => {
-        const filtered = current.filter((item) => item.type === 'product' || item.type === 'custom')
-
-        if (filtered.length !== current.length) {
-          showToast({
-            type: 'info',
-            title: 'Carrito reiniciado para el nuevo cliente',
-            description: 'Se eliminaron servicios y cargos vinculados al cliente anterior. Los productos se conservan.',
-          })
-          setFormError('Se limpiaron servicios del cliente anterior. Revisa el ticket antes de continuar.')
-        }
-
-        return filtered
-      })
-    }
-
     if (!selectedClientId) {
       refetchSelectedClientReceipts?.()
     }
-
-    previousClientIdRef.current = selectedClientId
-  }, [refetchSelectedClientReceipts, selectedClientId, showToast])
+  }, [refetchSelectedClientReceipts, selectedClientId])
 
   const addProductToCart = (product) => {
-    setCartItems((current) => {
+    updateCart((current) => {
       const existing = current.find((item) => item.productId === product.id)
       if (existing) {
         return current.map((item) =>
@@ -507,34 +534,22 @@ export default function PointOfSalePage() {
           type: 'product',
           billingCategory: getDefaultBillingCategory('product', product.category),
           chargeTiming: getDefaultChargeTiming('product'),
+          months: 1,
+          metadata: { period: activePeriodKey },
         },
       ]
     })
   }
 
-  const updateItemQuantity = (lineId, delta) => {
-    setCartItems((current) =>
-      current
-        .map((item) =>
-          item.id === lineId
-            ? { ...item, quantity: clamp(item.quantity + delta, 0.01) }
-            : item,
-        )
-        .filter((item) => item.quantity > 0),
-    )
-  }
+  const decreaseItemQuantity = (lineId) =>
+    updateItemQuantity(lineId, -1, (value) => clamp(value, 0.01))
 
-  const setItemQuantity = (lineId, value) => {
+  const increaseItemQuantity = (lineId) =>
+    updateItemQuantity(lineId, 1, (value) => clamp(value, 0.01))
+
+  const changeItemQuantity = (lineId, value) => {
     const parsed = clamp(normalizeNumericInput(value, 0), 0.01)
-    setCartItems((current) =>
-      current
-        .map((item) => (item.id === lineId ? { ...item, quantity: parsed } : item))
-        .filter((item) => item.quantity > 0),
-    )
-  }
-
-  const removeItem = (lineId) => {
-    setCartItems((current) => current.filter((item) => item.id !== lineId))
+    setItemQuantity(lineId, parsed, (next) => clamp(next, 0.01))
   }
 
   const subtotal = useMemo(
@@ -672,7 +687,7 @@ export default function PointOfSalePage() {
     }
 
     setFormError(null)
-    setCartItems((current) => [
+    updateCart((current) => [
       ...current,
       {
         id: generateLineId(),
@@ -684,6 +699,8 @@ export default function PointOfSalePage() {
         type: 'custom',
         billingCategory: BILLING_CATEGORIES.ONE_TIME,
         chargeTiming: BILLING_TIMINGS.IMMEDIATE,
+        months: 1,
+        metadata: { period: activePeriodKey },
       },
     ])
     setCustomItem({ description: '', price: '', quantity: '1' })
@@ -817,7 +834,7 @@ export default function PointOfSalePage() {
     }
 
     if (entry.type === 'punctual-service') {
-      setCartItems((current) => [
+      updateCart((current) => [
         ...current,
         {
           ...baseItem,
@@ -825,19 +842,23 @@ export default function PointOfSalePage() {
           clientId: selectedClient ? selectedClient.id : null,
           servicePlanId: entry.service?.id ?? null,
           complementaryType: entry.complementaryType,
+          months: 1,
+          metadata: { period: activePeriodKey },
         },
       ])
       return
     }
 
     if (entry.type === 'monthly-service') {
-      setCartItems((current) => [
+      updateCart((current) => [
         ...current,
         {
           ...baseItem,
           type: 'monthly-service',
           clientId: selectedClient ? selectedClient.id : null,
           servicePlanId: entry.service?.id ?? null,
+          months: 1,
+          metadata: { period: activePeriodKey },
         },
       ])
     }
@@ -851,7 +872,7 @@ export default function PointOfSalePage() {
     }
 
     setFormError(null)
-    setCartItems((current) => {
+    updateCart((current) => {
       const existing = current.find(
         (item) =>
           item.type === 'monthly-service' &&
@@ -880,6 +901,8 @@ export default function PointOfSalePage() {
           servicePlanId: service.id ?? null,
           billingCategory: BILLING_CATEGORIES.MONTHLY,
           chargeTiming: BILLING_TIMINGS.FUTURE,
+          months: 1,
+          metadata: { period: activePeriodKey, serviceStatus: service.status },
         },
       ]
     })
@@ -888,32 +911,6 @@ export default function PointOfSalePage() {
   const focusClientSearch = () => {
     clientSearchInputRef.current?.focus()
   }
-
-  const productLookup = useMemo(() => {
-    const map = new Map()
-    products.forEach((product) => {
-      map.set(product.id, product)
-    })
-    return map
-  }, [products])
-
-  const clientServicesByClient = useMemo(() => {
-    return clientServices.reduce((acc, service) => {
-      const key = String(service.clientId ?? '')
-      if (!acc[key]) {
-        acc[key] = []
-      }
-      acc[key].push(service)
-      return acc
-    }, {})
-  }, [clientServices])
-
-  const selectedClientServices = useMemo(() => {
-    if (!selectedClient) {
-      return []
-    }
-    return clientServicesByClient[String(selectedClient.id)] ?? selectedClient.services ?? []
-  }, [clientServicesByClient, selectedClient])
 
   const selectedClientDebt = useMemo(
     () => getClientDebtSummary(selectedClient, CLIENT_PRICE),
@@ -1031,6 +1028,10 @@ export default function PointOfSalePage() {
     return validation
   }, [cartItems, clientServicesByClient, productLookup, selectedClient])
 
+  useEffect(() => {
+    updateValidationFlags(cartValidation)
+  }, [cartValidation, updateValidationFlags])
+
   const ensureCartReadyForPayment = () => {
     if (cartItems.length === 0) {
       setFormError('Agrega al menos un artículo antes de registrar la venta.')
@@ -1057,7 +1058,7 @@ export default function PointOfSalePage() {
     if (futureItems.length === 0) {
       return
     }
-    setCartItems((current) =>
+    updateCart((current) =>
       current.filter((item) => getChargeTimingForItem(item) !== BILLING_TIMINGS.FUTURE),
     )
   }
@@ -1152,7 +1153,7 @@ export default function PointOfSalePage() {
       setSaleResult(sale)
       setLastPaymentBreakdown(normalizedSplits)
       setLastSaleContext({ ...saleSnapshot, sale })
-      setCartItems([])
+      updateCart(() => [])
       setDiscount('')
       setTax('')
       setNotes('')
@@ -2117,7 +2118,9 @@ export default function PointOfSalePage() {
                                     selection={planChangeTarget}
                                     services={selectedClientServices}
                                     plans={monthlyServices}
-                                    onAdd={(adjustment) => setCartItems((current) => [...current, adjustment])}
+                                    onAdd={(adjustment) =>
+                                      updateCart((current) => [...current, adjustment])
+                                    }
                                   />
                                 </div>
                               ) : null}
@@ -2247,7 +2250,7 @@ export default function PointOfSalePage() {
                                     type="button"
                                     variant="outline"
                                     className="h-8 w-8 p-0"
-                                    onClick={() => updateItemQuantity(item.id, -1)}
+                                    onClick={() => decreaseItemQuantity(item.id)}
                                     aria-label={`Reducir cantidad de ${item.name}`}
                                   >
                                     <Minus className="h-4 w-4" aria-hidden />
@@ -2257,7 +2260,7 @@ export default function PointOfSalePage() {
                                     min="0"
                                     step="0.01"
                                     value={item.quantity}
-                                    onChange={(event) => setItemQuantity(item.id, event.target.value)}
+                                    onChange={(event) => changeItemQuantity(item.id, event.target.value)}
                                     className={`h-8 w-20 rounded-md border px-2 text-center text-sm ${
                                       cartValidation[item.id]
                                         ? 'border-amber-300 bg-amber-50 text-amber-800'
@@ -2268,7 +2271,7 @@ export default function PointOfSalePage() {
                                     type="button"
                                     variant="outline"
                                     className="h-8 w-8 p-0"
-                                    onClick={() => updateItemQuantity(item.id, 1)}
+                                    onClick={() => increaseItemQuantity(item.id)}
                                     aria-label={`Incrementar cantidad de ${item.name}`}
                                   >
                                     <Plus className="h-4 w-4" aria-hidden />
