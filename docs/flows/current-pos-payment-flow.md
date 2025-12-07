@@ -45,16 +45,6 @@ Este documento resume cómo funciona hoy el TPV para cobrar productos y servicio
 ### Objetivo
 Que el punto de venta funcione con un único carrito mixto para servicios mensuales y productos, de modo que se pueda cobrar todo junto con el mismo modal y generar un ticket único.
 
-### Plan de trabajo y delegación
-1. **Cierre de diseño primero (UI/UX e interacción):**
-   - Definir el layout del carrito mixto, la lista lateral de servicios del cliente y el modal de pago único con sus estados (cargando, error, éxito).
-   - Documentar mensajes y bloqueos por validación (stock, contrato, periodo duplicado) en cada componente. Esto deja listo el handoff visual y de contenido.
-2. **Luego lógica e implementación:**
-   - Reusar la ruta `/sales/transactions` para registrar tanto servicios como productos desde el mismo ticket, manteniendo las validaciones del carrito.
-   - Incluir en el payload metadata de periodo y referencia de cliente para servicios, y disminuir inventario para productos.
-3. **Pruebas y aceptación:**
-   - Validar escenarios mixtos (solo servicios, solo productos, combinación) y los errores de duplicado/stock/contrato directamente en el flujo unificado.
-
 ### Pasos de usuario
 1. **Seleccionar cliente** (opcional si solo se venden productos):
    - Al elegir cliente, el panel lateral muestra **todos los servicios activos** (internet, TV, Spotify, etc.) con su periodo vigente y monto.
