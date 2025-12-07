@@ -12,28 +12,28 @@ Este documento resume cómo funciona hoy el TPV para cobrar productos y servicio
 
 ## Flujos por escenario
 ### 1) Cliente paga solo productos de inventario
-1. Buscar/agregar productos al carrito (el cliente es opcional; se puede seleccionar para referencia, pero no es obligatorio para cobrar solo productos).
+1. Buscar/agregar productos al carrito (no exige cliente si solo hay productos).
 2. Si el stock es suficiente, pulsar **Cobrar**, dividir métodos en el modal si aplica y confirmar.
 3. La venta se registra y limpia el ticket; el otro panel de “Registrar pago” no interviene.
 
 ### 2) Cliente paga solo su internet
-1. Seleccionar al cliente (requerido; sin cliente no se puede identificar el servicio ni cobrarlo).
+1. Seleccionar al cliente.
 2. Opciones actuales:
    - **Cobrar desde carrito**: agregar el servicio mensual de internet al carrito (solo se permite con contrato activo) y cobrar con **Cobrar**.
-   - **Pago rápido**: usar “Pagos rápidos de clientes”, elegir el servicio asignado, capturar monto o meses y pulsar **Registrar pago** (verifica duplicados del periodo activo). Sin cliente, el flujo no avanza.
+   - **Pago rápido**: usar “Pagos rápidos de clientes”, elegir el servicio asignado, capturar monto o meses y pulsar **Registrar pago** (verifica duplicados del periodo activo).
 
 ### 3) Cliente paga internet y Spotify
-1. Seleccionar cliente con contrato activo (requerido para ubicar ambos servicios).
+1. Seleccionar cliente con contrato activo.
 2. Agregar ambos servicios mensuales al carrito (internet + Spotify) desde el buscador.
 3. Cobrar con **Cobrar**; el panel de pagos rápidos no permite cobrar dos servicios a la vez.
 
 ### 4) Cliente con 3 servicios activos paga solo internet
-1. Seleccionar cliente (requerido para elegir cuál de los servicios pagar).
+1. Seleccionar cliente.
 2. Agregar únicamente el servicio de internet al carrito o elegir solo ese servicio en el panel de pagos rápidos.
 3. Cobrar con el flujo elegido; los otros servicios quedan sin movimiento.
 
 ### 5) Cliente paga internet y compra un lápiz
-1. Seleccionar cliente (requerido por la línea de servicio; si el carrito solo tuviera el lápiz, la selección sería opcional).
+1. Seleccionar cliente.
 2. Agregar el servicio mensual de internet y el producto de papelería al carrito.
 3. Pulsar **Cobrar**; el ticket mezcla ambos tipos y valida stock solo para el producto. El panel de pagos rápidos no combina productos.
 
