@@ -1018,6 +1018,13 @@ export default function PointOfSalePage() {
           if (!activeContract) {
             message = 'El cliente no tiene un contrato activo para facturar este servicio.'
           }
+
+          const duplicateReceipt = duplicateServiceReceiptMap[String(item.servicePlanId)]
+          if (duplicateReceipt && item.metadata?.period === duplicateReceipt.period) {
+            message = `Ya existe el folio ${duplicateReceipt.folio} para ${
+              duplicateReceipt.period ?? activePeriodKey ?? 'este periodo'
+            }.`
+          }
         }
       }
 
@@ -1026,26 +1033,46 @@ export default function PointOfSalePage() {
       }
     })
     return validation
-  }, [cartItems, clientServicesByClient, productLookup, selectedClient])
+  }, [
+    activePeriodKey,
+    cartItems,
+    clientServicesByClient,
+    duplicateServiceReceiptMap,
+    productLookup,
+    selectedClient,
+  ])
 
   useEffect(() => {
     updateValidationFlags(cartValidation)
   }, [cartValidation, updateValidationFlags])
 
-  const ensureCartReadyForPayment = () => {
+  const checkoutGuard = useMemo(() => {
+    const blockingReasons = []
     if (cartItems.length === 0) {
-      setFormError('Agrega al menos un artículo antes de registrar la venta.')
-      return false
+      blockingReasons.push('Agrega al menos un artículo antes de registrar la venta.')
     }
 
-    const hasErrors = Object.keys(cartValidation).length > 0
-    if (hasErrors) {
-      setFormError('Revisa los artículos con alertas antes de registrar la venta.')
-      return false
+    if (clientServiceAlerts.length > 0) {
+      blockingReasons.push('Resuelve las alertas del cliente antes de cobrar.')
+    }
+
+    if (Object.keys(cartValidation).length > 0) {
+      blockingReasons.push('Revisa los artículos con alertas antes de registrar la venta.')
     }
 
     if (discountValue > 0 && !refundReference.trim()) {
-      setFormError('Agrega la referencia de la venta original para registrar reembolsos o cancelaciones.')
+      blockingReasons.push('Agrega la referencia de la venta original para registrar reembolsos o cancelaciones.')
+    }
+
+    return {
+      canCheckout: blockingReasons.length === 0,
+      blockingReasons,
+    }
+  }, [cartItems.length, cartValidation, clientServiceAlerts.length, discountValue, refundReference])
+
+  const ensureCartReadyForPayment = () => {
+    if (!checkoutGuard.canCheckout) {
+      setFormError(checkoutGuard.blockingReasons[0] ?? 'No se puede registrar la venta.')
       return false
     }
 
@@ -2481,7 +2508,11 @@ export default function PointOfSalePage() {
                       </div>
                     </dl>
 
-                  {formError ? <p className="text-sm text-red-600">{formError}</p> : null}
+                  {formError ? (
+                    <p className="text-sm text-red-600">{formError}</p>
+                  ) : !checkoutGuard.canCheckout && checkoutGuard.blockingReasons.length > 0 ? (
+                    <p className="text-sm text-red-600">{checkoutGuard.blockingReasons[0]}</p>
+                  ) : null}
 
                   <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-3">
                     <Button type="button" variant="secondary" onClick={focusClientSearch}>
@@ -2492,7 +2523,7 @@ export default function PointOfSalePage() {
                         <p className="text-xs uppercase tracking-wide text-slate-400">Total</p>
                         <p className="text-2xl font-bold text-slate-900">{peso(total)}</p>
                       </div>
-                      <Button type="submit" size="lg" disabled={isSubmittingSale}>
+                      <Button type="submit" size="lg" disabled={isSubmittingSale || !checkoutGuard.canCheckout}>
                         <Receipt className="mr-2 h-4 w-4" aria-hidden /> Cobrar
                       </Button>
                     </div>
