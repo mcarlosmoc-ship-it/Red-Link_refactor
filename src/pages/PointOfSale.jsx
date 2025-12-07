@@ -1,5 +1,5 @@
 /* global Blob, URL */
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   BadgeCheck,
   Box,
@@ -301,6 +301,7 @@ export default function PointOfSalePage() {
   const [refundReference, setRefundReference] = useState('')
   const [planChangeTarget, setPlanChangeTarget] = useState({ serviceId: '', planId: '' })
   const [lastSyncLabel] = useState(() => formatDateTime(new Date()))
+  const clientSearchInputRef = useRef(null)
 
   const filteredSalesProducts = useMemo(() => {
     const term = salesSearchTerm.trim().toLowerCase()
@@ -753,6 +754,17 @@ export default function PointOfSalePage() {
       return
     }
 
+    if (entry.type === 'monthly-service' && !selectedClient) {
+      const message = 'Asigna un cliente antes de agregar servicios mensuales.'
+      setFormError(message)
+      showToast({
+        type: 'warning',
+        title: 'Cliente requerido',
+        description: message,
+      })
+      return
+    }
+
     const baseItem = {
       id: generateLineId(),
       name: entry.label,
@@ -789,6 +801,10 @@ export default function PointOfSalePage() {
         },
       ])
     }
+  }
+
+  const focusClientSearch = () => {
+    clientSearchInputRef.current?.focus()
   }
 
   const productLookup = useMemo(() => {
@@ -1487,28 +1503,61 @@ export default function PointOfSalePage() {
         </div>
       </header>
 
-      <nav className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2 shadow-sm">
-        {MAIN_TABS.map((tab) => {
-          const Icon = tab.icon
-          const isActive = activeTab === tab.id
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition ${
-                isActive
-                  ? 'bg-white text-blue-600 shadow-sm ring-1 ring-blue-200'
-                  : 'text-slate-600 hover:bg-white hover:text-slate-900'
-              }`}
-              aria-pressed={isActive}
-            >
-              <Icon className="h-4 w-4" aria-hidden />
-              {tab.label}
-            </button>
-          )
-        })}
-      </nav>
+      <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="space-y-1">
+            <p className="text-xs uppercase tracking-wide text-slate-500">Búsqueda unificada</p>
+            <h2 className="text-lg font-semibold text-slate-900">Agrega productos y servicios al vuelo</h2>
+          </div>
+          <span className="text-xs text-slate-500">Sin columnas extra ni pasos adicionales.</span>
+        </div>
+        <div className="relative mt-3">
+          <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+          <input
+            type="search"
+            value={ticketSearchTerm}
+            onChange={(event) => setTicketSearchTerm(event.target.value)}
+            placeholder="Buscar artículos, servicios puntuales o mensuales"
+            className="w-full rounded-lg border border-slate-200 px-5 py-3 pl-12 text-lg font-medium text-slate-900 shadow-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+          />
+          {filteredSearchItems.length > 0 && (
+            <ul className="absolute z-10 mt-2 w-full divide-y divide-slate-100 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">
+              {filteredSearchItems.map((item) => (
+                <li key={item.id}>
+                  <button
+                    type="button"
+                    onClick={() => addSearchItemToCart(item)}
+                    className="flex w-full items-center justify-between gap-3 px-4 py-2 text-left text-sm transition hover:bg-slate-50"
+                  >
+                    <div className="space-y-0.5">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-semibold text-slate-900">{item.label}</span>
+                        <span
+                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${
+                            item.type === 'product'
+                              ? 'bg-blue-50 text-blue-700'
+                              : item.type === 'punctual-service'
+                                ? 'bg-amber-50 text-amber-700'
+                                : 'bg-emerald-50 text-emerald-700'
+                          }`}
+                        >
+                          {item.type === 'product'
+                            ? 'Producto'
+                            : item.type === 'punctual-service'
+                              ? 'Servicio puntual'
+                              : 'Servicio mensual'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500">{item.detail || 'Sin categoría'}</p>
+                    </div>
+                    <span className="text-sm font-semibold text-slate-900">{peso(item.price)}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </section>
 
       {activeTab === 'ventas' ? (
         <>
@@ -1714,6 +1763,7 @@ export default function PointOfSalePage() {
                             Buscar cliente
                             <input
                               type="search"
+                              ref={clientSearchInputRef}
                               value={clientSearchTerm}
                               onChange={(event) => setClientSearchTerm(event.target.value)}
                               placeholder="Nombre, zona o ubicación"
@@ -2319,9 +2369,20 @@ export default function PointOfSalePage() {
 
                   {formError ? <p className="text-sm text-red-600">{formError}</p> : null}
 
-                  <Button type="submit" className="w-full" disabled={isSubmittingSale}>
-                    <Receipt className="mr-2 h-4 w-4" aria-hidden /> Registrar cobro
-                  </Button>
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-3">
+                    <Button type="button" variant="secondary" onClick={focusClientSearch}>
+                      Asignar cliente
+                    </Button>
+                    <div className="flex items-center gap-4">
+                      <div className="text-right">
+                        <p className="text-xs uppercase tracking-wide text-slate-400">Total</p>
+                        <p className="text-2xl font-bold text-slate-900">{peso(total)}</p>
+                      </div>
+                      <Button type="submit" size="lg" disabled={isSubmittingSale}>
+                        <Receipt className="mr-2 h-4 w-4" aria-hidden /> Cobrar
+                      </Button>
+                    </div>
+                  </div>
                 </form>
               </CardContent>
             </Card>
