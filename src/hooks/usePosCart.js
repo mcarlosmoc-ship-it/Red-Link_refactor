@@ -2,39 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 const SERVICE_LINE_TYPES = new Set(['punctual-service', 'monthly-service'])
 
-export const resolveClientChangeForCart = ({
-  cartItems = [],
-  previousClientId = '',
-  nextClientId = '',
-  confirmClientChange = () => true,
-  onRevertClient,
-  onClientCleared,
-}) => {
-  if (!nextClientId || previousClientId === nextClientId) {
-    return { nextCartItems: cartItems, shouldUpdatePrevious: true }
-  }
-
-  const shouldConfirmClear = cartItems.some((item) => SERVICE_LINE_TYPES.has(item.type))
-
-  if (!shouldConfirmClear) {
-    return { nextCartItems: cartItems, shouldUpdatePrevious: true }
-  }
-
-  const confirmed = confirmClientChange(
-    'Cambiar de cliente reiniciará los servicios del carrito. ¿Deseas continuar?',
-  )
-  if (!confirmed) {
-    onRevertClient?.(previousClientId)
-    return { nextCartItems: cartItems, shouldUpdatePrevious: false }
-  }
-
-  const filteredItems = cartItems.filter((item) => !SERVICE_LINE_TYPES.has(item.type))
-  if (filteredItems.length !== cartItems.length) {
-    onClientCleared?.()
-  }
-
-  return { nextCartItems: filteredItems, shouldUpdatePrevious: true }
-}
+export const sanitizeCartForClientChange = (items = []) =>
+  items.filter((item) => !SERVICE_LINE_TYPES.has(item.type))
 
 const normalizeLineMetadata = (item, { activePeriodKey, productLookup, activeServices }) => {
   const sourceProduct = item.productId ? productLookup?.get?.(item.productId) : null
@@ -163,8 +132,24 @@ export const usePosCart = ({
       return
     }
 
-    if (nextCartItems !== cartItems) {
-      updateCart(() => nextCartItems)
+    const shouldConfirmClear = cartItems.some((item) => SERVICE_LINE_TYPES.has(item.type))
+
+    if (shouldConfirmClear && previousId && previousId !== selectedClientId) {
+      const confirmed = window.confirm(
+        'Cambiar de cliente reiniciará los servicios del carrito. ¿Deseas continuar?',
+      )
+      if (!confirmed) {
+        onRevertClient?.(previousId)
+        return
+      }
+
+      updateCart((current) => {
+        const filtered = sanitizeCartForClientChange(current)
+        if (filtered.length !== current.length) {
+          onClientCleared?.()
+        }
+        return filtered
+      })
     }
 
     previousClientIdRef.current = selectedClientId ?? ''

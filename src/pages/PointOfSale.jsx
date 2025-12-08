@@ -267,11 +267,15 @@ function PlanAdjustmentSummary({ selection, services, plans, onAdd }) {
 }
 
 export default function PointOfSalePage() {
-  const { products, isLoading: isLoadingProducts, createProduct } = usePosCatalog()
+  const { products, isLoading: isLoadingProducts, createProduct, refetch: refetchProducts } = usePosCatalog()
   const { sales, recordSale } = usePosSales({ limit: 8 })
   const { clients, isLoading: isLoadingClients, createClient } = useClients()
   const { servicePlans, isLoading: isLoadingPlans } = useServicePlans()
-  const { clientServices, isLoading: isLoadingClientServices } = useClientServices()
+  const {
+    clientServices,
+    isLoading: isLoadingClientServices,
+    reload: reloadClientServices,
+  } = useClientServices()
   const { recordPayment, periods } = useBackofficeStore((state) => ({
     recordPayment: state.recordPayment,
     periods: state.periods,
@@ -1183,6 +1187,8 @@ export default function PointOfSalePage() {
       ])
       setIsPaymentModalOpen(false)
 
+      await Promise.allSettled([refetchProducts?.(), reloadClientServices?.()])
+
       showToast({
         type: 'success',
         title: 'Venta registrada',
@@ -1249,12 +1255,31 @@ export default function PointOfSalePage() {
     lines.push(`Fecha: ${formatDateTime(sale.soldAt ?? sale.sold_at)}`)
     lines.push(`Cliente: ${saleClient || 'Consumidor general'}`)
     lines.push('')
-    lines.push('Conceptos:')
-    items.forEach((item) => {
-      lines.push(`- ${item.name} x${item.quantity} · ${peso(item.unitPrice * item.quantity)}`)
-    })
+    const serviceLines = items.filter((item) => ['punctual-service', 'monthly-service'].includes(item.type))
+    const productLines = items.filter((item) => !['punctual-service', 'monthly-service'].includes(item.type))
 
-    lines.push('')
+    if (serviceLines.length) {
+      lines.push('Servicios:')
+      serviceLines.forEach((item) => {
+        const monthsLabel = item.metadata?.months && item.metadata.months !== 1 ? ` · ${item.metadata.months} mes(es)` : ''
+        const periodLabel = item.metadata?.period ? `Periodo ${item.metadata.period}` : 'Periodo N/D'
+        lines.push(`- ${item.name} (${periodLabel}${monthsLabel}) · ${peso(item.unitPrice * item.quantity)}`)
+      })
+      lines.push('')
+    }
+
+    if (productLines.length) {
+      lines.push('Productos:')
+      productLines.forEach((item) => {
+        const quantityLabel = item.quantity && item.quantity !== 1 ? ` x${item.quantity}` : ''
+        lines.push(`- ${item.name}${quantityLabel} · ${peso(item.unitPrice * item.quantity)}`)
+      })
+    }
+
+    if (serviceLines.length || productLines.length) {
+      lines.push('')
+    }
+
     lines.push('Resumen por categoría:')
     categories.forEach((category) => {
       lines.push(`- ${category.label}: ${peso(category.amount)}`)
