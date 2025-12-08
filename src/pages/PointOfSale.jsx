@@ -140,6 +140,20 @@ const formatDate = (value) => {
   return new Intl.DateTimeFormat('es-MX', { dateStyle: 'medium' }).format(date)
 }
 
+const resolveBooleanFlag = (value, fallback = false) => {
+  if (typeof value === 'boolean') return value
+  if (typeof value === 'string') {
+    return ['true', '1', 'yes', 'on'].includes(value.toLowerCase())
+  }
+  return fallback
+}
+
+const LEGACY_PAYMENTS_ENABLED = resolveBooleanFlag(
+  (typeof import.meta !== 'undefined' && import.meta?.env?.VITE_ENABLE_LEGACY_PAYMENTS) ??
+    (typeof globalThis !== 'undefined' && globalThis?.process?.env?.VITE_ENABLE_LEGACY_PAYMENTS),
+  false,
+)
+
 const getDefaultBillingCategory = (itemType, categoryName = '') => {
   const normalizedCategory = String(categoryName).toLowerCase()
   if (normalizedCategory.includes('adeudo')) {
@@ -1111,6 +1125,8 @@ export default function PointOfSalePage() {
   const handleCheckout = async () => {
     if (!ensureCartReadyForPayment()) return
 
+    updateValidationFlags({})
+
     const normalizedSplits = paymentSplits.map((split) => ({
       ...split,
       amount: clamp(normalizeNumericInput(split.amount, 0), 0),
@@ -1141,8 +1157,27 @@ export default function PointOfSalePage() {
       normalizedSplits.find((split) => split.amount > 0)?.method ?? PAYMENT_METHODS[0],
     )
 
+    const items = cartItems.map((item) => ({
+      product_id: item.productId ?? undefined,
+      description: item.productId ? undefined : `${item.name} (${item.category})`,
+      quantity: item.quantity,
+      unit_price: item.unitPrice,
+      metadata: {
+        line_type: item.type ?? 'product',
+        period_key: item.metadata?.period ?? null,
+        months: item.metadata?.months ?? item.months ?? null,
+        client_id: item.clientId ?? selectedClient?.id ?? null,
+        client_service_id: item.servicePlanId ?? null,
+        charge_timing: item.chargeTiming ?? null,
+        available_stock: item.metadata?.availableStock ?? null,
+        service_status: item.metadata?.serviceStatus ?? null,
+        validation_flags: item.metadata?.validationFlags ?? {},
+      },
+    }))
+
     const payload = {
       payment_method: primaryMethod,
+      client_id: selectedClient?.id ?? undefined,
       client_name: clientName.trim() || selectedClient?.name || undefined,
       notes:
         (notes.trim() || refundReference.trim()
@@ -1155,12 +1190,7 @@ export default function PointOfSalePage() {
       payment_breakdown: normalizedSplits,
       cash_received: cashReceivedValue || undefined,
       cash_change: change || undefined,
-      items: cartItems.map((item) => ({
-        product_id: item.productId ?? undefined,
-        description: item.productId ? undefined : `${item.name} (${item.category})`,
-        quantity: item.quantity,
-        unit_price: item.unitPrice,
-      })),
+      items,
     }
 
     const saleSnapshot = {
@@ -1197,7 +1227,26 @@ export default function PointOfSalePage() {
         description: `Ticket ${sale.ticketNumber ?? sale.ticket_number} guardado correctamente.`,
       })
     } catch (error) {
-      const message = error?.message ?? 'No se pudo registrar la venta. Intenta nuevamente.'
+      const responseDetail = error?.response?.data
+      const message =
+        (typeof responseDetail === 'string'
+          ? responseDetail
+          : responseDetail?.detail || error?.message)
+        ?? 'No se pudo registrar la venta. Intenta nuevamente.'
+
+      const lineErrors =
+        (responseDetail && typeof responseDetail === 'object' && responseDetail.line_errors) ||
+        (responseDetail && typeof responseDetail === 'object' && responseDetail.errors)
+
+      if (lineErrors && typeof lineErrors === 'object') {
+        const normalized = Object.entries(lineErrors).reduce((acc, [lineId, issue]) => {
+          const text = Array.isArray(issue) ? issue.join(' ') : String(issue)
+          acc[lineId] = text
+          return acc
+        }, {})
+        updateValidationFlags(normalized)
+      }
+
       setPaymentModalError(message)
       setFormError(message)
       showToast({
@@ -1358,6 +1407,15 @@ export default function PointOfSalePage() {
 
   const handleSubmitClientPayment = async (event) => {
     event.preventDefault()
+
+    if (!LEGACY_PAYMENTS_ENABLED) {
+      showToast({
+        type: 'warning',
+        title: 'Flujo deshabilitado',
+        description: 'Los pagos directos se encuentran desactivados en este entorno.',
+      })
+      return
+    }
 
     if (!selectedPaymentClient) {
       showToast({
@@ -2538,8 +2596,9 @@ export default function PointOfSalePage() {
               </CardContent>
             </Card>
 
-            <Card>
-              <CardContent className="space-y-4">
+            {LEGACY_PAYMENTS_ENABLED && (
+              <Card>
+                <CardContent className="space-y-4">
                 <header className="space-y-1">
                   <h2 className="text-lg font-semibold text-slate-900">Pagos rápidos de clientes</h2>
                   <p className="text-xs text-slate-500">
@@ -2733,6 +2792,7 @@ export default function PointOfSalePage() {
                 </form>
               </CardContent>
             </Card>
+            )}
 
             <Card>
               <CardContent className="space-y-4">
