@@ -2,6 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 const SERVICE_LINE_TYPES = new Set(['punctual-service', 'monthly-service'])
 
+export const sanitizeCartForClientChange = (items = []) =>
+  items.filter((item) => !SERVICE_LINE_TYPES.has(item.type))
+
 const normalizeLineMetadata = (item, { activePeriodKey, productLookup, activeServices }) => {
   const sourceProduct = item.productId ? productLookup?.get?.(item.productId) : null
   const activeService = item.servicePlanId
@@ -132,7 +135,7 @@ export const usePosCart = ({
       }
 
       updateCart((current) => {
-        const filtered = current.filter((item) => !SERVICE_LINE_TYPES.has(item.type))
+        const filtered = sanitizeCartForClientChange(current)
         if (filtered.length !== current.length) {
           onClientCleared?.()
         }
