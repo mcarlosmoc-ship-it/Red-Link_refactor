@@ -28,6 +28,7 @@ export const usePosCart = ({
   activeServices,
   onRevertClient,
   onClientCleared,
+  confirmClientChange = (message) => window.confirm(message),
 } = {}) => {
   const [cartItems, setCartItems] = useState([])
   const previousClientIdRef = useRef(selectedClientId ?? '')
@@ -118,8 +119,16 @@ export const usePosCart = ({
   useEffect(() => {
     const previousId = previousClientIdRef.current
 
-    if (!selectedClientId || previousId === selectedClientId) {
-      previousClientIdRef.current = selectedClientId ?? ''
+    const { nextCartItems, shouldUpdatePrevious } = resolveClientChangeForCart({
+      cartItems,
+      previousClientId: previousId,
+      nextClientId: selectedClientId ?? '',
+      confirmClientChange,
+      onClientCleared,
+      onRevertClient,
+    })
+
+    if (!shouldUpdatePrevious) {
       return
     }
 
@@ -144,7 +153,7 @@ export const usePosCart = ({
     }
 
     previousClientIdRef.current = selectedClientId ?? ''
-  }, [cartItems, onClientCleared, onRevertClient, selectedClientId, updateCart])
+  }, [cartItems, confirmClientChange, onClientCleared, onRevertClient, selectedClientId, updateCart])
 
   useEffect(() => {
     if (!activeServices?.length) {

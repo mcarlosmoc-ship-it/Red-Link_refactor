@@ -36,6 +36,8 @@ import {
 } from '../features/clients/utils.js'
 import { CLIENT_PRICE, useBackofficeStore } from '../store/useBackofficeStore.js'
 import { usePosCart } from '../hooks/usePosCart.js'
+import evaluateCartValidation, { DEFAULT_COMPLEMENTARY_TYPES } from '../utils/cartValidation.js'
+import { isPosCartValidationEnabled } from '../utils/featureFlags.js'
 import { apiClient } from '../services/apiClient.js'
 import { addMonthsToPeriod, peso } from '../utils/formatters.js'
 import { getServiceTypeLabel } from '../constants/serviceTypes.js'
@@ -319,6 +321,7 @@ export default function PointOfSalePage() {
   const [refundReference, setRefundReference] = useState('')
   const [planChangeTarget, setPlanChangeTarget] = useState({ serviceId: '', planId: '' })
   const [lastSyncLabel] = useState(() => formatDateTime(new Date()))
+  const cartValidationEnabled = isPosCartValidationEnabled()
   const clientSearchInputRef = useRef(null)
 
   const filteredSalesProducts = useMemo(() => {
@@ -991,79 +994,38 @@ export default function PointOfSalePage() {
     }, {})
   }, [activePeriodKey, selectedClientReceipts])
 
-  const cartValidation = useMemo(() => {
-    const validation = {}
-    cartItems.forEach((item) => {
-      let message = ''
-      if (item.type === 'product') {
-        const product = productLookup.get(item.productId)
-        if (product && product.stockQuantity !== null && item.quantity > product.stockQuantity) {
-          message = `Stock insuficiente: quedan ${product.stockQuantity}`
-        }
-      }
-
-      if (item.type === 'punctual-service') {
-        if (!selectedClient) {
-          message = 'Selecciona un cliente con instalación previa para validar este servicio.'
-        } else {
-          const services = clientServicesByClient[String(selectedClient.id)] ?? selectedClient.services ?? []
-          const hasInstallation = services.some((service) => service.status === 'active')
-          const hasSuspended = services.some((service) => service.status === 'suspended')
-          const hasCoverage = Boolean(selectedClient.zoneId || selectedClient.zone?.id)
-          const alreadyAdded = cartItems.some(
-            (other) => other.id !== item.id && other.type === 'punctual-service' && other.clientId === selectedClient.id,
-          )
-
-          if (item.complementaryType === COMPLEMENTARY_TYPES.RECONNECTION && !hasSuspended) {
-            message = 'La reconexión solo está disponible para servicios suspendidos.'
-          } else if (item.complementaryType === COMPLEMENTARY_TYPES.INSTALLATION && hasInstallation) {
-            message = 'El cliente ya tiene una instalación activa.'
-          } else if (!hasInstallation && item.complementaryType !== COMPLEMENTARY_TYPES.INSTALLATION) {
-            message = 'Este servicio requiere una instalación previa activa.'
-          } else if (!hasCoverage) {
-            message = 'No hay cobertura asignada para el cliente.'
-          } else if (alreadyAdded) {
-            message = 'Solo se puede agregar un servicio puntual por cliente.'
-          }
-        }
-      }
-
-      if (item.type === 'monthly-service') {
-        if (!selectedClient) {
-          message = 'Selecciona un cliente con contrato activo para continuar.'
-        } else {
-          const services = clientServicesByClient[String(selectedClient.id)] ?? selectedClient.services ?? []
-          const activeContract = services.some((service) => service.status === 'active')
-          if (!activeContract) {
-            message = 'El cliente no tiene un contrato activo para facturar este servicio.'
-          }
-
-          const duplicateReceipt = duplicateServiceReceiptMap[String(item.servicePlanId)]
-          if (duplicateReceipt && item.metadata?.period === duplicateReceipt.period) {
-            message = `Ya existe el folio ${duplicateReceipt.folio} para ${
-              duplicateReceipt.period ?? activePeriodKey ?? 'este periodo'
-            }.`
-          }
-        }
-      }
-
-      if (message) {
-        validation[item.id] = message
-      }
-    })
-    return validation
-  }, [
-    activePeriodKey,
-    cartItems,
-    clientServicesByClient,
-    duplicateServiceReceiptMap,
-    productLookup,
-    selectedClient,
-  ])
+  const cartValidation = useMemo(
+    () =>
+      cartValidationEnabled
+        ? evaluateCartValidation({
+            cartItems,
+            selectedClient,
+            clientServicesByClient,
+            productLookup,
+            activePeriodKey,
+            duplicateServiceReceiptMap,
+            complementaryTypes: COMPLEMENTARY_TYPES,
+          })
+        : {},
+    [
+      activePeriodKey,
+      cartItems,
+      cartValidationEnabled,
+      clientServicesByClient,
+      duplicateServiceReceiptMap,
+      productLookup,
+      selectedClient,
+    ],
+  )
 
   useEffect(() => {
+    if (!cartValidationEnabled) {
+      updateValidationFlags({})
+      return
+    }
+
     updateValidationFlags(cartValidation)
-  }, [cartValidation, updateValidationFlags])
+  }, [cartValidation, cartValidationEnabled, updateValidationFlags])
 
   const checkoutGuard = useMemo(() => {
     const blockingReasons = []
