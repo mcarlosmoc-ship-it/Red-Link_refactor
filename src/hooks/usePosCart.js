@@ -2,8 +2,47 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 const SERVICE_LINE_TYPES = new Set(['punctual-service', 'monthly-service'])
 
+const CLIENT_CHANGE_MESSAGE =
+  'Cambiar de cliente reiniciará los servicios del carrito. ¿Deseas continuar?'
+
 export const sanitizeCartForClientChange = (items = []) =>
   items.filter((item) => !SERVICE_LINE_TYPES.has(item.type))
+
+export const resolveClientChangeForCart = ({
+  cartItems = [],
+  previousClientId = '',
+  nextClientId = '',
+  confirmClientChange = (message) => window.confirm(message),
+  onClientCleared,
+  onRevertClient,
+}) => {
+  const hasClientChanged = previousClientId !== nextClientId
+
+  if (!hasClientChanged) {
+    return { nextCartItems: cartItems, shouldUpdatePrevious: false }
+  }
+
+  const hasServiceLines = cartItems.some((item) => SERVICE_LINE_TYPES.has(item.type))
+
+  if (!hasServiceLines) {
+    return { nextCartItems: cartItems, shouldUpdatePrevious: true }
+  }
+
+  const confirmed = confirmClientChange(CLIENT_CHANGE_MESSAGE)
+
+  if (!confirmed) {
+    onRevertClient?.(previousClientId)
+    return { nextCartItems: cartItems, shouldUpdatePrevious: false }
+  }
+
+  const sanitizedItems = sanitizeCartForClientChange(cartItems)
+
+  if (sanitizedItems.length !== cartItems.length) {
+    onClientCleared?.()
+  }
+
+  return { nextCartItems: sanitizedItems, shouldUpdatePrevious: true }
+}
 
 const normalizeLineMetadata = (item, { activePeriodKey, productLookup, activeServices }) => {
   const sourceProduct = item.productId ? productLookup?.get?.(item.productId) : null
@@ -128,31 +167,10 @@ export const usePosCart = ({
       onRevertClient,
     })
 
-    if (!shouldUpdatePrevious) {
-      return
+    if (shouldUpdatePrevious) {
+      updateCart(() => nextCartItems)
+      previousClientIdRef.current = selectedClientId ?? ''
     }
-
-    const shouldConfirmClear = cartItems.some((item) => SERVICE_LINE_TYPES.has(item.type))
-
-    if (shouldConfirmClear && previousId && previousId !== selectedClientId) {
-      const confirmed = window.confirm(
-        'Cambiar de cliente reiniciará los servicios del carrito. ¿Deseas continuar?',
-      )
-      if (!confirmed) {
-        onRevertClient?.(previousId)
-        return
-      }
-
-      updateCart((current) => {
-        const filtered = sanitizeCartForClientChange(current)
-        if (filtered.length !== current.length) {
-          onClientCleared?.()
-        }
-        return filtered
-      })
-    }
-
-    previousClientIdRef.current = selectedClientId ?? ''
   }, [cartItems, confirmClientChange, onClientCleared, onRevertClient, selectedClientId, updateCart])
 
   useEffect(() => {
