@@ -1,8 +1,8 @@
 # Punto de venta: flujos de cobro y registro de pagos
 
 ## Botón "Cobrar" (ventas en caja)
-- **Endpoint**: envía `POST /sales/transactions` mediante `recordSale` del hook `usePosSales` después de consolidar el payload con desglose de métodos de pago, totales y conceptos.【F:src/hooks/usePosSales.js†L60-L77】【F:src/pages/PointOfSale.jsx†L1020-L1078】
-- **Desencadenante**: el formulario principal abre el modal de métodos de pago con `handleOpenPaymentModal`, y el botón **Cobrar** dentro del modal ejecuta `handleCheckout` para validar montos y despachar la transacción.【F:src/pages/PointOfSale.jsx†L970-L1087】【F:src/pages/PointOfSale.jsx†L2380-L2388】
+- **Endpoint**: envía `POST /sales/transactions` mediante `recordSale` del hook `usePosSales` después de consolidar el payload con desglose de métodos de pago, totales y conceptos.【F:src/hooks/usePosSales.js†L60-L77】【F:src/pages/PointOfSale.jsx†L1091-L1188】
+- **Desencadenante**: el formulario principal abre el modal de métodos de pago con `handleOpenPaymentModal`, y el botón **Cobrar** dentro del modal ejecuta `handleCheckout` para validar montos y despachar la transacción.【F:src/pages/PointOfSale.jsx†L1074-L1089】【F:src/pages/PointOfSale.jsx†L2378-L2416】【F:src/pages/PointOfSale.jsx†L3334-L3387】
 - **Validaciones**:
   - Carrito no vacío, sin alertas y con referencia obligatoria cuando hay descuentos (para reembolsos/cancelaciones).【F:src/pages/PointOfSale.jsx†L939-L958】
   - Alertas por línea: stock insuficiente, cliente/contrato requerido para servicios, instalación/cobertura y reglas de reconexión/único servicio puntual por cliente.【F:src/pages/PointOfSale.jsx†L889-L934】
@@ -10,7 +10,7 @@
 - **Carrito y modal**:
   - Líneas se agregan desde catálogo/búsqueda (`addProductToCart`, `addSearchItemToCart`) o artículo personalizado; se permiten servicios puntuales/mensuales con categoría y timing por defecto.【F:src/pages/PointOfSale.jsx†L448-L497】【F:src/pages/PointOfSale.jsx†L619-L706】【F:src/pages/PointOfSale.jsx†L708-L750】
   - Desglose de categorías (productos/puntuales, mensualidades, adeudos, recargos) y de cobros inmediatos vs futuros se recalcula con los items actuales.【F:src/pages/PointOfSale.jsx†L533-L618】
-  - El modal precarga un split igual al total, permite múltiples métodos (`paymentSplits`) y guarda cambio recibido; tras éxito limpia carrito y conserva resumen para imprimir recibo.【F:src/pages/PointOfSale.jsx†L970-L1078】
+  - El modal precarga un split igual al total, permite múltiples métodos (`paymentSplits`) y guarda cambio recibido; tras éxito limpia carrito y conserva resumen para imprimir recibo.【F:src/pages/PointOfSale.jsx†L1074-L1088】【F:src/pages/PointOfSale.jsx†L1175-L1188】
 
 ## Botón "Registrar pago" (pagos rápidos de clientes)
 - **Endpoint**: usa `recordPayment` del store de backoffice, que construye payload con cliente/servicio, monto o meses calculados y llama a `POST /payments`; invalida y recarga clientes, pagos y métricas globales.【F:src/pages/PointOfSale.jsx†L1299-L1306】【F:src/store/useBackofficeStore.js†L989-L1055】
