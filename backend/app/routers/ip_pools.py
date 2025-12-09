@@ -20,7 +20,7 @@ from ..services import (
 router = APIRouter(dependencies=[Depends(require_admin)])
 
 
-@router.get("/", response_model=schemas.BaseIpPoolListResponse)
+@router.get("", response_model=schemas.BaseIpPoolListResponse)
 def list_pools(
     db: Session = Depends(get_db),
     base_id: Optional[int] = Query(None, description="Filter by base"),
@@ -31,7 +31,7 @@ def list_pools(
     return schemas.BaseIpPoolListResponse(items=items, total=total, limit=limit, skip=skip)
 
 
-@router.post("/", response_model=schemas.BaseIpPoolRead, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=schemas.BaseIpPoolRead, status_code=status.HTTP_201_CREATED)
 def create_pool(
     payload: schemas.BaseIpPoolCreate, db: Session = Depends(get_db)
 ) -> schemas.BaseIpPoolRead:

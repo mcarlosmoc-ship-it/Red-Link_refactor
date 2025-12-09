@@ -101,7 +101,7 @@ def validate_duplicate_payment(
     )
 
 
-@router.get("/", response_model=schemas.ServicePaymentListResponse)
+@router.get("", response_model=schemas.ServicePaymentListResponse)
 def list_payments(
     db: Session = Depends(get_db),
     client_id: Optional[str] = Query(None, description="Filter by client identifier"),
@@ -161,7 +161,7 @@ def list_payments(
 
 
 @router.post(
-    "/",
+    "",
     response_model=schemas.ServicePaymentRead,
     status_code=status.HTTP_201_CREATED,
 )

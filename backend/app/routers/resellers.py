@@ -15,12 +15,12 @@ from ..services import ResellerService
 router = APIRouter(dependencies=[Depends(require_admin)])
 
 
-@router.get("/", response_model=List[schemas.ResellerRead])
+@router.get("", response_model=List[schemas.ResellerRead])
 def list_resellers(db: Session = Depends(get_db)) -> List[schemas.ResellerRead]:
     return list(ResellerService.list_resellers(db))
 
 
-@router.post("/", response_model=schemas.ResellerRead, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=schemas.ResellerRead, status_code=status.HTTP_201_CREATED)
 def create_reseller(reseller_in: schemas.ResellerCreate, db: Session = Depends(get_db)) -> schemas.ResellerRead:
     return ResellerService.create_reseller(db, reseller_in)
 

@@ -16,7 +16,7 @@ from ..services import InventoryService
 router = APIRouter(dependencies=[Depends(require_admin)])
 
 
-@router.get("/", response_model=schemas.InventoryListResponse)
+@router.get("", response_model=schemas.InventoryListResponse)
 def list_inventory(
     db: Session = Depends(get_db),
     skip: int = Query(0, ge=0, description="Number of inventory items to skip"),
@@ -38,7 +38,7 @@ def list_inventory(
     return schemas.InventoryListResponse(items=items, total=total, limit=limit, skip=skip)
 
 
-@router.post("/", response_model=schemas.InventoryRead, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=schemas.InventoryRead, status_code=status.HTTP_201_CREATED)
 def create_inventory_item(item_in: schemas.InventoryCreate, db: Session = Depends(get_db)) -> schemas.InventoryRead:
     return InventoryService.create_item(db, item_in)
 

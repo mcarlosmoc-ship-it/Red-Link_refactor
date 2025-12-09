@@ -17,7 +17,7 @@ from ..services import ExpenseService
 router = APIRouter(dependencies=[Depends(require_admin)])
 
 
-@router.get("/", response_model=schemas.ExpenseListResponse)
+@router.get("", response_model=schemas.ExpenseListResponse)
 def list_expenses(
     db: Session = Depends(get_db),
     skip: int = Query(0, ge=0, description="Number of expenses to skip"),
@@ -57,7 +57,7 @@ def list_expenses(
     return schemas.ExpenseListResponse(items=items, total=total, limit=limit, skip=skip)
 
 
-@router.post("/", response_model=schemas.ExpenseRead, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=schemas.ExpenseRead, status_code=status.HTTP_201_CREATED)
 def create_expense(expense_in: schemas.ExpenseCreate, db: Session = Depends(get_db)) -> schemas.ExpenseRead:
     return ExpenseService.create_expense(db, expense_in)
 

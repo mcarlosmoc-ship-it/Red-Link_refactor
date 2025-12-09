@@ -16,7 +16,7 @@ from ..services import ServicePlanError, ServicePlanService
 router = APIRouter(dependencies=[Depends(require_admin)])
 
 
-@router.get("/", response_model=schemas.ServicePlanListResponse)
+@router.get("", response_model=schemas.ServicePlanListResponse)
 def list_service_plans(
     db: Session = Depends(get_db),
     category: Optional[ClientServiceType] = Query(None, description="Filter by category"),
@@ -36,7 +36,7 @@ def list_service_plans(
     return schemas.ServicePlanListResponse(items=items, total=total, limit=limit, skip=skip)
 
 
-@router.post("/", response_model=schemas.ServicePlanRead, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=schemas.ServicePlanRead, status_code=status.HTTP_201_CREATED)
 def create_service_plan(
     payload: schemas.ServicePlanCreate, db: Session = Depends(get_db)
 ) -> schemas.ServicePlanRead:
