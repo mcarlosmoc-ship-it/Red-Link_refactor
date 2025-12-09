@@ -56,6 +56,11 @@ const PRODUCT_SUB_TABS = [
   { id: 'catalogo', label: 'Catálogo' },
 ]
 
+const ACTION_TABS = [
+  { id: 'common', label: 'Art. común', icon: ShoppingBag },
+  { id: 'custom', label: 'Art. personalizado', icon: PackagePlus },
+]
+
 const PRODUCT_IMPORT_TEMPLATE_HEADERS = [
   'codigo',
   'descripcion',
@@ -284,6 +289,7 @@ export default function PointOfSalePage() {
 
   const [activeTab, setActiveTab] = useState('ventas')
   const [activeProductTab, setActiveProductTab] = useState('nuevo')
+  const [activeActionTab, setActiveActionTab] = useState('common')
   const [posSearchTerm, setPosSearchTerm] = useState('')
   const [productSearchTerm, setProductSearchTerm] = useState('')
   const [clientName, setClientName] = useState('')
@@ -297,6 +303,7 @@ export default function PointOfSalePage() {
   const [formError, setFormError] = useState(null)
   const [isSubmittingSale, setIsSubmittingSale] = useState(false)
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false)
+  const [isCustomItemModalOpen, setIsCustomItemModalOpen] = useState(false)
   const [paymentSplits, setPaymentSplits] = useState([
     { id: generateLineId(), method: POS_CHECKOUT_METHODS[0], amount: '', reference: '' },
   ])
@@ -322,6 +329,17 @@ export default function PointOfSalePage() {
   const [lastSyncLabel] = useState(() => formatDateTime(new Date()))
   const cartValidationEnabled = isPosCartValidationEnabled()
   const clientSearchInputRef = useRef(null)
+
+  const closeCustomItemModal = () => {
+    setIsCustomItemModalOpen(false)
+    setActiveActionTab('common')
+  }
+
+  const openCustomItemModal = () => {
+    setFormError(null)
+    setActiveActionTab('custom')
+    setIsCustomItemModalOpen(true)
+  }
 
   const filteredSalesProducts = useMemo(() => {
     const term = posSearchTerm.trim().toLowerCase()
@@ -725,6 +743,8 @@ export default function PointOfSalePage() {
       },
     ])
     setCustomItem({ description: '', price: '', quantity: '1' })
+    setIsCustomItemModalOpen(false)
+    setActiveActionTab('common')
   }
 
   const punctualServices = useMemo(() => {
@@ -1742,6 +1762,29 @@ export default function PointOfSalePage() {
 
       {activeTab === 'ventas' ? (
         <>
+          <nav className="flex flex-wrap gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2">
+            {ACTION_TABS.map((tab) => {
+              const Icon = tab.icon
+              const isActive = activeActionTab === tab.id
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={tab.id === 'custom' ? openCustomItemModal : closeCustomItemModal}
+                  className={`flex items-center gap-2 rounded-md px-4 py-2 text-sm font-semibold transition ${
+                    isActive
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'bg-white text-slate-600 hover:border-blue-200 hover:text-blue-700'
+                  }`}
+                  aria-pressed={isActive}
+                >
+                  <Icon className="h-4 w-4" aria-hidden />
+                  {tab.label}
+                </button>
+              )
+            })}
+          </nav>
+
           <div className="grid gap-6 xl:grid-cols-[2fr,1fr]">
             <section aria-labelledby="catalogo-venta" className="space-y-4">
               <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
@@ -2789,68 +2832,6 @@ export default function PointOfSalePage() {
             </Card>
             )}
 
-            <Card>
-              <CardContent className="space-y-4">
-                <header className="space-y-1">
-                  <h2 className="text-lg font-semibold text-slate-900">Artículo personalizado</h2>
-                    <p className="text-xs text-slate-500">
-                      Registra un artículo rápido para esta venta y guárdalo si quieres usarlo después.
-                    </p>
-                  </header>
-
-                  <form className="space-y-4" onSubmit={handleAddCustomItem}>
-                    <label className="grid gap-1 text-xs font-medium text-slate-600">
-                      Descripción
-                      <input
-                        type="text"
-                        value={customItem.description}
-                        onChange={(event) =>
-                          setCustomItem((prev) => ({ ...prev, description: event.target.value }))
-                        }
-                        className="rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                        placeholder="Nombre del artículo"
-                      />
-                    </label>
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <label className="grid gap-1 text-xs font-medium text-slate-600">
-                        Precio
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={customItem.price}
-                          onChange={(event) =>
-                            setCustomItem((prev) => ({ ...prev, price: event.target.value }))
-                          }
-                          className="rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                        />
-                      </label>
-                      <label className="grid gap-1 text-xs font-medium text-slate-600">
-                        Cantidad
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={customItem.quantity}
-                          onChange={(event) =>
-                            setCustomItem((prev) => ({ ...prev, quantity: event.target.value }))
-                          }
-                          className="rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                        />
-                      </label>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <Button type="submit" variant="secondary" className="flex-1">
-                        <PackagePlus className="mr-2 h-4 w-4" aria-hidden /> Agregar al carrito
-                      </Button>
-                      <Button type="button" variant="ghost" onClick={handleCreateQuickProduct}>
-                        <ClipboardList className="mr-2 h-4 w-4" aria-hidden /> Guardar en catálogo
-                      </Button>
-                    </div>
-                  </form>
-                </CardContent>
-              </Card>
-
               {saleResult ? (
                 <Card>
                   <CardContent className="space-y-3 text-sm text-slate-600">
@@ -3228,6 +3209,72 @@ export default function PointOfSalePage() {
           )}
         </div>
       )}
+      {isCustomItemModalOpen ? (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/60 p-4">
+          <div className="w-full max-w-xl rounded-lg bg-white shadow-2xl">
+            <div className="flex items-start justify-between border-b border-slate-200 px-6 py-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Artículo personalizado</p>
+                <h3 className="text-lg font-semibold text-slate-900">Captura manual para el ticket</h3>
+                <p className="text-sm text-slate-500">
+                  Registra un artículo rápido para esta venta y guárdalo si quieres usarlo después.
+                </p>
+              </div>
+              <Button variant="ghost" onClick={closeCustomItemModal}>
+                Cerrar
+              </Button>
+            </div>
+
+            <div className="space-y-4 px-6 py-4">
+              <form className="space-y-4" onSubmit={handleAddCustomItem}>
+                <label className="grid gap-1 text-xs font-medium text-slate-600">
+                  Descripción
+                  <input
+                    type="text"
+                    value={customItem.description}
+                    onChange={(event) => setCustomItem((prev) => ({ ...prev, description: event.target.value }))}
+                    className="rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                    placeholder="Nombre del artículo"
+                  />
+                </label>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <label className="grid gap-1 text-xs font-medium text-slate-600">
+                    Precio
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={customItem.price}
+                      onChange={(event) => setCustomItem((prev) => ({ ...prev, price: event.target.value }))}
+                      className="rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                    />
+                  </label>
+                  <label className="grid gap-1 text-xs font-medium text-slate-600">
+                    Cantidad
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={customItem.quantity}
+                      onChange={(event) => setCustomItem((prev) => ({ ...prev, quantity: event.target.value }))}
+                      className="rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                    />
+                  </label>
+                </div>
+                {formError ? <p className="text-sm text-red-600">{formError}</p> : null}
+                <div className="flex flex-wrap gap-2">
+                  <Button type="submit" variant="secondary" className="flex-1">
+                    <PackagePlus className="mr-2 h-4 w-4" aria-hidden /> Agregar al carrito
+                  </Button>
+                  <Button type="button" variant="ghost" onClick={handleCreateQuickProduct}>
+                    <ClipboardList className="mr-2 h-4 w-4" aria-hidden /> Guardar en catálogo
+                  </Button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      ) : null}
       {isPaymentModalOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4">
           <div className="w-full max-w-4xl rounded-lg bg-white shadow-2xl">
