@@ -284,7 +284,7 @@ export default function PointOfSalePage() {
 
   const [activeTab, setActiveTab] = useState('ventas')
   const [activeProductTab, setActiveProductTab] = useState('nuevo')
-  const [salesSearchTerm, setSalesSearchTerm] = useState('')
+  const [posSearchTerm, setPosSearchTerm] = useState('')
   const [productSearchTerm, setProductSearchTerm] = useState('')
   const [clientName, setClientName] = useState('')
   const [selectedClientId, setSelectedClientId] = useState('')
@@ -314,7 +314,6 @@ export default function PointOfSalePage() {
   const [paymentMethodPos, setPaymentMethodPos] = useState(PAYMENT_METHODS[0])
   const [paymentNote, setPaymentNote] = useState('')
   const [isSubmittingClientPayment, setIsSubmittingClientPayment] = useState(false)
-  const [ticketSearchTerm, setTicketSearchTerm] = useState('')
   const [quickClientName, setQuickClientName] = useState('')
   const [quickClientLocation, setQuickClientLocation] = useState('')
   const [isCreatingClient, setIsCreatingClient] = useState(false)
@@ -325,7 +324,7 @@ export default function PointOfSalePage() {
   const clientSearchInputRef = useRef(null)
 
   const filteredSalesProducts = useMemo(() => {
-    const term = salesSearchTerm.trim().toLowerCase()
+    const term = posSearchTerm.trim().toLowerCase()
     if (!term) {
       return products
     }
@@ -333,7 +332,7 @@ export default function PointOfSalePage() {
       const haystack = `${product.name} ${product.category} ${product.sku}`.toLowerCase()
       return haystack.includes(term)
     })
-  }, [products, salesSearchTerm])
+  }, [posSearchTerm, products])
 
   const filteredCatalogProducts = useMemo(() => {
     const term = productSearchTerm.trim().toLowerCase()
@@ -1687,8 +1686,8 @@ export default function PointOfSalePage() {
           <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
           <input
             type="search"
-            value={ticketSearchTerm}
-            onChange={(event) => setTicketSearchTerm(event.target.value)}
+            value={posSearchTerm}
+            onChange={(event) => setPosSearchTerm(event.target.value)}
             placeholder="Buscar artículos, servicios puntuales o mensuales"
             className="w-full rounded-lg border border-slate-200 px-5 py-3 pl-12 text-lg font-medium text-slate-900 shadow-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
           />
@@ -1747,29 +1746,15 @@ export default function PointOfSalePage() {
             <section aria-labelledby="catalogo-venta" className="space-y-4">
               <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="relative w-full max-w-xl">
-                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                    <input
-                      type="search"
-                      value={salesSearchTerm}
-                      onChange={(event) => setSalesSearchTerm(event.target.value)}
-                      placeholder="Buscar por nombre, categoría o SKU"
-                      className="w-full rounded-md border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm focus:border-blue-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-100"
-                    />
+                  <div className="space-y-1">
+                    <p className="text-xs uppercase tracking-wide text-slate-500">Catálogo filtrado</p>
+                    <p className="text-sm text-slate-600">
+                      Usa la búsqueda unificada para acotar coincidencias y agregar al ticket.
+                    </p>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                      <PackagePlus className="h-3.5 w-3.5" aria-hidden /> {filteredSalesProducts.length} coincidencias
-                    </span>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={() => setSalesSearchTerm('')}
-                      className="text-xs"
-                    >
-                      Limpiar filtro
-                    </Button>
-                  </div>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                    <PackagePlus className="h-3.5 w-3.5" aria-hidden /> {filteredSalesProducts.length} coincidencias
+                  </span>
                 </div>
                 <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-slate-500">
                   <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-1 font-semibold uppercase tracking-wide text-blue-700">
