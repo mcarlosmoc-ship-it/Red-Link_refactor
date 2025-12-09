@@ -30,7 +30,7 @@ LOGGER = logging.getLogger(__name__)
 router = APIRouter(dependencies=[Depends(require_admin)])
 
 
-@router.get("/", response_model=schemas.ClientServiceListResponse)
+@router.get("", response_model=schemas.ClientServiceListResponse)
 def list_services(
     db: Session = Depends(get_db),
     client_id: Optional[str] = Query(None, description="Filter by client"),
@@ -55,7 +55,7 @@ def list_services(
     )
 
 
-@router.post("/", response_model=schemas.ClientServiceRead, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=schemas.ClientServiceRead, status_code=status.HTTP_201_CREATED)
 def create_service(
     payload: schemas.ClientServiceCreate, db: Session = Depends(get_db)
 ) -> schemas.ClientServiceRead:

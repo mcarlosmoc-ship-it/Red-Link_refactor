@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import shutil
+import sqlite3
 import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -60,6 +61,10 @@ def _resolve_backup_interval() -> timedelta:
 
 
 def _sqlite_backup(source: Path, destination: Path) -> Path:
+    if not source.exists():
+        source.parent.mkdir(parents=True, exist_ok=True)
+        sqlite3.connect(source).close()
+
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     backup_path = destination / f"backup_{timestamp}{source.suffix or '.db'}"
     shutil.copy2(source, backup_path)
