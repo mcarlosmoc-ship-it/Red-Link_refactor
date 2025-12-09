@@ -814,15 +814,20 @@ export default function PointOfSalePage() {
     return [...productEntries, ...punctualEntries, ...monthlyEntries]
   }, [monthlyServices, products, punctualServices])
 
+  const normalizedTicketSearchTerm = ticketSearchTerm.trim().toLowerCase()
+
   const filteredSearchItems = useMemo(() => {
-    const term = posSearchTerm.trim().toLowerCase()
-    if (!term) {
-      return searchableItems.slice(0, 6)
+    if (!normalizedTicketSearchTerm) {
+      return []
     }
     return searchableItems
-      .filter((item) => `${item.label} ${item.detail}`.toLowerCase().includes(term))
+      .filter((item) =>
+        `${item.label} ${item.detail}`.toLowerCase().includes(normalizedTicketSearchTerm),
+      )
       .slice(0, 10)
-  }, [posSearchTerm, searchableItems])
+  }, [normalizedTicketSearchTerm, searchableItems])
+
+  const hasTicketSearchQuery = normalizedTicketSearchTerm.length > 0
 
   const addSearchItemToCart = (entry) => {
     if (entry.type === 'product' && entry.product) {
@@ -1686,41 +1691,51 @@ export default function PointOfSalePage() {
             placeholder="Buscar artículos, servicios puntuales o mensuales"
             className="w-full rounded-lg border border-slate-200 px-5 py-3 pl-12 text-lg font-medium text-slate-900 shadow-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
           />
-          {filteredSearchItems.length > 0 && (
-            <ul className="absolute z-10 mt-2 w-full divide-y divide-slate-100 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">
-              {filteredSearchItems.map((item) => (
-                <li key={item.id}>
-                  <button
-                    type="button"
-                    onClick={() => addSearchItemToCart(item)}
-                    className="flex w-full items-center justify-between gap-3 px-4 py-2 text-left text-sm transition hover:bg-slate-50"
-                  >
-                    <div className="space-y-0.5">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-semibold text-slate-900">{item.label}</span>
-                        <span
-                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${
-                            item.type === 'product'
-                              ? 'bg-blue-50 text-blue-700'
+          {hasTicketSearchQuery ? (
+            filteredSearchItems.length > 0 ? (
+              <ul className="absolute z-10 mt-2 w-full divide-y divide-slate-100 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">
+                {filteredSearchItems.map((item) => (
+                  <li key={item.id}>
+                    <button
+                      type="button"
+                      onClick={() => addSearchItemToCart(item)}
+                      className="flex w-full items-center justify-between gap-3 px-4 py-2 text-left text-sm transition hover:bg-slate-50"
+                    >
+                      <div className="space-y-0.5">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-semibold text-slate-900">{item.label}</span>
+                          <span
+                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${
+                              item.type === 'product'
+                                ? 'bg-blue-50 text-blue-700'
+                                : item.type === 'punctual-service'
+                                  ? 'bg-amber-50 text-amber-700'
+                                  : 'bg-emerald-50 text-emerald-700'
+                            }`}
+                          >
+                            {item.type === 'product'
+                              ? 'Producto'
                               : item.type === 'punctual-service'
-                                ? 'bg-amber-50 text-amber-700'
-                                : 'bg-emerald-50 text-emerald-700'
-                          }`}
-                        >
-                          {item.type === 'product'
-                            ? 'Producto'
-                            : item.type === 'punctual-service'
-                              ? 'Servicio puntual'
-                              : 'Servicio mensual'}
-                        </span>
+                                ? 'Servicio puntual'
+                                : 'Servicio mensual'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-500">{item.detail || 'Sin categoría'}</p>
                       </div>
-                      <p className="text-xs text-slate-500">{item.detail || 'Sin categoría'}</p>
-                    </div>
-                    <span className="text-sm font-semibold text-slate-900">{peso(item.price)}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
+                      <span className="text-sm font-semibold text-slate-900">{peso(item.price)}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="absolute z-10 mt-2 w-full rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-500 shadow-lg">
+                Sin coincidencias para "{ticketSearchTerm.trim()}".
+              </div>
+            )
+          ) : (
+            <div className="absolute z-10 mt-2 w-full rounded-lg border border-dashed border-slate-200 bg-white p-3 text-sm text-slate-500 shadow-lg">
+              Escribe para buscar.
+            </div>
           )}
         </div>
       </section>
@@ -1856,13 +1871,68 @@ export default function PointOfSalePage() {
                   </div>
 
                   <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
-                    <div className="space-y-2">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Panel de selección rápida</p>
-                      <p className="text-xs text-slate-500">
-                        Usa el buscador unificado superior para agregar artículos o servicios y filtrar el catálogo.
-                      </p>
-                    </div>
-                    <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+                    <div className="grid gap-3 lg:grid-cols-[1.6fr,1fr]">
+                      <div className="space-y-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Panel de selección rápida</p>
+                        <p className="text-xs text-slate-500">Busca inventario y vincula servicios del cliente en un solo lugar.</p>
+                        <div className="relative">
+                          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                          <input
+                            type="search"
+                            value={ticketSearchTerm}
+                            onChange={(event) => setTicketSearchTerm(event.target.value)}
+                            placeholder="Escribe para agregar al ticket"
+                            className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm shadow-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                          />
+                          {hasTicketSearchQuery ? (
+                            filteredSearchItems.length > 0 ? (
+                              <ul className="absolute z-10 mt-2 w-full divide-y divide-slate-100 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">
+                                {filteredSearchItems.map((item) => (
+                                  <li key={item.id}>
+                                    <button
+                                      type="button"
+                                      onClick={() => addSearchItemToCart(item)}
+                                      className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm transition hover:bg-slate-50"
+                                    >
+                                      <div className="space-y-0.5">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                          <span className="font-semibold text-slate-900">{item.label}</span>
+                                          <span
+                                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${
+                                              item.type === 'product'
+                                                ? 'bg-blue-50 text-blue-700'
+                                                : item.type === 'punctual-service'
+                                                  ? 'bg-amber-50 text-amber-700'
+                                                  : 'bg-emerald-50 text-emerald-700'
+                                            }`}
+                                          >
+                                            {item.type === 'product'
+                                              ? 'Producto'
+                                              : item.type === 'punctual-service'
+                                                ? 'Servicio puntual'
+                                                : 'Servicio mensual'}
+                                          </span>
+                                        </div>
+                                        <p className="text-xs text-slate-500">{item.detail || 'Sin categoría'}</p>
+                                      </div>
+                                      <span className="text-sm font-semibold text-slate-900">{peso(item.price)}</span>
+                                    </button>
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <div className="absolute z-10 mt-2 w-full rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-500 shadow-lg">
+                                Sin coincidencias para "{ticketSearchTerm.trim()}".
+                              </div>
+                            )
+                          ) : (
+                            <div className="absolute z-10 mt-2 w-full rounded-lg border border-dashed border-slate-200 bg-white p-3 text-sm text-slate-500 shadow-lg">
+                              Escribe para buscar.
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
                         <div className="flex flex-wrap items-start justify-between gap-2">
                           <div>
                             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Servicios del cliente</p>
