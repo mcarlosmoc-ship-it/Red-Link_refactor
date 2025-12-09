@@ -2101,12 +2101,12 @@ export default function PointOfSalePage() {
                                           ? 'Requiere un servicio suspendido para reconectar.'
                                           : 'Disponible por suspensión.'
                                       } else if (type === COMPLEMENTARY_TYPES.INSTALLATION) {
-                                        disabled = hasActive
+                                        disabled = hasActive || hasPendingInstallation
                                         helper = disabled
-                                          ? 'Ya existe una instalación activa.'
-                                          : hasPendingInstallation
-                                            ? 'Pendiente de coordinar instalación.'
-                                            : 'Agrega la instalación inicial.'
+                                          ? hasActive
+                                            ? 'Ya existe una instalación activa.'
+                                            : 'Pendiente de coordinar instalación.'
+                                          : 'Agrega la instalación inicial.'
                                       } else if (type === COMPLEMENTARY_TYPES.TECHNICAL_VISIT) {
                                         disabled = !hasActive && !hasSuspended && !hasPendingInstallation
                                         helper = disabled
