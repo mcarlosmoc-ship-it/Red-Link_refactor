@@ -137,13 +137,13 @@ export default function ImportClientsModal({
         params: { columns },
         responseType: 'blob',
       })
-      const blob = data instanceof Blob ? data : new Blob([data])
-      const url = URL.createObjectURL(blob)
+        const blob = data instanceof globalThis.Blob ? data : new globalThis.Blob([data])
+      const url = globalThis.URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
       link.download = 'plantilla_clientes.csv'
       link.click()
-      URL.revokeObjectURL(url)
+      globalThis.URL.revokeObjectURL(url)
     } catch (error) {
       setTemplateError(
         error?.message || 'No se pudo descargar la plantilla. Verifica tu sesión e inténtalo de nuevo.',
@@ -179,15 +179,15 @@ export default function ImportClientsModal({
       ])
     })
 
-    const csv = [header.join(','), ...rows.map((cells) => cells.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))].join('\n')
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
+      const csv = [header.join(','), ...rows.map((cells) => cells.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))].join('\n')
+      const blob = new globalThis.Blob([csv], { type: 'text/csv;charset=utf-8;' })
+      const url = globalThis.URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
     link.download = 'errores_importacion.csv'
     link.click()
-    URL.revokeObjectURL(url)
-  }
+      globalThis.URL.revokeObjectURL(url)
+    }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4 py-6">

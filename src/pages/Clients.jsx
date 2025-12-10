@@ -98,7 +98,7 @@ export default function ClientsPage() {
   }, [searchParams, selectedClientId])
 
   useEffect(() => {
-    const nextParams = new URLSearchParams(searchParams)
+    const nextParams = new globalThis.URLSearchParams(searchParams)
     const normalizedClientId = normalizeId(selectedClientId)
     const viewValue =
       activeMainTab === 'services' ? 'services' : activeClientTab || 'list'
