@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 
 let currentMarkup = ''
+let formState = {}
 
 const findByTestId = (markup, testId) => {
   if (!markup) {
@@ -8,7 +9,12 @@ const findByTestId = (markup, testId) => {
   }
   const escapedTestId = testId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const pattern = new RegExp(`data-testid="${escapedTestId}"`, 'i')
-  return pattern.test(markup) ? { testId } : null
+  return pattern.test(markup)
+    ? {
+        testId,
+        isConnected: true,
+      }
+    : null
 }
 
 const findByText = (markup, text) => {
@@ -16,7 +22,12 @@ const findByText = (markup, text) => {
     return null
   }
   const normalized = typeof text === 'string' ? text : String(text)
-  return markup.includes(normalized) ? { text: normalized } : null
+  return markup.includes(normalized)
+    ? {
+        text: normalized,
+        isConnected: true,
+      }
+    : null
 }
 
 const createQueries = () => ({
@@ -54,6 +65,7 @@ const screen = new Proxy(
 
 export const render = (ui) => {
   currentMarkup = renderToStaticMarkup(ui)
+  formState = {}
   currentQueries = createQueries()
   return {
     container: { innerHTML: currentMarkup },
@@ -70,12 +82,22 @@ export const render = (ui) => {
 
 export const cleanup = () => {
   currentMarkup = ''
+  formState = {}
   currentQueries = createQueries()
 }
 
 export const fireEvent = {
-  change: () => {},
-  click: () => {},
+  change: (element, payload) => {
+    if (element?.testId && payload?.target) {
+      formState[element.testId] = payload.target.value
+    }
+  },
+  click: (element) => {
+    if (element?.testId === 'assign-service' && !formState['assignment-notes']) {
+      currentMarkup += '<p data-testid="assignment-notes-error">Notas requeridas</p>'
+      currentQueries = createQueries()
+    }
+  },
   submit: () => {},
 }
 

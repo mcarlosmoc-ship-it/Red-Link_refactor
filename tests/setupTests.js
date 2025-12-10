@@ -7,13 +7,26 @@ afterEach(() => {
 
 expect.extend({
   toBeInTheDocument(received) {
-    const pass = received !== null && received !== undefined
+    if (received === null || received === undefined) {
+      return {
+        pass: false,
+        message: () =>
+          'Expected element to be connected to the document, but received null or undefined.',
+      }
+    }
+
+    const isConnected =
+      typeof received.isConnected === 'boolean'
+        ? received.isConnected
+        : Boolean(received.ownerDocument?.contains?.(received))
+
+    const pass = isConnected
     return {
       pass,
       message: () =>
         pass
-          ? 'Expected element not to be in the rendered output.'
-          : 'Expected element to be in the rendered output.',
+          ? 'Expected element not to be connected to the document, but it is.'
+          : 'Expected element to be connected to the document, but it is not.',
     }
   },
 })
