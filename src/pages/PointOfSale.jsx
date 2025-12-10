@@ -588,6 +588,8 @@ export default function PointOfSalePage() {
     setItemQuantity(lineId, parsed, (next) => clamp(next, 0.01))
   }
 
+  const clearCart = () => updateCart(() => [])
+
   const subtotal = useMemo(
     () => cartItems.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0),
     [cartItems],
@@ -2170,54 +2172,65 @@ export default function PointOfSalePage() {
             </section>
 
             <section aria-labelledby="carrito-venta" className="space-y-4">
-              <Card>
-                <CardContent className="space-y-5">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="space-y-1">
-                      <h2 id="carrito-venta" className="text-lg font-semibold text-slate-900">
-                        Carrito de venta
-                      </h2>
-                      <p className="text-xs text-slate-500">
-                        Busca productos, servicios puntuales o mensuales desde aquí.
-                      </p>
-                    </div>
-                    <span className="text-xs text-slate-500">{cartItems.length} artículos</span>
-                  </div>
-
-                  <div className="space-y-5 xl:space-y-6">
-                    {cartItems.length === 0 ? (
-                      <div className="rounded-lg border border-dashed border-slate-200 p-6 text-center text-sm text-slate-500">
-                        <ShoppingCart className="mx-auto mb-3 h-5 w-5 text-slate-400" aria-hidden />
-                        Agrega productos del catálogo o registra un artículo personalizado.
+              <Card className="border-0 bg-transparent shadow-none">
+                <CardContent className="p-0">
+                  <div className="overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-xl">
+                    <div className="flex flex-wrap items-center justify-between gap-3 bg-gradient-to-r from-blue-700 via-blue-600 to-sky-500 px-4 py-3 text-white">
+                      <div className="flex items-center gap-3">
+                        <ShoppingCart className="h-7 w-7" aria-hidden />
+                        <div>
+                          <p className="text-[11px] uppercase tracking-wide text-white/80">Carrito</p>
+                          <p className="text-lg font-bold">({cartItems.length} productos)</p>
+                        </div>
                       </div>
-                    ) : (
-                      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-md">
-                          <table className="min-w-full divide-y divide-slate-200 text-sm">
-                        <thead className="bg-slate-50">
-                          <tr>
-                            <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                              Concepto
-                            </th>
-                            <th scope="col" className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-500">
-                              Cantidad
-                            </th>
-                            <th scope="col" className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
-                              Subtotal
-                            </th>
-                            <th scope="col" className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
-                              Acción
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {cartItems.map((item) => (
-                            <tr
-                              key={item.id}
-                              className={`align-top hover:bg-slate-50 ${
-                                cartValidation[item.id] ? 'bg-amber-50/50' : ''
-                              }`}
-                            >
-                              <td className="px-4 py-4">
+                      <div className="flex items-center gap-2 text-sm font-semibold">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          className="border-white/30 bg-white/10 text-white hover:bg-white/20"
+                          onClick={focusClientSearch}
+                        >
+                          Asignar cliente
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          className="border border-white/40 bg-white/10 text-white hover:bg-white/20"
+                          onClick={clearCart}
+                          disabled={cartItems.length === 0}
+                        >
+                          Vaciar carrito
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-6 px-4 py-5 sm:px-6">
+                      {cartItems.length === 0 ? (
+                        <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 p-8 text-center text-sm text-slate-500">
+                          <ShoppingCart className="mx-auto mb-3 h-6 w-6 text-slate-400" aria-hidden />
+                          Agrega productos del catálogo o registra un artículo personalizado.
+                        </div>
+                      ) : (
+                        <div className="overflow-hidden rounded-2xl border border-slate-200 shadow-md">
+                          <div className="flex items-center justify-between bg-slate-50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-600">
+                            <div className="flex items-center gap-2">
+                              <ClipboardList className="h-4 w-4 text-blue-700" aria-hidden />
+                              <span>Nombre</span>
+                            </div>
+                            <div className="grid flex-1 grid-cols-[1.2fr,1fr,1fr] items-center gap-2 text-right sm:flex sm:justify-end sm:gap-8">
+                              <span className="text-center">Cantidad</span>
+                              <span>Total</span>
+                              <span>Borrar</span>
+                            </div>
+                          </div>
+                          <div className="divide-y divide-slate-100 bg-white">
+                            {cartItems.map((item) => (
+                              <div
+                                key={item.id}
+                                className={`grid items-center gap-3 px-4 py-4 sm:grid-cols-[1.2fr,1fr,1fr,0.6fr] ${
+                                  cartValidation[item.id] ? 'bg-amber-50/60' : ''
+                                }`}
+                              >
                                 <div className="space-y-1.5">
                                   <div className="flex flex-wrap items-center gap-2">
                                     <p className="text-base font-semibold text-slate-900">{item.name}</p>
@@ -2260,13 +2273,12 @@ export default function PointOfSalePage() {
                                     </p>
                                   ) : null}
                                 </div>
-                              </td>
-                              <td className="px-4 py-4">
-                                <div className="flex items-center justify-center gap-3">
+
+                                <div className="flex items-center justify-center gap-2 sm:justify-start">
                                   <Button
                                     type="button"
                                     variant="outline"
-                                    className="h-9 w-9 p-0"
+                                    className="h-9 w-9 rounded-full border-blue-200 text-blue-700 hover:bg-blue-50"
                                     onClick={() => decreaseItemQuantity(item.id)}
                                     aria-label={`Reducir cantidad de ${item.name}`}
                                   >
@@ -2278,7 +2290,7 @@ export default function PointOfSalePage() {
                                     step="0.01"
                                     value={item.quantity}
                                     onChange={(event) => changeItemQuantity(item.id, event.target.value)}
-                                    className={`h-9 w-24 rounded-md border px-3 text-center text-sm font-semibold ${
+                                    className={`h-9 w-24 rounded-md border px-3 text-center text-sm font-semibold shadow-sm ${
                                       cartValidation[item.id]
                                         ? 'border-amber-300 bg-amber-50 text-amber-800'
                                         : 'border-slate-200'
@@ -2287,246 +2299,256 @@ export default function PointOfSalePage() {
                                   <Button
                                     type="button"
                                     variant="outline"
-                                    className="h-9 w-9 p-0"
+                                    className="h-9 w-9 rounded-full border-blue-200 text-blue-700 hover:bg-blue-50"
                                     onClick={() => increaseItemQuantity(item.id)}
                                     aria-label={`Incrementar cantidad de ${item.name}`}
                                   >
                                     <Plus className="h-4 w-4" aria-hidden />
                                   </Button>
                                 </div>
-                              </td>
-                              <td className="px-4 py-4 text-right">
-                                <p className="text-xs uppercase tracking-wide text-slate-500">Subtotal</p>
-                                <span className="text-base font-semibold text-slate-900">{peso(item.unitPrice * item.quantity)}</span>
-                              </td>
-                              <td className="px-4 py-4 text-right">
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon"
-                                  className="text-slate-400 hover:text-red-500"
-                                  onClick={() => removeItem(item.id)}
-                                  aria-label={`Eliminar ${item.name}`}
-                                >
-                                  <Trash2 className="h-4 w-4" aria-hidden />
-                                </Button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
 
-
-                  <form className="space-y-5" onSubmit={handleOpenPaymentModal}>
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <label className="grid gap-1 text-xs font-medium text-slate-600">
-                        Cliente (opcional)
-                        <input
-                          type="text"
-                          value={clientName}
-                          onChange={(event) => setClientName(event.target.value)}
-                          placeholder="Nombre para identificar la venta"
-                          className="rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                        />
-                      </label>
-                      <label className="grid gap-1 text-xs font-medium text-slate-600">
-                        Referencia de venta original (reembolsos/cancelaciones)
-                        <input
-                          type="text"
-                          value={refundReference}
-                          onChange={(event) => setRefundReference(event.target.value)}
-                          placeholder="Ticket o folio relacionado"
-                          className="rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                        />
-                      </label>
-                      <div className="grid gap-1 text-xs font-medium text-slate-600">
-                        <span>Métodos de pago</span>
-                        <div className="flex items-center justify-between gap-3 rounded-md border border-slate-200 px-3 py-2 text-sm">
-                          <div className="space-y-0.5 text-left">
-                            {paymentSplits.length === 1 && !paymentSplits[0].amount ? (
-                              <p className="text-slate-500">Define cómo se dividirá el cobro.</p>
-                            ) : (
-                              paymentSplits.map((split) => (
-                                <p key={split.id} className="text-slate-700">
-                                  {split.method}: {split.amount ? peso(normalizeNumericInput(split.amount, 0)) : peso(0)}
-                                </p>
-                              ))
-                            )}
-                          </div>
-                          <Button type="button" variant="outline" size="sm" onClick={handleOpenPaymentModal}>
-                            Dividir pago
-                          </Button>
-                        </div>
-                        <span className="text-[11px] text-slate-500">
-                          Divide el total entre efectivo, tarjeta, transferencia o vales.
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <label className="grid gap-1 text-xs font-medium text-slate-600">
-                        Descuento
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={discount}
-                          onChange={(event) => setDiscount(event.target.value)}
-                          className="rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                        />
-                      </label>
-                      <label className="grid gap-1 text-xs font-medium text-slate-600">
-                        Impuestos
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={tax}
-                          onChange={(event) => setTax(event.target.value)}
-                          className="rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                        />
-                      </label>
-                    </div>
-
-                    <label className="grid gap-1 text-xs font-medium text-slate-600">
-                      Notas (opcional)
-                      <textarea
-                        value={notes}
-                        onChange={(event) => setNotes(event.target.value)}
-                        rows={2}
-                        className="rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                        placeholder="Anota detalles importantes del cobro"
-                      />
-                    </label>
-
-                    <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700 shadow-sm">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <p className="text-sm font-semibold text-slate-900">Totales por categoría</p>
-                        <span className="text-xs text-slate-500">Cobros inmediatos vs. futuros</span>
-                      </div>
-                      <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                        {cartCategoriesSummary.map((category) => (
-                          <div key={category.key} className="flex items-center justify-between rounded-lg bg-slate-50 px-4 py-3">
-                            <div className="space-y-1">
-                              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                                {category.label}
-                              </p>
-                              <p className="text-[11px] text-slate-500">
-                                {describeChargeTiming(
-                                  category.key === BILLING_CATEGORIES.MONTHLY
-                                    ? BILLING_TIMINGS.FUTURE
-                                    : BILLING_TIMINGS.IMMEDIATE,
-                                )}
-                              </p>
-                            </div>
-                            <span className="text-base font-semibold text-slate-900">{peso(category.amount)}</span>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="mt-4 space-y-2">
-                        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                          Resumen por momento de cobro
-                        </p>
-                        <div className="grid gap-2 sm:grid-cols-2">
-                          {cartChargeTimingSummary.map((timing) => (
-                            <div
-                              key={timing.key}
-                              className="rounded-lg border border-slate-100 bg-slate-50 px-4 py-3"
-                            >
-                              <div className="flex items-start justify-between gap-3">
-                                <div className="space-y-0.5">
-                                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-                                    {timing.label}
-                                  </p>
-                                  <p className="text-[11px] text-slate-500">{timing.detail}</p>
+                                <div className="text-right">
+                                  <p className="text-[11px] uppercase tracking-wide text-slate-500">Subtotal</p>
+                                  <span className="text-lg font-bold text-blue-800">{peso(item.unitPrice * item.quantity)}</span>
                                 </div>
-                                <span className="text-base font-semibold text-slate-900">
-                                  {peso(timing.total)}
+
+                                <div className="flex items-center justify-end">
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="text-slate-400 hover:text-red-500"
+                                    onClick={() => removeItem(item.id)}
+                                    aria-label={`Eliminar ${item.name}`}
+                                  >
+                                    <Trash2 className="h-4 w-4" aria-hidden />
+                                  </Button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      <form className="space-y-5" onSubmit={handleOpenPaymentModal}>
+                        <div className="grid gap-5 lg:grid-cols-[1.25fr,0.9fr]">
+                          <div className="space-y-4">
+                            <div className="grid gap-3 md:grid-cols-2">
+                              <label className="grid gap-1 text-xs font-semibold uppercase tracking-wide text-slate-600">
+                                Cliente (opcional)
+                                <input
+                                  type="text"
+                                  value={clientName}
+                                  onChange={(event) => setClientName(event.target.value)}
+                                  placeholder="Nombre para identificar la venta"
+                                  className="rounded-md border border-slate-200 px-3 py-2 text-sm shadow-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                                />
+                              </label>
+                              <label className="grid gap-1 text-xs font-semibold uppercase tracking-wide text-slate-600">
+                                Referencia de venta original (reembolsos/cancelaciones)
+                                <input
+                                  type="text"
+                                  value={refundReference}
+                                  onChange={(event) => setRefundReference(event.target.value)}
+                                  placeholder="Ticket o folio relacionado"
+                                  className="rounded-md border border-slate-200 px-3 py-2 text-sm shadow-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                                />
+                              </label>
+                              <div className="grid gap-1 text-xs font-semibold uppercase tracking-wide text-slate-600">
+                                <span>Métodos de pago</span>
+                                <div className="flex items-center justify-between gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+                                  <div className="space-y-0.5 text-left">
+                                    {paymentSplits.length === 1 && !paymentSplits[0].amount ? (
+                                      <p className="text-slate-500">Define cómo se dividirá el cobro.</p>
+                                    ) : (
+                                      paymentSplits.map((split) => (
+                                        <p key={split.id} className="text-slate-700">
+                                          {split.method}: {split.amount ? peso(normalizeNumericInput(split.amount, 0)) : peso(0)}
+                                        </p>
+                                      ))
+                                    )}
+                                  </div>
+                                  <Button type="button" variant="outline" size="sm" onClick={handleOpenPaymentModal}>
+                                    Dividir pago
+                                  </Button>
+                                </div>
+                                <span className="text-[11px] font-medium text-slate-500">
+                                  Divide el total entre efectivo, tarjeta, transferencia o vales.
                                 </span>
                               </div>
-                              {timing.items?.length ? (
-                                <p className="mt-2 text-[11px] text-slate-500">
-                                  {timing.items.length} concepto(s) marcados para este momento.
-                                </p>
-                              ) : null}
                             </div>
-                          ))}
-                        </div>
-                        {cartTotalsByChargeTiming[BILLING_TIMINGS.FUTURE]?.items?.length ? (
-                          <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                              <span>
-                                {cartTotalsByChargeTiming[BILLING_TIMINGS.FUTURE].items.length} cargo(s) futuro(s) en el ticket.
-                                Ingresa la referencia de la venta original para cancelarlos o reprogramarlos.
-                              </span>
+
+                            <div className="grid gap-3 md:grid-cols-2">
+                              <label className="grid gap-1 text-xs font-semibold uppercase tracking-wide text-slate-600">
+                                Descuento
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={discount}
+                                  onChange={(event) => setDiscount(event.target.value)}
+                                  className="rounded-md border border-slate-200 px-3 py-2 text-sm shadow-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                                />
+                              </label>
+                              <label className="grid gap-1 text-xs font-semibold uppercase tracking-wide text-slate-600">
+                                Impuestos
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={tax}
+                                  onChange={(event) => setTax(event.target.value)}
+                                  className="rounded-md border border-slate-200 px-3 py-2 text-sm shadow-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                                />
+                              </label>
+                            </div>
+
+                            <label className="grid gap-1 text-xs font-semibold uppercase tracking-wide text-slate-600">
+                              Notas (opcional)
+                              <textarea
+                                value={notes}
+                                onChange={(event) => setNotes(event.target.value)}
+                                rows={2}
+                                className="rounded-md border border-slate-200 px-3 py-2 text-sm shadow-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                                placeholder="Anota detalles importantes del cobro"
+                              />
+                            </label>
+
+                            <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 text-sm text-slate-700 shadow-sm">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <p className="text-sm font-semibold text-slate-900">Totales por categoría</p>
+                                <span className="text-xs text-slate-500">Cobros inmediatos vs. futuros</span>
+                              </div>
+                              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                                {cartCategoriesSummary.map((category) => (
+                                  <div key={category.key} className="flex items-center justify-between rounded-lg bg-white px-4 py-3 shadow-sm">
+                                    <div className="space-y-1">
+                                      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                                        {category.label}
+                                      </p>
+                                      <p className="text-[11px] text-slate-500">
+                                        {describeChargeTiming(
+                                          category.key === BILLING_CATEGORIES.MONTHLY
+                                            ? BILLING_TIMINGS.FUTURE
+                                            : BILLING_TIMINGS.IMMEDIATE,
+                                        )}
+                                      </p>
+                                    </div>
+                                    <span className="text-base font-semibold text-slate-900">{peso(category.amount)}</span>
+                                  </div>
+                                ))}
+                              </div>
+                              <div className="mt-4 space-y-2">
+                                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                                  Resumen por momento de cobro
+                                </p>
+                                <div className="grid gap-2 sm:grid-cols-2">
+                                  {cartChargeTimingSummary.map((timing) => (
+                                    <div
+                                      key={timing.key}
+                                      className="rounded-lg border border-slate-100 bg-white px-4 py-3 shadow-sm"
+                                    >
+                                      <div className="flex items-start justify-between gap-3">
+                                        <div className="space-y-0.5">
+                                          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                                            {timing.label}
+                                          </p>
+                                          <p className="text-[11px] text-slate-500">{timing.detail}</p>
+                                        </div>
+                                        <span className="text-base font-semibold text-slate-900">
+                                          {peso(timing.total)}
+                                        </span>
+                                      </div>
+                                      {timing.items?.length ? (
+                                        <p className="mt-2 text-[11px] text-slate-500">
+                                          {timing.items.length} concepto(s) marcados para este momento.
+                                        </p>
+                                      ) : null}
+                                    </div>
+                                  ))}
+                                </div>
+                                {cartTotalsByChargeTiming[BILLING_TIMINGS.FUTURE]?.items?.length ? (
+                                  <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                      <span>
+                                        {cartTotalsByChargeTiming[BILLING_TIMINGS.FUTURE].items.length} cargo(s) futuro(s) en el ticket.
+                                        Ingresa la referencia de la venta original para cancelarlos o reprogramarlos.
+                                      </span>
+                                      <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="outline"
+                                        disabled={!refundReference.trim()}
+                                        onClick={removeFutureCharges}
+                                      >
+                                        Cancelar cobros futuros
+                                      </Button>
+                                    </div>
+                                    {!refundReference.trim() ? (
+                                      <p className="mt-1 text-[10px]">Captura la referencia antes de cancelar cobros diferidos.</p>
+                                    ) : null}
+                                  </div>
+                                ) : null}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="space-y-4">
+                            <dl className="space-y-3 rounded-xl border border-slate-200 bg-gradient-to-b from-slate-50 to-white p-4 text-sm text-slate-700 shadow-sm">
+                              <div className="flex items-center justify-between">
+                                <dt>Subtotal</dt>
+                                <dd className="font-semibold text-slate-900">{peso(subtotal)}</dd>
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <dt>Descuento</dt>
+                                <dd className="font-medium text-slate-900">{peso(discountValue)}</dd>
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <dt>Impuestos</dt>
+                                <dd className="font-medium text-slate-900">{peso(taxValue)}</dd>
+                              </div>
+                              <div className="flex items-center justify-between border-t border-slate-200 pt-2">
+                                <dt className="text-sm font-semibold text-slate-900">Total a cobrar</dt>
+                                <dd className="text-3xl font-bold text-blue-700">{peso(cartTotal)}</dd>
+                              </div>
+                            </dl>
+
+                            {formError ? (
+                              <p className="text-sm text-red-600">{formError}</p>
+                            ) : !checkoutGuard.canCheckout && checkoutGuard.blockingReasons.length > 0 ? (
+                              <p className="text-sm text-red-600">{checkoutGuard.blockingReasons[0]}</p>
+                            ) : null}
+
+                            <div className="space-y-3 rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-100 via-emerald-50 to-white p-5 shadow-sm">
+                              <div className="flex items-center justify-between text-sm font-semibold text-emerald-900">
+                                <span>Descuento</span>
+                                <span>{peso(discountValue)}</span>
+                              </div>
+                              <div className="flex items-center justify-between text-sm font-semibold text-emerald-900">
+                                <span>IVA</span>
+                                <span>{peso(taxValue)}</span>
+                              </div>
+                              <div className="flex items-center justify-between border-t border-emerald-200 pt-3 text-lg font-bold text-emerald-900">
+                                <span>Total a pagar</span>
+                                <span>{peso(cartTotal)}</span>
+                              </div>
                               <Button
                                 type="button"
-                                size="sm"
-                                variant="outline"
-                                disabled={!refundReference.trim()}
-                                onClick={removeFutureCharges}
+                                size="lg"
+                                className="w-full bg-emerald-600 text-lg font-bold text-white hover:bg-emerald-700"
+                                disabled={isSubmittingSale || !checkoutGuard.canCheckout}
+                                onClick={handleOpenPaymentModal}
                               >
-                                Cancelar cobros futuros
+                                <Receipt className="mr-2 h-5 w-5" aria-hidden /> Pagar ahora
                               </Button>
                             </div>
-                            {!refundReference.trim() ? (
-                              <p className="mt-1 text-[10px]">Captura la referencia antes de cancelar cobros diferidos.</p>
-                            ) : null}
                           </div>
-                        ) : null}
-                      </div>
-                    </div>
-
-                    <dl className="space-y-3 rounded-xl border border-slate-200 bg-gradient-to-b from-slate-50 to-white p-4 text-sm text-slate-700 shadow-sm">
-                      <div className="flex items-center justify-between">
-                        <dt>Subtotal</dt>
-                        <dd className="font-semibold text-slate-900">{peso(subtotal)}</dd>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <dt>Descuento</dt>
-                        <dd className="font-medium text-slate-900">{peso(discountValue)}</dd>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <dt>Impuestos</dt>
-                        <dd className="font-medium text-slate-900">{peso(taxValue)}</dd>
-                      </div>
-                      <div className="flex items-center justify-between border-t border-slate-200 pt-2">
-                        <dt className="text-sm font-semibold text-slate-900">Total a cobrar</dt>
-                        <dd className="text-3xl font-bold text-blue-700">{peso(cartTotal)}</dd>
-                      </div>
-                    </dl>
-
-                  {formError ? (
-                    <p className="text-sm text-red-600">{formError}</p>
-                  ) : !checkoutGuard.canCheckout && checkoutGuard.blockingReasons.length > 0 ? (
-                    <p className="text-sm text-red-600">{checkoutGuard.blockingReasons[0]}</p>
-                  ) : null}
-
-                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-100 bg-blue-50/70 p-4 shadow-sm">
-                    <Button type="button" variant="secondary" onClick={focusClientSearch}>
-                      Asignar cliente
-                    </Button>
-                    <div className="flex items-center gap-4">
-                      <div className="text-right">
-                        <p className="text-sm font-semibold uppercase tracking-wide text-blue-900">Total</p>
-                        <p className="text-3xl font-bold text-slate-900">{peso(cartTotal)}</p>
-                      </div>
-                      <Button
-                        type="button"
-                        size="lg"
-                        disabled={isSubmittingSale || !checkoutGuard.canCheckout}
-                        onClick={handleOpenPaymentModal}
-                      >
-                        <Receipt className="mr-2 h-4 w-4" aria-hidden /> Cobrar
-                      </Button>
+                        </div>
+                      </form>
                     </div>
                   </div>
-                </form>
-              </div>
-            </CardContent>
-          </Card>
+                </CardContent>
+              </Card>
 
           {LEGACY_PAYMENTS_ENABLED && (
             <Card>
