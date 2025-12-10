@@ -373,6 +373,16 @@ const sanitizeBaseUrl = (raw) => {
 
 const BASE_URL = sanitizeBaseUrl(readBaseUrlFromEnv())
 
+const ABSOLUTE_URL_PATTERN = /^[a-zA-Z][a-zA-Z\d+.-]*:\/\//
+const PROTOCOL_RELATIVE_URL_PATTERN = /^\/\//
+
+const isAbsoluteUrl = (value) => {
+  if (typeof value !== 'string') {
+    return false
+  }
+  return ABSOLUTE_URL_PATTERN.test(value) || PROTOCOL_RELATIVE_URL_PATTERN.test(value)
+}
+
 export class ApiError extends Error {
   constructor(message, { status, data, headers } = {}) {
     super(message)
@@ -464,8 +474,9 @@ const applySearchParams = (url, searchParams) => {
 }
 
 const buildUrl = (path, searchParams) => {
-  const normalizedPath = path?.startsWith('/') ? path : `/${path ?? ''}`
-  const url = `${BASE_URL}${normalizedPath}`
+  const isAbsolute = isAbsoluteUrl(path ?? '')
+  const normalizedPath = isAbsolute || path?.startsWith('/') ? path ?? '' : `/${path ?? ''}`
+  const url = isAbsolute ? normalizedPath : `${BASE_URL}${normalizedPath}`
   return applySearchParams(url, searchParams)
 }
 
