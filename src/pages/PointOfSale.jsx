@@ -2627,244 +2627,244 @@ export default function PointOfSalePage() {
                 </CardContent>
               </Card>
 
-          {LEGACY_PAYMENTS_ENABLED && (
-            <Card>
-              <CardContent className="space-y-4">
-                <header className="space-y-1">
-                  <h2 className="text-lg font-semibold text-slate-900">Pagos rápidos de clientes</h2>
-                  <p className="text-xs text-slate-500">
-                    Cobra mensualidades de internet o servicios asociados sin salir del punto de venta.
-                  </p>
-                </header>
+            {LEGACY_PAYMENTS_ENABLED && (
+              <Card>
+                <CardContent className="space-y-4">
+                  <header className="space-y-1">
+                    <h2 className="text-lg font-semibold text-slate-900">Pagos rápidos de clientes</h2>
+                    <p className="text-xs text-slate-500">
+                      Cobra mensualidades de internet o servicios asociados sin salir del punto de venta.
+                    </p>
+                  </header>
 
-                <form className="space-y-4" onSubmit={handleSubmitClientPayment}>
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <label className="grid gap-1 text-xs font-medium text-slate-600">
-                      Buscar cliente
-                      <input
-                        type="search"
-                        value={paymentSearch}
-                        onChange={(event) => setPaymentSearch(event.target.value)}
-                        placeholder="Nombre, ubicación o referencia"
-                        className="rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                      />
-                    </label>
-                    <label className="grid gap-1 text-xs font-medium text-slate-600">
-                      Cliente
-                      <select
-                        value={paymentClientId}
-                        onChange={(event) => setPaymentClientId(event.target.value)}
-                        className="rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                      >
-                        <option value="">Selecciona un cliente</option>
-                        {clientOptions.map((client) => (
-                          <option key={client.id} value={client.id}>
-                            {client.name}
-                          </option>
-                        ))}
-                      </select>
-                      <span className="text-[11px] text-slate-400">
-                        Mostrando {clientOptions.length} resultado(s) coincidentes.
-                      </span>
-                    </label>
-                  </div>
-
-                  {isLoadingClients ? (
-                    <p className="text-sm text-slate-500">Cargando clientes…</p>
-                  ) : selectedPaymentClient ? (
-                    <div className="space-y-3">
-                      <div className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600">
-                        <p className="font-semibold text-slate-800">{selectedPaymentClient.name}</p>
-                        <p className="text-xs text-slate-500">
-                          Servicio: {selectedPaymentService?.name ?? 'Sin servicio configurado'} · Tarifa{' '}
-                          {peso(selectedPaymentMonthlyFee)}
-                        </p>
-                        <p className="text-xs text-slate-500">
-                          Adeudo estimado: {peso(selectedPaymentDebt?.totalDue ?? 0)} ({
-                            toInputValue(selectedPaymentDebt?.debtMonths ?? 0, 2)
-                          }{' '}
-                          meses)
-                        </p>
-                        {!selectedPaymentService && (
-                          <p className="mt-1 text-xs text-amber-600">
-                            Asigna un servicio mensual para habilitar el cobro rápido.
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-3 text-xs text-slate-600 shadow-sm">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div>
-                            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                              Historial rápido de recibos
-                            </p>
-                            <p className="text-[11px] text-slate-500">
-                              Últimos cobros registrados para este cliente.
-                            </p>
-                          </div>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={refetchClientReceipts}
-                            disabled={isLoadingClientReceipts || isFetchingClientReceipts}
-                          >
-                            <ClipboardList className="mr-2 h-4 w-4" aria-hidden /> Actualizar
-                          </Button>
-                        </div>
-
-                        {isLoadingClientReceipts ? (
-                          <p className="text-[11px] text-slate-500">Cargando recibos recientes…</p>
-                        ) : recentClientReceipts.length === 0 ? (
-                          <p className="text-[11px] text-slate-500">Sin recibos previos para el cliente.</p>
-                        ) : (
-                          <div className="space-y-2">
-                            {recentClientReceipts.map((receipt) => (
-                              <div
-                                key={receipt.id ?? receipt.folio}
-                                className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2 text-[13px] text-slate-700"
-                              >
-                                <div className="space-y-0.5">
-                                  <p className="font-semibold text-slate-900">Folio {receipt.folio}</p>
-                                  <p className="text-[11px] text-slate-500">
-                                    {(formatDateTime(receipt.issuedAt) || 'Fecha desconocida') + ' · ' + receipt.method}
-                                  </p>
-                                </div>
-                                <div className="text-right">
-                                  <p className="text-sm font-semibold text-slate-900">{peso(receipt.amount)}</p>
-                                  <p className="text-[11px] text-slate-500">Periodo {receipt.period ?? 'N/D'}</p>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
-                      {suspectedDuplicateReceipt ? (
-                        <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-                          <AlertTriangle className="mt-0.5 h-4 w-4" aria-hidden />
-                          <div className="space-y-1">
-                            <p className="font-semibold text-amber-900">Posible cobro duplicado</p>
-                            <p>
-                              Ya se emitió el folio {suspectedDuplicateReceipt.folio} para el periodo{' '}
-                              {suspectedDuplicateReceipt.period ?? activePeriodKey ?? 'actual'}. Verifica la información antes de
-                              registrar un pago nuevo.
-                            </p>
-                          </div>
-                        </div>
-                      ) : null}
-
-                      <div className="grid gap-3 md:grid-cols-2">
-                        <label className="grid gap-1 text-xs font-medium text-slate-600">
-                          Periodos a pagar
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={paymentMonths}
-                            onChange={(event) => setPaymentMonths(event.target.value)}
-                            className="rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                            placeholder="Ej. 1"
-                          />
-                        </label>
-                        <label className="grid gap-1 text-xs font-medium text-slate-600">
-                          Monto a pagar
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={paymentAmount}
-                            onChange={(event) => setPaymentAmount(event.target.value)}
-                            className="rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                            placeholder="Ej. 300"
-                            required={!paymentMonths}
-                          />
-                        </label>
-                      </div>
-
+                  <form className="space-y-4" onSubmit={handleSubmitClientPayment}>
+                    <div className="grid gap-3 md:grid-cols-2">
                       <label className="grid gap-1 text-xs font-medium text-slate-600">
-                        Método de pago
+                        Buscar cliente
+                        <input
+                          type="search"
+                          value={paymentSearch}
+                          onChange={(event) => setPaymentSearch(event.target.value)}
+                          placeholder="Nombre, ubicación o referencia"
+                          className="rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                        />
+                      </label>
+                      <label className="grid gap-1 text-xs font-medium text-slate-600">
+                        Cliente
                         <select
-                          value={paymentMethodPos}
-                          onChange={(event) => setPaymentMethodPos(event.target.value)}
+                          value={paymentClientId}
+                          onChange={(event) => setPaymentClientId(event.target.value)}
                           className="rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
                         >
-                          {PAYMENT_METHODS.map((method) => (
-                            <option key={method} value={method}>
-                              {method}
+                          <option value="">Selecciona un cliente</option>
+                          {clientOptions.map((client) => (
+                            <option key={client.id} value={client.id}>
+                              {client.name}
                             </option>
                           ))}
                         </select>
+                        <span className="text-[11px] text-slate-400">
+                          Mostrando {clientOptions.length} resultado(s) coincidentes.
+                        </span>
                       </label>
-
-                      <label className="grid gap-1 text-xs font-medium text-slate-600">
-                        Nota (opcional)
-                        <textarea
-                          value={paymentNote}
-                          onChange={(event) => setPaymentNote(event.target.value)}
-                          className="min-h-[60px] rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                          placeholder="Referencia rápida del pago"
-                        />
-                      </label>
-
-                      <Button
-                        type="submit"
-                        className="w-full"
-                        disabled={!selectedPaymentService || isSubmittingClientPayment}
-                      >
-                        {isSubmittingClientPayment ? 'Registrando pago…' : 'Registrar pago'}
-                      </Button>
                     </div>
-                  ) : (
-                    <p className="text-sm text-slate-500">
-                      Selecciona un cliente para registrar cobros de servicios desde aquí.
-                    </p>
-                  )}
-                </form>
-              </CardContent>
-            </Card>
+
+                    {isLoadingClients ? (
+                      <p className="text-sm text-slate-500">Cargando clientes…</p>
+                    ) : selectedPaymentClient ? (
+                      <div className="space-y-3">
+                        <div className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600">
+                          <p className="font-semibold text-slate-800">{selectedPaymentClient.name}</p>
+                          <p className="text-xs text-slate-500">
+                            Servicio: {selectedPaymentService?.name ?? 'Sin servicio configurado'} · Tarifa{' '}
+                            {peso(selectedPaymentMonthlyFee)}
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            Adeudo estimado: {peso(selectedPaymentDebt?.totalDue ?? 0)} ({
+                              toInputValue(selectedPaymentDebt?.debtMonths ?? 0, 2)
+                            }{' '}
+                            meses)
+                          </p>
+                          {!selectedPaymentService && (
+                            <p className="mt-1 text-xs text-amber-600">
+                              Asigna un servicio mensual para habilitar el cobro rápido.
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-3 text-xs text-slate-600 shadow-sm">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                                Historial rápido de recibos
+                              </p>
+                              <p className="text-[11px] text-slate-500">
+                                Últimos cobros registrados para este cliente.
+                              </p>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={refetchClientReceipts}
+                              disabled={isLoadingClientReceipts || isFetchingClientReceipts}
+                            >
+                              <ClipboardList className="mr-2 h-4 w-4" aria-hidden /> Actualizar
+                            </Button>
+                          </div>
+
+                          {isLoadingClientReceipts ? (
+                            <p className="text-[11px] text-slate-500">Cargando recibos recientes…</p>
+                          ) : recentClientReceipts.length === 0 ? (
+                            <p className="text-[11px] text-slate-500">Sin recibos previos para el cliente.</p>
+                          ) : (
+                            <div className="space-y-2">
+                              {recentClientReceipts.map((receipt) => (
+                                <div
+                                  key={receipt.id ?? receipt.folio}
+                                  className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2 text-[13px] text-slate-700"
+                                >
+                                  <div className="space-y-0.5">
+                                    <p className="font-semibold text-slate-900">Folio {receipt.folio}</p>
+                                    <p className="text-[11px] text-slate-500">
+                                      {(formatDateTime(receipt.issuedAt) || 'Fecha desconocida') + ' · ' + receipt.method}
+                                    </p>
+                                  </div>
+                                  <div className="text-right">
+                                    <p className="text-sm font-semibold text-slate-900">{peso(receipt.amount)}</p>
+                                    <p className="text-[11px] text-slate-500">Periodo {receipt.period ?? 'N/D'}</p>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        {suspectedDuplicateReceipt ? (
+                          <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                            <AlertTriangle className="mt-0.5 h-4 w-4" aria-hidden />
+                            <div className="space-y-1">
+                              <p className="font-semibold text-amber-900">Posible cobro duplicado</p>
+                              <p>
+                                Ya se emitió el folio {suspectedDuplicateReceipt.folio} para el periodo{' '}
+                                {suspectedDuplicateReceipt.period ?? activePeriodKey ?? 'actual'}. Verifica la información antes de
+                                registrar un pago nuevo.
+                              </p>
+                            </div>
+                          </div>
+                        ) : null}
+
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <label className="grid gap-1 text-xs font-medium text-slate-600">
+                            Periodos a pagar
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={paymentMonths}
+                              onChange={(event) => setPaymentMonths(event.target.value)}
+                              className="rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                              placeholder="Ej. 1"
+                            />
+                          </label>
+                          <label className="grid gap-1 text-xs font-medium text-slate-600">
+                            Monto a pagar
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={paymentAmount}
+                              onChange={(event) => setPaymentAmount(event.target.value)}
+                              className="rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                              placeholder="Ej. 300"
+                              required={!paymentMonths}
+                            />
+                          </label>
+                        </div>
+
+                        <label className="grid gap-1 text-xs font-medium text-slate-600">
+                          Método de pago
+                          <select
+                            value={paymentMethodPos}
+                            onChange={(event) => setPaymentMethodPos(event.target.value)}
+                            className="rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                          >
+                            {PAYMENT_METHODS.map((method) => (
+                              <option key={method} value={method}>
+                                {method}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+
+                        <label className="grid gap-1 text-xs font-medium text-slate-600">
+                          Nota (opcional)
+                          <textarea
+                            value={paymentNote}
+                            onChange={(event) => setPaymentNote(event.target.value)}
+                            className="min-h-[60px] rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                            placeholder="Referencia rápida del pago"
+                          />
+                        </label>
+
+                        <Button
+                          type="submit"
+                          className="w-full"
+                          disabled={!selectedPaymentService || isSubmittingClientPayment}
+                        >
+                          {isSubmittingClientPayment ? 'Registrando pago…' : 'Registrar pago'}
+                        </Button>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-slate-500">
+                        Selecciona un cliente para registrar cobros de servicios desde aquí.
+                      </p>
+                    )}
+                  </form>
+                </CardContent>
+              </Card>
             )}
 
-              {saleResult ? (
-                <Card>
-                  <CardContent className="space-y-3 text-sm text-slate-600">
-                    <h3 className="text-sm font-semibold text-slate-900">Última venta registrada</h3>
-                    <p>
-                      Ticket <strong>{saleResult.ticketNumber ?? saleResult.ticket_number}</strong> ·{' '}
-                      {formatDateTime(saleResult.soldAt ?? saleResult.sold_at)}
-                    </p>
-                    <p>Total cobrado: {peso(saleResult.total ?? 0)}</p>
-                    {lastPaymentBreakdown.length ? (
-                      <div className="space-y-1 rounded-md bg-slate-50 p-3">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Pago dividido</p>
-                        <ul className="space-y-0.5">
-                          {lastPaymentBreakdown.map((payment) => (
-                            <li key={payment.id} className="text-xs text-slate-600">
-                              {payment.method}: {peso(payment.amount)}{' '}
-                              {payment.reference ? <span className="text-slate-400">· Ref: {payment.reference}</span> : null}
-                            </li>
-                          ))}
-                        </ul>
-                        {lastSaleContext?.cashReceived ? (
-                          <p className="text-xs text-slate-500">
-                            Cambio entregado: {peso(lastSaleContext.change ?? 0)}
-                          </p>
-                        ) : null}
-                      </div>
-                    ) : null}
-                    <p className="text-xs text-slate-400">
-                      Usa esta referencia para resolver dudas rápidas con el cliente.
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      <Button type="button" variant="secondary" onClick={handleDownloadReceipt}>
-                        <Download className="mr-2 h-4 w-4" aria-hidden /> Descargar recibo
-                      </Button>
+            {saleResult ? (
+              <Card>
+                <CardContent className="space-y-3 text-sm text-slate-600">
+                  <h3 className="text-sm font-semibold text-slate-900">Última venta registrada</h3>
+                  <p>
+                    Ticket <strong>{saleResult.ticketNumber ?? saleResult.ticket_number}</strong> ·{' '}
+                    {formatDateTime(saleResult.soldAt ?? saleResult.sold_at)}
+                  </p>
+                  <p>Total cobrado: {peso(saleResult.total ?? 0)}</p>
+                  {lastPaymentBreakdown.length ? (
+                    <div className="space-y-1 rounded-md bg-slate-50 p-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Pago dividido</p>
+                      <ul className="space-y-0.5">
+                        {lastPaymentBreakdown.map((payment) => (
+                          <li key={payment.id} className="text-xs text-slate-600">
+                            {payment.method}: {peso(payment.amount)}{' '}
+                            {payment.reference ? <span className="text-slate-400">· Ref: {payment.reference}</span> : null}
+                          </li>
+                        ))}
+                      </ul>
+                      {lastSaleContext?.cashReceived ? (
+                        <p className="text-xs text-slate-500">
+                          Cambio entregado: {peso(lastSaleContext.change ?? 0)}
+                        </p>
+                      ) : null}
                     </div>
-                  </CardContent>
-                </Card>
-              ) : null}
-            </section>
-          </div>
+                  ) : null}
+                  <p className="text-xs text-slate-400">
+                    Usa esta referencia para resolver dudas rápidas con el cliente.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <Button type="button" variant="secondary" onClick={handleDownloadReceipt}>
+                      <Download className="mr-2 h-4 w-4" aria-hidden /> Descargar recibo
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : null}
+          </section>
+        </div>
 
           <section aria-labelledby="ventas-recientes" className="space-y-3">
             <div className="flex items-center justify-between">
