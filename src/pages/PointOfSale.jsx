@@ -2582,43 +2582,43 @@ export default function PointOfSalePage() {
                                 </Button>
                               </div>
                             </div>
-                          ))
-                        )}
-                      </div>
-
-                      <div className="sticky bottom-0 space-y-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <div className="flex items-center gap-2">
-                            <label className="text-sm font-semibold text-slate-700">Descuento</label>
-                            <select
-                              value={discountType}
-                              onChange={(event) => setDiscountType(event.target.value)}
-                              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                            >
-                              <option value="amount">Monto</option>
-                              <option value="percent">%</option>
-                            </select>
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              value={discount}
-                              onChange={(event) => setDiscount(event.target.value)}
-                              className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm shadow-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                              placeholder="0"
-                            />
                           </div>
-                          <div className="flex items-center gap-2">
-                            <label className="text-sm font-semibold text-slate-700">IVA</label>
-                            <select
-                              value={taxRate}
-                              onChange={(event) => setTaxRate(event.target.value)}
-                              className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                            >
-                              <option value="0">0%</option>
-                              <option value="8">8%</option>
-                              <option value="16">16%</option>
-                            </select>
+
+                          <div className="sticky bottom-0 space-y-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              <div className="flex items-center gap-2">
+                                <label className="text-sm font-semibold text-slate-700">Descuento</label>
+                                <select
+                                  value={discountType}
+                                  onChange={(event) => setDiscountType(event.target.value)}
+                                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                                >
+                                  <option value="amount">Monto</option>
+                                  <option value="percent">%</option>
+                                </select>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={discount}
+                                  onChange={(event) => setDiscount(event.target.value)}
+                                  className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm shadow-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                                  placeholder="0"
+                                />
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <label className="text-sm font-semibold text-slate-700">IVA</label>
+                                <select
+                                  value={taxRate}
+                                  onChange={(event) => setTaxRate(event.target.value)}
+                                  className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                                >
+                                  <option value="0">0%</option>
+                                  <option value="8">8%</option>
+                                  <option value="16">16%</option>
+                                </select>
+                              </div>
+                            </div>
                           </div>
                         </form>
                       </div>
