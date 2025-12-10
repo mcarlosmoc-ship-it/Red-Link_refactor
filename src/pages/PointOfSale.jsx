@@ -305,7 +305,8 @@ export default function PointOfSalePage() {
   const [clientSearchTerm, setClientSearchTerm] = useState('')
   const [notes, setNotes] = useState('')
   const [discount, setDiscount] = useState('')
-  const [tax, setTax] = useState('')
+  const [discountType, setDiscountType] = useState('amount')
+  const [taxRate, setTaxRate] = useState('16')
   const [customItem, setCustomItem] = useState({ description: '', price: '', quantity: '1' })
   const [saleResult, setSaleResult] = useState(null)
   const [formError, setFormError] = useState(null)
@@ -603,11 +604,18 @@ export default function PointOfSalePage() {
     [cartItems],
   )
 
-  const discountValue = useMemo(
-    () => Math.max(normalizeNumericInput(discount, 0), 0),
-    [discount],
-  )
-  const taxValue = useMemo(() => Math.max(normalizeNumericInput(tax, 0), 0), [tax])
+  const discountValue = useMemo(() => {
+    const parsedDiscount = Math.max(normalizeNumericInput(discount, 0), 0)
+    if (discountType === 'percent') {
+      return clamp(subtotal * (parsedDiscount / 100), 0)
+    }
+    return parsedDiscount
+  }, [discount, discountType, subtotal])
+
+  const taxValue = useMemo(() => {
+    const parsedRate = Math.max(normalizeNumericInput(taxRate, 0), 0) / 100
+    return clamp((subtotal - discountValue) * parsedRate, 0)
+  }, [discountValue, subtotal, taxRate])
   const total = useMemo(() => clamp(subtotal - discountValue + taxValue, 0), [
     subtotal,
     discountValue,
@@ -1209,7 +1217,8 @@ export default function PointOfSalePage() {
       setLastSaleContext({ ...saleSnapshot, sale })
       updateCart(() => [])
       setDiscount('')
-      setTax('')
+      setDiscountType('amount')
+      setTaxRate('16')
       setNotes('')
       setClientName('')
       setPaymentSplits([
@@ -2573,6 +2582,43 @@ export default function PointOfSalePage() {
                                 </Button>
                               </div>
                             </div>
+                          ))
+                        )}
+                      </div>
+
+                      <div className="sticky bottom-0 space-y-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <div className="flex items-center gap-2">
+                            <label className="text-sm font-semibold text-slate-700">Descuento</label>
+                            <select
+                              value={discountType}
+                              onChange={(event) => setDiscountType(event.target.value)}
+                              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                            >
+                              <option value="amount">Monto</option>
+                              <option value="percent">%</option>
+                            </select>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={discount}
+                              onChange={(event) => setDiscount(event.target.value)}
+                              className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm shadow-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                              placeholder="0"
+                            />
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <label className="text-sm font-semibold text-slate-700">IVA</label>
+                            <select
+                              value={taxRate}
+                              onChange={(event) => setTaxRate(event.target.value)}
+                              className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                            >
+                              <option value="0">0%</option>
+                              <option value="8">8%</option>
+                              <option value="16">16%</option>
+                            </select>
                           </div>
                         </form>
                       </div>
