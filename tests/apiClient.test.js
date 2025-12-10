@@ -54,4 +54,10 @@ describe('buildApiUrl', () => {
       'http://localhost:8000/clients?page=5&status=active&status=vip&sort=name&tags=priority&tags=new'
     )
   })
+
+  it('keeps absolute URLs unchanged while appending query parameters', () => {
+    const url = buildApiUrl('https://example.com/resource', { q: '1' })
+
+    expect(url).toBe('https://example.com/resource?q=1')
+  })
 })
