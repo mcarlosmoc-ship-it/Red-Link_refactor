@@ -291,6 +291,7 @@ export default function PointOfSalePage() {
   const [activeProductTab, setActiveProductTab] = useState('nuevo')
   const [activeActionTab, setActiveActionTab] = useState('common')
   const [posSearchTerm, setPosSearchTerm] = useState('')
+  const [ticketSearchTerm, setTicketSearchTerm] = useState('')
   const [productSearchTerm, setProductSearchTerm] = useState('')
   const [clientName, setClientName] = useState('')
   const [selectedClientId, setSelectedClientId] = useState('')
@@ -1650,7 +1651,7 @@ export default function PointOfSalePage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 lg:space-y-6">
       <header className="space-y-3">
         <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
           <h1 className="flex items-center gap-2 text-2xl font-semibold text-slate-900">
@@ -1694,11 +1695,16 @@ export default function PointOfSalePage() {
         </div>
       </header>
 
-      <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <section
+        aria-labelledby="busqueda-unificada"
+        className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm sm:p-4"
+      >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="space-y-1">
             <p className="text-xs uppercase tracking-wide text-slate-500">Búsqueda unificada</p>
-            <h2 className="text-lg font-semibold text-slate-900">Agrega productos y servicios al vuelo</h2>
+            <h2 id="busqueda-unificada" className="text-lg font-semibold text-slate-900">
+              Agrega productos y servicios al vuelo
+            </h2>
           </div>
           <span className="text-xs text-slate-500">Sin columnas extra ni pasos adicionales.</span>
         </div>
@@ -1762,30 +1768,46 @@ export default function PointOfSalePage() {
 
       {activeTab === 'ventas' ? (
         <>
-          <nav className="flex flex-wrap gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2">
-            {ACTION_TABS.map((tab) => {
-              const Icon = tab.icon
-              const isActive = activeActionTab === tab.id
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={tab.id === 'custom' ? openCustomItemModal : closeCustomItemModal}
-                  className={`flex items-center gap-2 rounded-md px-4 py-2 text-sm font-semibold transition ${
-                    isActive
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : 'bg-white text-slate-600 hover:border-blue-200 hover:text-blue-700'
-                  }`}
-                  aria-pressed={isActive}
-                >
-                  <Icon className="h-4 w-4" aria-hidden />
-                  {tab.label}
-                </button>
-              )
-            })}
-          </nav>
+          <section
+            aria-labelledby="tabs-acciones"
+            className="space-y-3 rounded-lg border border-slate-200 bg-white p-3 shadow-sm"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="space-y-1">
+                <p className="text-xs uppercase tracking-wide text-slate-500">Pestañas de acciones</p>
+                <h2 id="tabs-acciones" className="text-base font-semibold text-slate-900">
+                  Alterna entre artículos comunes y personalizados
+                </h2>
+              </div>
+              <span className="text-xs text-slate-500">
+                Mantén visibles las opciones críticas para operar sin desplazarte.
+              </span>
+            </div>
+            <nav className="flex flex-wrap gap-2" aria-label="Pestañas rápidas de venta">
+              {ACTION_TABS.map((tab) => {
+                const Icon = tab.icon
+                const isActive = activeActionTab === tab.id
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={tab.id === 'custom' ? openCustomItemModal : closeCustomItemModal}
+                    className={`flex items-center gap-2 rounded-md px-4 py-2 text-sm font-semibold transition ${
+                      isActive
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'bg-white text-slate-600 hover:border-blue-200 hover:text-blue-700'
+                    }`}
+                    aria-pressed={isActive}
+                  >
+                    <Icon className="h-4 w-4" aria-hidden />
+                    {tab.label}
+                  </button>
+                )
+              })}
+            </nav>
+          </section>
 
-          <div className="grid gap-6 xl:grid-cols-[2fr,1fr]">
+          <div className="grid gap-5 lg:gap-6 xl:grid-cols-[2fr,1fr]">
             <section aria-labelledby="catalogo-venta" className="space-y-4">
               <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1900,7 +1922,7 @@ export default function PointOfSalePage() {
 
             <section aria-labelledby="carrito-venta" className="space-y-4">
               <Card>
-                <CardContent className="space-y-6">
+                <CardContent className="space-y-5">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="space-y-1">
                       <h2 id="carrito-venta" className="text-lg font-semibold text-slate-900">
@@ -1913,7 +1935,7 @@ export default function PointOfSalePage() {
                     <span className="text-xs text-slate-500">{cartItems.length} artículos</span>
                   </div>
 
-                  <div className="grid gap-6 xl:grid-cols-[1.05fr,0.95fr] xl:items-start">
+                  <div className="grid gap-5 lg:gap-6 xl:grid-cols-[1.05fr,0.95fr] xl:items-start">
                     <div className="space-y-4">
                       <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
                         <div className="grid gap-3 lg:grid-cols-[1.6fr,1fr]">
