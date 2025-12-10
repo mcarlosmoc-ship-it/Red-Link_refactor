@@ -2657,8 +2657,8 @@ export default function PointOfSalePage() {
                 </form>
               </div>
             </div>
-                </CardContent>
-              </Card>
+          </CardContent>
+        </Card>
 
             {LEGACY_PAYMENTS_ENABLED && (
               <Card>
