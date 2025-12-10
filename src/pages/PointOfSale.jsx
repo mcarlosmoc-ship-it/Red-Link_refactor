@@ -38,7 +38,7 @@ import { CLIENT_PRICE, useBackofficeStore } from '../store/useBackofficeStore.js
 import { usePosCart } from '../hooks/usePosCart.js'
 import evaluateCartValidation, { DEFAULT_COMPLEMENTARY_TYPES } from '../utils/cartValidation.js'
 import { isPosCartValidationEnabled } from '../utils/featureFlags.js'
-import { apiClient } from '../services/apiClient.js'
+import { ApiError, apiClient } from '../services/apiClient.js'
 import { addMonthsToPeriod, peso } from '../utils/formatters.js'
 import { getServiceTypeLabel } from '../constants/serviceTypes.js'
 
@@ -1346,23 +1346,30 @@ export default function PointOfSalePage() {
         return null
       }
 
-      const response = await apiClient.get('/receipts', {
-        query: {
-          client_id: clientId,
-          client_service_id: serviceId ?? undefined,
-          period_key: activePeriodKey,
-          limit: 1,
-        },
-      })
+      try {
+        const response = await apiClient.get('/receipts', {
+          query: {
+            client_id: clientId,
+            client_service_id: serviceId ?? undefined,
+            period_key: activePeriodKey,
+            limit: 1,
+          },
+        })
 
-      const payload = response.data
-      const items = Array.isArray(payload?.items)
-        ? payload.items
-        : Array.isArray(payload)
-          ? payload
-          : []
+        const payload = response.data
+        const items = Array.isArray(payload?.items)
+          ? payload.items
+          : Array.isArray(payload)
+            ? payload
+            : []
 
-      return items.length > 0 ? mapReceipt(items[0]) : null
+        return items.length > 0 ? mapReceipt(items[0]) : null
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 404) {
+          return null
+        }
+        throw error
+      }
     },
     [activePeriodKey],
   )
