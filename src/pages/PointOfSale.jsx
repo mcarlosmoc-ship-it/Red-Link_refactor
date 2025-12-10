@@ -2518,14 +2518,12 @@ export default function PointOfSalePage() {
                   </div>
                 </form>
               </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
 
-            {LEGACY_PAYMENTS_ENABLED && (
-              <Card>
-                <CardContent className="space-y-4">
+          {LEGACY_PAYMENTS_ENABLED && (
+            <Card>
+              <CardContent className="space-y-4">
                 <header className="space-y-1">
                   <h2 className="text-lg font-semibold text-slate-900">Pagos rápidos de clientes</h2>
                   <p className="text-xs text-slate-500">
