@@ -274,7 +274,7 @@ function PlanAdjustmentSummary({ selection, services, plans, onAdd }) {
 export default function PointOfSalePage() {
   const { products, isLoading: isLoadingProducts, createProduct, refetch: refetchProducts } = usePosCatalog()
   const { sales, recordSale } = usePosSales({ limit: 8 })
-  const { clients, isLoading: isLoadingClients, createClient } = useClients()
+  const { clients, isLoading: isLoadingClients } = useClients()
   const { servicePlans, isLoading: isLoadingPlans } = useServicePlans()
   const {
     clientServices,
@@ -322,9 +322,6 @@ export default function PointOfSalePage() {
   const [paymentMethodPos, setPaymentMethodPos] = useState(PAYMENT_METHODS[0])
   const [paymentNote, setPaymentNote] = useState('')
   const [isSubmittingClientPayment, setIsSubmittingClientPayment] = useState(false)
-  const [quickClientName, setQuickClientName] = useState('')
-  const [quickClientLocation, setQuickClientLocation] = useState('')
-  const [isCreatingClient, setIsCreatingClient] = useState(false)
   const [refundReference, setRefundReference] = useState('')
   const [planChangeTarget, setPlanChangeTarget] = useState({ serviceId: '', planId: '' })
   const [lastSyncLabel] = useState(() => formatDateTime(new Date()))
@@ -1343,51 +1340,6 @@ export default function PointOfSalePage() {
     URL.revokeObjectURL(url)
   }
 
-  const handleQuickCreateClient = async (event) => {
-    event.preventDefault()
-    const normalizedName = quickClientName.trim()
-
-    if (!normalizedName) {
-      showToast({
-        type: 'warning',
-        title: 'Agrega el nombre del cliente',
-        description: 'Captura al menos el nombre para guardar el registro rápido.',
-      })
-      return
-    }
-
-    setIsCreatingClient(true)
-    try {
-      const payload = {
-        name: normalizedName,
-        location: quickClientLocation.trim() || undefined,
-        type: 'residential',
-        notes: 'Capturado rápidamente desde el punto de venta. Completa los datos más tarde.',
-      }
-
-      const created = await createClient(payload)
-      setSelectedClientId(String(created.id))
-      setClientName(created.name ?? normalizedName)
-      setQuickClientName('')
-      setQuickClientLocation('')
-
-      showToast({
-        type: 'success',
-        title: 'Cliente registrado',
-        description: 'Se guardó el contacto con los datos mínimos. Podrás completarlo después.',
-      })
-    } catch (error) {
-      const message = error?.message ?? 'No se pudo crear el cliente rápido.'
-      showToast({
-        type: 'error',
-        title: 'Error al crear cliente',
-        description: message,
-      })
-    } finally {
-      setIsCreatingClient(false)
-    }
-  }
-
   const fetchDuplicateReceiptFromApi = useCallback(
     async ({ clientId, serviceId }) => {
       if (!clientId || !activePeriodKey) {
@@ -1695,79 +1647,102 @@ export default function PointOfSalePage() {
         </div>
       </header>
 
-      <section
-        aria-labelledby="busqueda-unificada"
-        className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm sm:p-4"
-      >
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="space-y-1">
-            <p className="text-xs uppercase tracking-wide text-slate-500">Búsqueda unificada</p>
-            <h2 id="busqueda-unificada" className="text-lg font-semibold text-slate-900">
-              Agrega productos y servicios al vuelo
-            </h2>
-          </div>
-          <span className="text-xs text-slate-500">Sin columnas extra ni pasos adicionales.</span>
-        </div>
-        <div className="relative mt-3">
-          <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
-          <input
-            type="search"
-            value={posSearchTerm}
-            onChange={(event) => setPosSearchTerm(event.target.value)}
-            placeholder="Buscar artículos, servicios puntuales o mensuales"
-            className="w-full rounded-lg border border-slate-200 px-5 py-3 pl-12 text-lg font-medium text-slate-900 shadow-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
-          />
-          {hasTicketSearchQuery ? (
-            filteredSearchItems.length > 0 ? (
-              <ul className="absolute z-10 mt-2 w-full divide-y divide-slate-100 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">
-                {filteredSearchItems.map((item) => (
-                  <li key={item.id}>
-                    <button
-                      type="button"
-                      onClick={() => addSearchItemToCart(item)}
-                      className="flex w-full items-center justify-between gap-3 px-4 py-2 text-left text-sm transition hover:bg-slate-50"
-                    >
-                      <div className="space-y-0.5">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-semibold text-slate-900">{item.label}</span>
-                          <span
-                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${
-                              item.type === 'product'
-                                ? 'bg-blue-50 text-blue-700'
-                                : item.type === 'punctual-service'
-                                  ? 'bg-amber-50 text-amber-700'
-                                  : 'bg-emerald-50 text-emerald-700'
-                            }`}
-                          >
-                            {item.type === 'product'
-                              ? 'Producto'
-                              : item.type === 'punctual-service'
-                                ? 'Servicio puntual'
-                                : 'Servicio mensual'}
-                          </span>
-                        </div>
-                        <p className="text-xs text-slate-500">{item.detail || 'Sin categoría'}</p>
-                      </div>
-                      <span className="text-sm font-semibold text-slate-900">{peso(item.price)}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <div className="absolute z-10 mt-2 w-full rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-500 shadow-lg">
-                Sin coincidencias para "{ticketSearchTerm.trim()}".
-              </div>
-            )
-          ) : (
-            <div className="absolute z-10 mt-2 w-full rounded-lg border border-dashed border-slate-200 bg-white p-3 text-sm text-slate-500 shadow-lg">
-              Escribe para buscar.
-            </div>
-          )}
-        </div>
-      </section>
+      <nav className="flex flex-wrap gap-2" aria-label="Pestañas principales">
+        {MAIN_TABS.map((tab) => {
+          const Icon = tab.icon
+          const isActive = activeTab === tab.id
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-2 rounded-md px-4 py-2 text-sm font-semibold transition ${
+                isActive
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'bg-white text-slate-600 hover:border-blue-200 hover:text-blue-700'
+              }`}
+              aria-pressed={isActive}
+            >
+              <Icon className="h-4 w-4" aria-hidden />
+              {tab.label}
+            </button>
+          )
+        })}
+      </nav>
 
       {activeTab === 'ventas' ? (
         <>
+          <section
+            aria-labelledby="busqueda-unificada"
+            className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm sm:p-4"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="space-y-1">
+                <p className="text-xs uppercase tracking-wide text-slate-500">Búsqueda unificada</p>
+                <h2 id="busqueda-unificada" className="text-lg font-semibold text-slate-900">
+                  Agrega productos y servicios al vuelo
+                </h2>
+              </div>
+              <span className="text-xs text-slate-500">Sin columnas extra ni pasos adicionales.</span>
+            </div>
+            <div className="relative mt-3">
+              <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+              <input
+                type="search"
+                value={posSearchTerm}
+                onChange={(event) => setPosSearchTerm(event.target.value)}
+                placeholder="Buscar artículos, servicios puntuales o mensuales"
+                className="w-full rounded-lg border border-slate-200 px-5 py-3 pl-12 text-lg font-medium text-slate-900 shadow-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+              />
+              {hasTicketSearchQuery ? (
+                filteredSearchItems.length > 0 ? (
+                  <ul className="absolute z-10 mt-2 w-full divide-y divide-slate-100 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">
+                    {filteredSearchItems.map((item) => (
+                      <li key={item.id}>
+                        <button
+                          type="button"
+                          onClick={() => addSearchItemToCart(item)}
+                          className="flex w-full items-center justify-between gap-3 px-4 py-2 text-left text-sm transition hover:bg-slate-50"
+                        >
+                          <div className="space-y-0.5">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-semibold text-slate-900">{item.label}</span>
+                              <span
+                                className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${
+                                  item.type === 'product'
+                                    ? 'bg-blue-50 text-blue-700'
+                                    : item.type === 'punctual-service'
+                                      ? 'bg-amber-50 text-amber-700'
+                                      : 'bg-emerald-50 text-emerald-700'
+                                }`}
+                              >
+                                {item.type === 'product'
+                                  ? 'Producto'
+                                  : item.type === 'punctual-service'
+                                    ? 'Servicio puntual'
+                                    : 'Servicio mensual'}
+                              </span>
+                            </div>
+                            <p className="text-xs text-slate-500">{item.detail || 'Sin categoría'}</p>
+                          </div>
+                          <span className="text-sm font-semibold text-slate-900">{peso(item.price)}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="absolute z-10 mt-2 w-full rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-500 shadow-lg">
+                    Sin coincidencias para "{ticketSearchTerm.trim()}".
+                  </div>
+                )
+              ) : (
+                <div className="absolute z-10 mt-2 w-full rounded-lg border border-dashed border-slate-200 bg-white p-3 text-sm text-slate-500 shadow-lg">
+                  Escribe para buscar.
+                </div>
+              )}
+            </div>
+          </section>
+
           <section
             aria-labelledby="tabs-acciones"
             className="space-y-3 rounded-lg border border-slate-200 bg-white p-3 shadow-sm"
@@ -1805,6 +1780,273 @@ export default function PointOfSalePage() {
                 )
               })}
             </nav>
+          </section>
+
+          <section className="space-y-4 rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="space-y-1">
+                <p className="text-xs uppercase tracking-wide text-slate-500">Clientes y servicios</p>
+                <h2 className="text-base font-semibold text-slate-900">Selecciona clientes sin abrir el carrito</h2>
+              </div>
+              <span className="text-xs text-slate-500">Mantén el carro limpio solo con artículos.</span>
+            </div>
+
+            <div className="grid gap-4 lg:grid-cols-[1.1fr,1fr] lg:items-start">
+              <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <div className="grid gap-3 lg:grid-cols-[1.6fr,1fr]">
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Panel de selección rápida</p>
+                    <p className="text-xs text-slate-500">Busca inventario y vincula servicios del cliente en un solo lugar.</p>
+                    <div className="relative">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                      <input
+                        type="search"
+                        value={ticketSearchTerm}
+                        onChange={(event) => setTicketSearchTerm(event.target.value)}
+                        placeholder="Escribe para agregar al ticket"
+                        className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm shadow-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                      />
+                      {hasTicketSearchQuery ? (
+                        filteredSearchItems.length > 0 ? (
+                          <ul className="absolute z-10 mt-2 w-full divide-y divide-slate-100 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">
+                            {filteredSearchItems.map((item) => (
+                              <li key={item.id}>
+                                <button
+                                  type="button"
+                                  onClick={() => addSearchItemToCart(item)}
+                                  className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm transition hover:bg-slate-50"
+                                >
+                                  <div className="space-y-0.5">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <span className="font-semibold text-slate-900">{item.label}</span>
+                                      <span
+                                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${
+                                          item.type === 'product'
+                                            ? 'bg-blue-50 text-blue-700'
+                                            : item.type === 'punctual-service'
+                                              ? 'bg-amber-50 text-amber-700'
+                                              : 'bg-emerald-50 text-emerald-700'
+                                        }`}
+                                      >
+                                        {item.type === 'product'
+                                          ? 'Producto'
+                                          : item.type === 'punctual-service'
+                                            ? 'Servicio puntual'
+                                            : 'Servicio mensual'}
+                                      </span>
+                                    </div>
+                                    <p className="text-xs text-slate-500">{item.detail || 'Sin categoría'}</p>
+                                  </div>
+                                  <span className="text-sm font-semibold text-slate-900">{peso(item.price)}</span>
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <div className="absolute z-10 mt-2 w-full rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-500 shadow-lg">
+                            Sin coincidencias para "{ticketSearchTerm.trim()}".
+                          </div>
+                        )
+                      ) : (
+                        <div className="absolute z-10 mt-2 w-full rounded-lg border border-dashed border-slate-200 bg-white p-3 text-sm text-slate-500 shadow-lg">
+                          Escribe para buscar.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Servicios del cliente</p>
+                        <p className="text-xs text-slate-500">Selecciona mensualidades y verifica duplicados.</p>
+                      </div>
+                      <div className="flex flex-wrap gap-1 text-[11px] text-slate-600">
+                        <span className="rounded-full bg-slate-100 px-2 py-1 font-semibold uppercase tracking-wide text-slate-600">Periodos</span>
+                        {eligiblePeriods.map((period) => (
+                          <span key={period} className="rounded-full bg-blue-50 px-2 py-1 font-semibold uppercase tracking-wide text-blue-700">
+                            {period}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="grid gap-2 md:grid-cols-2">
+                      <label className="grid gap-1 text-xs font-medium text-slate-600">
+                        Buscar cliente
+                        <input
+                          type="search"
+                          ref={clientSearchInputRef}
+                          value={clientSearchTerm}
+                          onChange={(event) => setClientSearchTerm(event.target.value)}
+                          placeholder="Nombre, zona o ubicación"
+                          className="rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                        />
+                      </label>
+                      <label className="grid gap-1 text-xs font-medium text-slate-600">
+                        Cliente para validar servicios
+                        <select
+                          value={selectedClientId}
+                          onChange={(event) => setSelectedClientId(event.target.value)}
+                          className="rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                        >
+                          <option value="">Sin seleccionar</option>
+                          {clientOptionsForSale.map((client) => (
+                            <option key={client.id} value={client.id}>
+                              {client.name} {client.zoneName ? `· ${client.zoneName}` : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
+                      <span>Mostrando {clientOptionsForSale.length} coincidencias</span>
+                      {(isLoadingClients || isLoadingPlans || isLoadingClientServices) && (
+                        <span>Validando datos de cliente y servicios…</span>
+                      )}
+                    </div>
+
+                    {clientServiceAlerts.length > 0 ? (
+                      <div className="space-y-1 rounded-md border border-amber-200 bg-amber-50 p-2">
+                        {clientServiceAlerts.map((alert) => (
+                          <p key={alert} className="flex items-center gap-2 text-[11px] font-semibold text-amber-800">
+                            <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
+                            {alert}
+                          </p>
+                        ))}
+                      </div>
+                    ) : null}
+
+                    <div className="space-y-3 rounded-md border border-dashed border-slate-200 bg-slate-50 p-3">
+                      {selectedClient ? (
+                        <div className="space-y-3 text-sm">
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div>
+                              <p className="font-semibold text-slate-900">{selectedClient.name}</p>
+                              <p className="text-xs text-slate-500">{selectedClient.location || 'Sin referencia de ubicación'}</p>
+                            </div>
+                            <div className="text-right text-xs text-slate-600">
+                              <p className="font-semibold text-slate-900">Adeudo: {peso(selectedClientDebt.totalDue)}</p>
+                              <p>Mensualidad base: {peso(selectedClientDebt.monthlyFee)}</p>
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap gap-2 text-[11px] text-slate-500">
+                            <span className="rounded-full bg-slate-100 px-2 py-1 font-semibold uppercase tracking-wide text-slate-600">Periodos elegibles</span>
+                            {eligiblePeriods.map((period) => (
+                              <span key={period} className="rounded-full bg-emerald-50 px-2 py-1 font-semibold uppercase tracking-wide text-emerald-700">
+                                {period}
+                              </span>
+                            ))}
+                          </div>
+                          {selectedClientServices.length === 0 ? (
+                            <p className="text-xs text-slate-500">Este cliente aún no tiene servicios registrados.</p>
+                          ) : (
+                            <div className="space-y-2">
+                              {isLoadingSelectedClientReceipts ? (
+                                <p className="text-[11px] text-slate-500">Validando cobros previos del periodo…</p>
+                              ) : null}
+                              {selectedClientServices.map((service) => {
+                                const isSelectedForBilling = cartItems.some(
+                                  (item) =>
+                                    item.type === 'monthly-service' &&
+                                    String(item.servicePlanId) === String(service.id) &&
+                                    item.clientId === selectedClient.id,
+                                )
+                                const duplicateReceipt = duplicateServiceReceiptMap[String(service.id)]
+
+                                return (
+                                  <label
+                                    key={service.id ?? service.name}
+                                    className={`flex items-start gap-3 rounded-md border p-3 text-left text-sm transition ${
+                                      isSelectedForBilling
+                                        ? 'border-emerald-200 bg-emerald-50/50'
+                                        : 'border-slate-200 bg-white hover:border-blue-200'
+                                    }`}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      className="mt-1 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-200"
+                                      checked={isSelectedForBilling}
+                                      onChange={() => toggleServiceBillingSelection(service)}
+                                    />
+                                    <div className="flex-1 space-y-1">
+                                      <div className="flex flex-wrap items-start justify-between gap-2">
+                                        <div>
+                                          <p className="font-semibold text-slate-900">{service.name}</p>
+                                          <p className="text-xs capitalize text-slate-500">{getServiceTypeLabel(service.type ?? 'other')}</p>
+                                        </div>
+                                        <div className="text-right">
+                                          <span className="text-sm font-semibold text-slate-900">{peso(service.effectivePrice ?? service.price ?? CLIENT_PRICE)}</span>
+                                          <p className="text-[11px] text-slate-500">{formatServiceStatus(service.status)}</p>
+                                        </div>
+                                      </div>
+                                      <div className="flex flex-wrap gap-2 text-[11px] text-slate-600">
+                                        <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-700">
+                                          Próximo cobro:{' '}
+                                          {service.nextBillingDate
+                                            ? formatDate(service.nextBillingDate)
+                                            : service.billingDay
+                                              ? `Día ${service.billingDay} de cada mes`
+                                              : 'Sin fecha definida'}
+                                        </span>
+                                        <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 font-medium text-blue-700">
+                                          Periodo objetivo: {activePeriodKey ?? 'Actual'}
+                                        </span>
+                                      </div>
+                                      {duplicateReceipt ? (
+                                        <p className="flex items-center gap-2 text-[11px] font-medium text-amber-700">
+                                          <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
+                                          Ya existe el folio {duplicateReceipt.folio} para este servicio en el mismo periodo.
+                                        </p>
+                                      ) : null}
+                                    </div>
+                                    <div className="flex flex-col items-end gap-2 text-right">
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => toggleServiceBillingSelection(service)}
+                                      >
+                                        {isSelectedForBilling ? 'Quitar del ticket' : 'Agregar al ticket'}
+                                      </Button>
+                                      {isSelectedForBilling ? (
+                                        <div className="space-y-1 text-right text-[11px] text-slate-500">
+                                          <p>
+                                            {selectedClient?.zoneName ? `${selectedClient.zoneName} · ` : ''}
+                                            {formatServiceStatus(service.status)}
+                                          </p>
+                                          {selectedClient?.address ? <p>{selectedClient.address}</p> : null}
+                                        </div>
+                                      ) : null}
+                                    </div>
+                                  </label>
+                                )
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-slate-500">Selecciona un cliente para ver sus servicios, adeudos y próximos cobros desde aquí.</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+                <div className="flex items-start gap-2 text-sm text-slate-700">
+                  <ClipboardList className="mt-0.5 h-4 w-4 text-slate-600" aria-hidden />
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-slate-500">Modo ágil</p>
+                    <p className="font-semibold">Atajos inspirados en Eleventa</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2 text-sm text-slate-700">
+                  <RefreshCw className="mt-0.5 h-4 w-4 text-emerald-600" aria-hidden />
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-slate-500">Última sincronización</p>
+                    <p className="font-semibold">{lastSyncLabel}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
           </section>
 
           <div className="grid gap-5 lg:gap-6 xl:grid-cols-[2fr,1fr]">
@@ -1935,394 +2177,14 @@ export default function PointOfSalePage() {
                     <span className="text-xs text-slate-500">{cartItems.length} artículos</span>
                   </div>
 
-                  <div className="grid gap-5 lg:gap-6 xl:grid-cols-[1.05fr,0.95fr] xl:items-start">
-                    <div className="space-y-4">
-                      <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
-                        <div className="grid gap-3 lg:grid-cols-[1.6fr,1fr]">
-                      <div className="space-y-2">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Panel de selección rápida</p>
-                        <p className="text-xs text-slate-500">Busca inventario y vincula servicios del cliente en un solo lugar.</p>
-                        <div className="relative">
-                          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                          <input
-                            type="search"
-                            value={ticketSearchTerm}
-                            onChange={(event) => setTicketSearchTerm(event.target.value)}
-                            placeholder="Escribe para agregar al ticket"
-                            className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm shadow-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                          />
-                          {hasTicketSearchQuery ? (
-                            filteredSearchItems.length > 0 ? (
-                              <ul className="absolute z-10 mt-2 w-full divide-y divide-slate-100 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">
-                                {filteredSearchItems.map((item) => (
-                                  <li key={item.id}>
-                                    <button
-                                      type="button"
-                                      onClick={() => addSearchItemToCart(item)}
-                                      className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm transition hover:bg-slate-50"
-                                    >
-                                      <div className="space-y-0.5">
-                                        <div className="flex flex-wrap items-center gap-2">
-                                          <span className="font-semibold text-slate-900">{item.label}</span>
-                                          <span
-                                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${
-                                              item.type === 'product'
-                                                ? 'bg-blue-50 text-blue-700'
-                                                : item.type === 'punctual-service'
-                                                  ? 'bg-amber-50 text-amber-700'
-                                                  : 'bg-emerald-50 text-emerald-700'
-                                            }`}
-                                          >
-                                            {item.type === 'product'
-                                              ? 'Producto'
-                                              : item.type === 'punctual-service'
-                                                ? 'Servicio puntual'
-                                                : 'Servicio mensual'}
-                                          </span>
-                                        </div>
-                                        <p className="text-xs text-slate-500">{item.detail || 'Sin categoría'}</p>
-                                      </div>
-                                      <span className="text-sm font-semibold text-slate-900">{peso(item.price)}</span>
-                                    </button>
-                                  </li>
-                                ))}
-                              </ul>
-                            ) : (
-                              <div className="absolute z-10 mt-2 w-full rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-500 shadow-lg">
-                                Sin coincidencias para "{ticketSearchTerm.trim()}".
-                              </div>
-                            )
-                          ) : (
-                            <div className="absolute z-10 mt-2 w-full rounded-lg border border-dashed border-slate-200 bg-white p-3 text-sm text-slate-500 shadow-lg">
-                              Escribe para buscar.
-                            </div>
-                          )}
-                        </div>
+                  <div className="space-y-5 xl:space-y-6">
+                    {cartItems.length === 0 ? (
+                      <div className="rounded-lg border border-dashed border-slate-200 p-6 text-center text-sm text-slate-500">
+                        <ShoppingCart className="mx-auto mb-3 h-5 w-5 text-slate-400" aria-hidden />
+                        Agrega productos del catálogo o registra un artículo personalizado.
                       </div>
-                      <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
-                        <div className="flex flex-wrap items-start justify-between gap-2">
-                          <div>
-                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Servicios del cliente</p>
-                            <p className="text-xs text-slate-500">Selecciona mensualidades y verifica duplicados.</p>
-                          </div>
-                          <div className="flex flex-wrap gap-1 text-[11px] text-slate-600">
-                            <span className="rounded-full bg-slate-100 px-2 py-1 font-semibold uppercase tracking-wide text-slate-600">Periodos</span>
-                            {eligiblePeriods.map((period) => (
-                              <span key={period} className="rounded-full bg-blue-50 px-2 py-1 font-semibold uppercase tracking-wide text-blue-700">
-                                {period}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                        <div className="grid gap-2 md:grid-cols-2">
-                          <label className="grid gap-1 text-xs font-medium text-slate-600">
-                            Buscar cliente
-                            <input
-                              type="search"
-                              ref={clientSearchInputRef}
-                              value={clientSearchTerm}
-                              onChange={(event) => setClientSearchTerm(event.target.value)}
-                              placeholder="Nombre, zona o ubicación"
-                              className="rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                            />
-                          </label>
-                          <label className="grid gap-1 text-xs font-medium text-slate-600">
-                            Cliente para validar servicios
-                            <select
-                              value={selectedClientId}
-                              onChange={(event) => setSelectedClientId(event.target.value)}
-                              className="rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                            >
-                              <option value="">Sin seleccionar</option>
-                              {clientOptionsForSale.map((client) => (
-                                <option key={client.id} value={client.id}>
-                                  {client.name} {client.zoneName ? `· ${client.zoneName}` : ''}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                        </div>
-                        <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
-                          <span>Mostrando {clientOptionsForSale.length} coincidencias</span>
-                          {(isLoadingClients || isLoadingPlans || isLoadingClientServices) && (
-                            <span>Validando datos de cliente y servicios…</span>
-                          )}
-                        </div>
-
-                        {clientServiceAlerts.length > 0 ? (
-                          <div className="space-y-1 rounded-md border border-amber-200 bg-amber-50 p-2">
-                            {clientServiceAlerts.map((alert) => (
-                              <p key={alert} className="flex items-center gap-2 text-[11px] font-semibold text-amber-800">
-                                <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
-                                {alert}
-                              </p>
-                            ))}
-                          </div>
-                        ) : null}
-
-                        <div className="space-y-3 rounded-md border border-dashed border-slate-200 bg-slate-50 p-3">
-                          {selectedClient ? (
-                            <div className="space-y-3 text-sm">
-                              <div className="flex flex-wrap items-start justify-between gap-2">
-                                <div>
-                                  <p className="font-semibold text-slate-900">{selectedClient.name}</p>
-                                  <p className="text-xs text-slate-500">
-                                    {selectedClient.location || 'Sin referencia de ubicación'}
-                                  </p>
-                                </div>
-                                <div className="text-right text-xs text-slate-600">
-                                  <p className="font-semibold text-slate-900">Adeudo: {peso(selectedClientDebt.totalDue)}</p>
-                                  <p>Mensualidad base: {peso(selectedClientDebt.monthlyFee)}</p>
-                                </div>
-                              </div>
-                              <div className="flex flex-wrap gap-2 text-[11px] text-slate-500">
-                                <span className="rounded-full bg-slate-100 px-2 py-1 font-semibold uppercase tracking-wide text-slate-600">Periodos elegibles</span>
-                                {eligiblePeriods.map((period) => (
-                                  <span key={period} className="rounded-full bg-emerald-50 px-2 py-1 font-semibold uppercase tracking-wide text-emerald-700">
-                                    {period}
-                                  </span>
-                                ))}
-                              </div>
-                              {selectedClientServices.length === 0 ? (
-                                <p className="text-xs text-slate-500">Este cliente aún no tiene servicios registrados.</p>
-                              ) : (
-                                <div className="space-y-2">
-                                  {isLoadingSelectedClientReceipts ? (
-                                    <p className="text-[11px] text-slate-500">Validando cobros previos del periodo…</p>
-                                  ) : null}
-                                  {selectedClientServices.map((service) => {
-                                    const isSelectedForBilling = cartItems.some(
-                                      (item) =>
-                                        item.type === 'monthly-service' &&
-                                        String(item.servicePlanId) === String(service.id) &&
-                                        item.clientId === selectedClient.id,
-                                    )
-                                    const duplicateReceipt = duplicateServiceReceiptMap[String(service.id)]
-
-                                    return (
-                                      <label
-                                        key={service.id ?? service.name}
-                                        className={`flex items-start gap-3 rounded-md border p-3 text-left text-sm transition ${
-                                          isSelectedForBilling
-                                            ? 'border-emerald-200 bg-emerald-50/50'
-                                            : 'border-slate-200 bg-white hover:border-blue-200'
-                                        }`}
-                                      >
-                                        <input
-                                          type="checkbox"
-                                          className="mt-1 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-200"
-                                          checked={isSelectedForBilling}
-                                          onChange={() => toggleServiceBillingSelection(service)}
-                                        />
-                                        <div className="flex-1 space-y-1">
-                                          <div className="flex flex-wrap items-start justify-between gap-2">
-                                            <div>
-                                              <p className="font-semibold text-slate-900">{service.name}</p>
-                                              <p className="text-xs capitalize text-slate-500">{getServiceTypeLabel(service.type ?? 'other')}</p>
-                                            </div>
-                                            <div className="text-right">
-                                              <span className="text-sm font-semibold text-slate-900">{peso(service.effectivePrice ?? service.price ?? CLIENT_PRICE)}</span>
-                                              <p className="text-[11px] text-slate-500">{formatServiceStatus(service.status)}</p>
-                                            </div>
-                                          </div>
-                                          <div className="flex flex-wrap gap-2 text-[11px] text-slate-600">
-                                            <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-700">
-                                              Próximo cobro:{' '}
-                                              {service.nextBillingDate
-                                                ? formatDate(service.nextBillingDate)
-                                                : service.billingDay
-                                                  ? `Día ${service.billingDay} de cada mes`
-                                                  : 'Sin fecha definida'}
-                                            </span>
-                                            <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 font-medium text-blue-700">
-                                              Periodo objetivo: {activePeriodKey ?? 'Actual'}
-                                            </span>
-                                          </div>
-                                          {duplicateReceipt ? (
-                                            <p className="flex items-center gap-2 text-[11px] font-medium text-amber-700">
-                                              <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
-                                              Ya existe el folio {duplicateReceipt.folio} para {duplicateReceipt.period ?? activePeriodKey ?? 'este periodo'}.
-                                            </p>
-                                          ) : null}
-                                        </div>
-                                      </label>
-                                    )
-                                  })}
-                                </div>
-                              )}
-                              {complementaryCatalog.length > 0 ? (
-                                <div className="rounded-md border border-slate-200 bg-white p-3">
-                                  <div className="flex items-center justify-between gap-2">
-                                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Servicios complementarios</p>
-                                    <span className="text-[11px] text-slate-500">Disponibles según el contrato</span>
-                                  </div>
-                                  <div className="mt-2 grid gap-2 md:grid-cols-3">
-                                    {complementaryCatalog.map((entry) => {
-                                      const { service, type } = entry
-                                      const normalizedServices =
-                                        clientServicesByClient[String(selectedClient.id)] ?? selectedClient.services ?? []
-                                      const hasSuspended = normalizedServices.some((item) => item.status === 'suspended')
-                                      const hasActive = normalizedServices.some((item) => item.status === 'active')
-                                      const hasPendingInstallation = normalizedServices.some((item) =>
-                                        ['pending', 'pending_installation', 'installation_pending'].includes(item.status),
-                                      )
-
-                                      let disabled = false
-                                      let helper = 'Aplica según el estado del servicio.'
-
-                                      if (type === COMPLEMENTARY_TYPES.RECONNECTION) {
-                                        disabled = !hasSuspended
-                                        helper = disabled
-                                          ? 'Requiere un servicio suspendido para reconectar.'
-                                          : 'Disponible por suspensión.'
-                                      } else if (type === COMPLEMENTARY_TYPES.INSTALLATION) {
-                                        disabled = hasActive || hasPendingInstallation
-                                        helper = disabled
-                                          ? hasActive
-                                            ? 'Ya existe una instalación activa.'
-                                            : 'Pendiente de coordinar instalación.'
-                                          : 'Agrega la instalación inicial.'
-                                      } else if (type === COMPLEMENTARY_TYPES.TECHNICAL_VISIT) {
-                                        disabled = !hasActive && !hasSuspended && !hasPendingInstallation
-                                        helper = disabled
-                                          ? 'Asigna un servicio para programar la visita.'
-                                          : 'Usa para diagnósticos y soporte.'
-                                      }
-
-                                      return (
-                                        <button
-                                          key={type}
-                                          type="button"
-                                          className={`rounded-md border px-3 py-2 text-left text-sm transition ${
-                                            disabled
-                                              ? 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400'
-                                              : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
-                                          }`}
-                                          onClick={() =>
-                                            addSearchItemToCart({
-                                              id: `${type}-${service.id}`,
-                                              label: service.name,
-                                              detail: service.category ?? 'Servicio puntual',
-                                              price: service.price,
-                                              type: 'punctual-service',
-                                              service,
-                                              complementaryType: type,
-                                            })
-                                          }
-                                          disabled={disabled}
-                                        >
-                                          <p className="font-semibold">{service.name}</p>
-                                          <p className="text-[11px] text-slate-500">{helper}</p>
-                                        </button>
-                                      )
-                                    })}
-                                  </div>
-                                </div>
-                              ) : null}
-
-                              {selectedClientServices.length > 0 && monthlyServices.length > 0 ? (
-                                <div className="space-y-2 rounded-md border border-amber-200 bg-amber-50 p-3">
-                                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-amber-800">
-                                    <span className="font-semibold uppercase tracking-wide">Ajuste de plan</span>
-                                    <span>Prorratea la diferencia y actualiza la mensualidad siguiente</span>
-                                  </div>
-                                  <div className="grid gap-2 md:grid-cols-2">
-                                    <select
-                                      className="rounded border border-amber-200 p-2 text-sm"
-                                      value={planChangeTarget.serviceId}
-                                      onChange={(event) =>
-                                        setPlanChangeTarget((prev) => ({
-                                          ...prev,
-                                          serviceId: event.target.value,
-                                        }))
-                                      }
-                                    >
-                                      <option value="">Servicio actual</option>
-                                      {selectedClientServices.map((service) => (
-                                        <option key={service.id} value={service.id}>
-                                          {service.name} · {formatServiceStatus(service.status)}
-                                        </option>
-                                      ))}
-                                    </select>
-                                    <select
-                                      className="rounded border border-amber-200 p-2 text-sm"
-                                      value={planChangeTarget.planId}
-                                      onChange={(event) =>
-                                        setPlanChangeTarget((prev) => ({
-                                          ...prev,
-                                          planId: event.target.value,
-                                        }))
-                                      }
-                                    >
-                                      <option value="">Nuevo plan</option>
-                                      {monthlyServices.map((plan) => (
-                                        <option key={plan.id} value={plan.id}>
-                                          {plan.name} · ${plan.price}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </div>
-                                  <PlanAdjustmentSummary
-                                    selection={planChangeTarget}
-                                    services={selectedClientServices}
-                                    plans={monthlyServices}
-                                    onAdd={(adjustment) =>
-                                      updateCart((current) => [...current, adjustment])
-                                    }
-                                  />
-                                </div>
-                              ) : null}
-                            </div>
-                          ) : (
-                            <p className="text-xs text-slate-500">Selecciona un cliente para ver sus servicios, adeudos y próximos cobros desde el ticket.</p>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="rounded-lg border border-dashed border-slate-200 bg-white p-3">
-                      <div className="space-y-1">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Crear cliente rápido</p>
-                        <p className="text-xs text-slate-500">Captura lo mínimo para seguir vendiendo y completa los datos después.</p>
-                      </div>
-                      <form className="mt-2 space-y-2" onSubmit={handleQuickCreateClient}>
-                        <label className="grid gap-1 text-xs font-medium text-slate-600">
-                          Nombre del cliente
-                          <input
-                            type="text"
-                            value={quickClientName}
-                            onChange={(event) => setQuickClientName(event.target.value)}
-                            placeholder="Ej. Juan Pérez"
-                            className="rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                          />
-                        </label>
-                        <label className="grid gap-1 text-xs font-medium text-slate-600">
-                          Referencia o ubicación (opcional)
-                          <input
-                            type="text"
-                            value={quickClientLocation}
-                            onChange={(event) => setQuickClientLocation(event.target.value)}
-                            placeholder="Calle, colonia o punto de referencia"
-                            className="rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                          />
-                        </label>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Button type="submit" variant="secondary" disabled={!quickClientName.trim() || isCreatingClient}>
-                            <ClipboardList className="mr-2 h-4 w-4" aria-hidden />
-                            {isCreatingClient ? 'Guardando…' : 'Registrar cliente'}
-                          </Button>
-                          <p className="text-[11px] text-slate-500">Se registrará como residencial; podrás asignar servicios después.</p>
-                        </div>
-                      </form>
-                    </div>
-                  </div>
-                    <div className="space-y-5 xl:space-y-6 xl:sticky xl:top-4">
-                      {cartItems.length === 0 ? (
-                        <div className="rounded-lg border border-dashed border-slate-200 p-6 text-center text-sm text-slate-500">
-                          <ShoppingCart className="mx-auto mb-3 h-5 w-5 text-slate-400" aria-hidden />
-                          Agrega productos del catálogo o registra un artículo personalizado.
-                        </div>
-                      ) : (
-                        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-md">
+                    ) : (
+                      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-md">
                           <table className="min-w-full divide-y divide-slate-200 text-sm">
                         <thead className="bg-slate-50">
                           <tr>
