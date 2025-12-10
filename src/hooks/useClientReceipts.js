@@ -1,7 +1,8 @@
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { apiClient } from '../services/apiClient.js'
 import { queryKeys } from '../services/queryKeys.js'
+import { ApiError } from '../services/apiClient.js'
 
 const extractReceiptItems = (payload) => {
   if (Array.isArray(payload?.items)) {
@@ -31,15 +32,24 @@ export const mapReceipt = (receipt = {}) => ({
 })
 
 export const useClientReceipts = ({ clientId, limit = 6, enabled = true } = {}) => {
-  const shouldFetch = Boolean(clientId) && enabled
+  const [isReceiptsSupported, setIsReceiptsSupported] = useState(true)
+  const shouldFetch = Boolean(clientId) && enabled && isReceiptsSupported
   const queryKey = useMemo(() => queryKeys.clientReceipts({ clientId, limit }), [clientId, limit])
 
   const fetchReceipts = useCallback(async () => {
-    const response = await apiClient.get('/receipts', {
-      query: { client_id: clientId, limit },
-    })
-    return extractReceiptItems(response.data).map(mapReceipt)
-  }, [clientId, limit])
+    try {
+      const response = await apiClient.get('/receipts', {
+        query: { client_id: clientId, limit },
+      })
+      return extractReceiptItems(response.data).map(mapReceipt)
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) {
+        setIsReceiptsSupported(false)
+        return []
+      }
+      throw error
+    }
+  }, [clientId, limit, setIsReceiptsSupported])
 
   const { data, status, error, isLoading, isFetching, refetch } = useQuery({
     queryKey,
