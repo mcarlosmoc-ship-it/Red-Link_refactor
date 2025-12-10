@@ -330,12 +330,19 @@ class AdminIdentity:
 
 
 def get_current_admin(token: str = Depends(oauth2_scheme)) -> AdminIdentity:
-    key = _load_jwt_key()
+    try:
+        key = _load_jwt_key()
+        expected_username, _ = _load_admin_credentials()
+    except SecurityConfigurationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+
     payload = _decode_jwt(token, key)
     username = payload.get("sub")
     if not isinstance(username, str):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido")
-    expected_username, _ = _load_admin_credentials()
     if username.strip().lower() != expected_username.strip().lower():
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido")
     return AdminIdentity(username=expected_username)

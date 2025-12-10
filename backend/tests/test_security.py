@@ -1,8 +1,11 @@
 from datetime import timedelta
 
 import pytest
+from fastapi.testclient import TestClient
 
 from backend.app import models
+from backend.app.database import get_db
+from backend.app.main import app
 from backend.app.security import _resolve_access_token_expiry, generate_totp_code
 from backend.app.services.backups import perform_backup
 
@@ -115,6 +118,31 @@ def test_admin_login_requires_otp(security_settings, client):
     )
     assert response.status_code == 200
     assert "access_token" in response.json()
+
+
+def test_admin_routes_fail_cleanly_without_credentials(db_session, monkeypatch):
+    for env_var in ("ADMIN_USERNAME", "ADMIN_PASSWORD_HASH", "ADMIN_JWT_SECRET"):
+        monkeypatch.delenv(env_var, raising=False)
+
+    def override_get_db():
+        try:
+            yield db_session
+        finally:
+            db_session.expire_all()
+
+    monkeypatch.setattr("backend.app.main.run_database_migrations", lambda: None)
+    app.dependency_overrides[get_db] = override_get_db
+
+    try:
+        with TestClient(app) as unauthenticated_client:
+            response = unauthenticated_client.get(
+                "/payments", headers={"Authorization": "Bearer dummy"}
+            )
+
+        assert response.status_code == 503
+        assert "ADMIN_" in response.json().get("detail", "")
+    finally:
+        app.dependency_overrides.pop(get_db, None)
 
 
 def test_access_token_expiry_defaults_to_15_minutes(monkeypatch):
