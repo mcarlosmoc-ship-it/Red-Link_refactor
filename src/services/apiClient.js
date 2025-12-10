@@ -48,13 +48,23 @@ const resolveBrowserDefaultBaseUrl = () => {
   const port = location.port ?? ''
   const isLocalHost = ['localhost', '127.0.0.1', '0.0.0.0'].includes(hostname)
 
+  const backendHost = hostname === '0.0.0.0' ? '127.0.0.1' : hostname
+  const backendPort = readDevBackendPort()
+
   if (isRunningOnDevServer({ isLocalHost, port })) {
     // When running the SPA locally through Vite we want to keep the
     // historical behaviour of pointing the client to the FastAPI service
     // listening on port 8000. This mirrors the default value suggested in
     // the documentation and avoids accidental calls to the dev server.
-    const backendHost = hostname === '0.0.0.0' ? '127.0.0.1' : hostname
-    const backendPort = readDevBackendPort()
+    return `${location.protocol}//${backendHost}:${backendPort}`
+  }
+
+  // If the app is being served locally but not by the Vite dev server
+  // (for example, a `vite preview` running on a custom port), prefer the
+  // dedicated backend port instead of the frontend server origin. This
+  // keeps the default FastAPI target on localhost:8000 even when the
+  // static assets are served from another local port.
+  if (isLocalHost && port && port !== backendPort) {
     return `${location.protocol}//${backendHost}:${backendPort}`
   }
 
