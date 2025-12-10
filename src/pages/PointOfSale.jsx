@@ -2656,6 +2656,7 @@ export default function PointOfSalePage() {
                   </div>
                 </form>
               </div>
+              </div>
             </div>
           </CardContent>
         </Card>
