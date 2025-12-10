@@ -474,9 +474,10 @@ const applySearchParams = (url, searchParams) => {
 }
 
 const buildUrl = (path, searchParams) => {
-  const isAbsolute = isAbsoluteUrl(path ?? '')
-  const normalizedPath = isAbsolute || path?.startsWith('/') ? path ?? '' : `/${path ?? ''}`
-  const url = isAbsolute ? normalizedPath : `${BASE_URL}${normalizedPath}`
+  const normalizedPath = typeof path === 'string' ? path.trim() : path ?? ''
+  const isAbsolute = isAbsoluteUrl(normalizedPath)
+  const normalizedRelativePath = isAbsolute || normalizedPath.startsWith('/') ? normalizedPath : `/${normalizedPath}`
+  const url = isAbsolute ? normalizedPath : `${BASE_URL}${normalizedRelativePath}`
   return applySearchParams(url, searchParams)
 }
 
