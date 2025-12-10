@@ -1900,7 +1900,7 @@ export default function PointOfSalePage() {
 
             <section aria-labelledby="carrito-venta" className="space-y-4">
               <Card>
-                <CardContent className="space-y-4">
+                <CardContent className="space-y-6">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="space-y-1">
                       <h2 id="carrito-venta" className="text-lg font-semibold text-slate-900">
@@ -1913,8 +1913,10 @@ export default function PointOfSalePage() {
                     <span className="text-xs text-slate-500">{cartItems.length} artículos</span>
                   </div>
 
-                  <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
-                    <div className="grid gap-3 lg:grid-cols-[1.6fr,1fr]">
+                  <div className="grid gap-6 xl:grid-cols-[1.05fr,0.95fr] xl:items-start">
+                    <div className="space-y-4">
+                      <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                        <div className="grid gap-3 lg:grid-cols-[1.6fr,1fr]">
                       <div className="space-y-2">
                         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Panel de selección rápida</p>
                         <p className="text-xs text-slate-500">Busca inventario y vincula servicios del cliente en un solo lugar.</p>
@@ -2291,27 +2293,27 @@ export default function PointOfSalePage() {
                       </form>
                     </div>
                   </div>
-
-                  {cartItems.length === 0 ? (
-                    <div className="rounded-lg border border-dashed border-slate-200 p-6 text-center text-sm text-slate-500">
-                      <ShoppingCart className="mx-auto mb-3 h-5 w-5 text-slate-400" aria-hidden />
-                      Agrega productos del catálogo o registra un artículo personalizado.
-                    </div>
-                  ) : (
-                    <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-                      <table className="min-w-full divide-y divide-slate-200 text-sm">
+                    <div className="space-y-5 xl:space-y-6 xl:sticky xl:top-4">
+                      {cartItems.length === 0 ? (
+                        <div className="rounded-lg border border-dashed border-slate-200 p-6 text-center text-sm text-slate-500">
+                          <ShoppingCart className="mx-auto mb-3 h-5 w-5 text-slate-400" aria-hidden />
+                          Agrega productos del catálogo o registra un artículo personalizado.
+                        </div>
+                      ) : (
+                        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-md">
+                          <table className="min-w-full divide-y divide-slate-200 text-sm">
                         <thead className="bg-slate-50">
                           <tr>
-                            <th scope="col" className="px-3 py-2 text-left font-semibold text-slate-600">
+                            <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                               Concepto
                             </th>
-                            <th scope="col" className="px-3 py-2 text-center font-semibold text-slate-600">
+                            <th scope="col" className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-500">
                               Cantidad
                             </th>
-                            <th scope="col" className="px-3 py-2 text-right font-semibold text-slate-600">
+                            <th scope="col" className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
                               Subtotal
                             </th>
-                            <th scope="col" className="px-3 py-2 text-right font-semibold text-slate-600">
+                            <th scope="col" className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
                               Acción
                             </th>
                           </tr>
@@ -2324,10 +2326,10 @@ export default function PointOfSalePage() {
                                 cartValidation[item.id] ? 'bg-amber-50/50' : ''
                               }`}
                             >
-                              <td className="px-3 py-3">
-                                <div className="space-y-1">
+                              <td className="px-4 py-4">
+                                <div className="space-y-1.5">
                                   <div className="flex flex-wrap items-center gap-2">
-                                    <p className="font-medium text-slate-900">{item.name}</p>
+                                    <p className="text-base font-semibold text-slate-900">{item.name}</p>
                                     <span
                                       className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${
                                         item.type === 'product'
@@ -2357,8 +2359,8 @@ export default function PointOfSalePage() {
                                       {describeChargeTiming(getChargeTimingForItem(item))}
                                     </span>
                                   </div>
-                                  <p className="text-[11px] uppercase tracking-wide text-slate-400">
-                                    Precio unitario: <strong>{peso(item.unitPrice)}</strong>
+                                  <p className="text-xs uppercase tracking-wide text-slate-500">
+                                    Precio unitario: <strong className="text-slate-900">{peso(item.unitPrice)}</strong>
                                   </p>
                                   {cartValidation[item.id] ? (
                                     <p className="flex items-center gap-2 text-[11px] font-medium text-amber-700">
@@ -2368,12 +2370,12 @@ export default function PointOfSalePage() {
                                   ) : null}
                                 </div>
                               </td>
-                              <td className="px-3 py-3">
-                                <div className="flex items-center justify-center gap-2">
+                              <td className="px-4 py-4">
+                                <div className="flex items-center justify-center gap-3">
                                   <Button
                                     type="button"
                                     variant="outline"
-                                    className="h-8 w-8 p-0"
+                                    className="h-9 w-9 p-0"
                                     onClick={() => decreaseItemQuantity(item.id)}
                                     aria-label={`Reducir cantidad de ${item.name}`}
                                   >
@@ -2385,7 +2387,7 @@ export default function PointOfSalePage() {
                                     step="0.01"
                                     value={item.quantity}
                                     onChange={(event) => changeItemQuantity(item.id, event.target.value)}
-                                    className={`h-8 w-20 rounded-md border px-2 text-center text-sm ${
+                                    className={`h-9 w-24 rounded-md border px-3 text-center text-sm font-semibold ${
                                       cartValidation[item.id]
                                         ? 'border-amber-300 bg-amber-50 text-amber-800'
                                         : 'border-slate-200'
@@ -2394,7 +2396,7 @@ export default function PointOfSalePage() {
                                   <Button
                                     type="button"
                                     variant="outline"
-                                    className="h-8 w-8 p-0"
+                                    className="h-9 w-9 p-0"
                                     onClick={() => increaseItemQuantity(item.id)}
                                     aria-label={`Incrementar cantidad de ${item.name}`}
                                   >
@@ -2402,11 +2404,11 @@ export default function PointOfSalePage() {
                                   </Button>
                                 </div>
                               </td>
-                              <td className="px-3 py-3 text-right">
-                                <p className="text-[11px] uppercase tracking-wide text-slate-400">Subtotal</p>
-                                <span className="font-semibold text-slate-900">{peso(item.unitPrice * item.quantity)}</span>
+                              <td className="px-4 py-4 text-right">
+                                <p className="text-xs uppercase tracking-wide text-slate-500">Subtotal</p>
+                                <span className="text-base font-semibold text-slate-900">{peso(item.unitPrice * item.quantity)}</span>
                               </td>
-                              <td className="px-3 py-3 text-right">
+                              <td className="px-4 py-4 text-right">
                                 <Button
                                   type="button"
                                   variant="ghost"
@@ -2426,7 +2428,7 @@ export default function PointOfSalePage() {
                   )}
 
 
-                  <form className="space-y-4" onSubmit={handleOpenPaymentModal}>
+                  <form className="space-y-5" onSubmit={handleOpenPaymentModal}>
                     <div className="grid gap-3 md:grid-cols-2">
                       <label className="grid gap-1 text-xs font-medium text-slate-600">
                         Cliente (opcional)
@@ -2508,14 +2510,14 @@ export default function PointOfSalePage() {
                       />
                     </label>
 
-                    <div className="rounded-lg border border-slate-200 bg-white p-3 text-xs text-slate-600 shadow-sm">
+                    <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700 shadow-sm">
                       <div className="flex flex-wrap items-center justify-between gap-2">
-                        <p className="font-semibold text-slate-900">Totales por categoría</p>
-                        <span className="text-[11px] text-slate-500">Cobros inmediatos vs. futuros</span>
+                        <p className="text-sm font-semibold text-slate-900">Totales por categoría</p>
+                        <span className="text-xs text-slate-500">Cobros inmediatos vs. futuros</span>
                       </div>
                       <div className="mt-3 grid gap-3 sm:grid-cols-2">
                         {cartCategoriesSummary.map((category) => (
-                          <div key={category.key} className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2">
+                          <div key={category.key} className="flex items-center justify-between rounded-lg bg-slate-50 px-4 py-3">
                             <div className="space-y-1">
                               <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                                 {category.label}
@@ -2528,7 +2530,7 @@ export default function PointOfSalePage() {
                                 )}
                               </p>
                             </div>
-                            <span className="text-sm font-semibold text-slate-900">{peso(category.amount)}</span>
+                            <span className="text-base font-semibold text-slate-900">{peso(category.amount)}</span>
                           </div>
                         ))}
                       </div>
@@ -2540,7 +2542,7 @@ export default function PointOfSalePage() {
                           {cartChargeTimingSummary.map((timing) => (
                             <div
                               key={timing.key}
-                              className="rounded-md border border-slate-100 bg-slate-50 px-3 py-2"
+                              className="rounded-lg border border-slate-100 bg-slate-50 px-4 py-3"
                             >
                               <div className="flex items-start justify-between gap-3">
                                 <div className="space-y-0.5">
@@ -2549,7 +2551,7 @@ export default function PointOfSalePage() {
                                   </p>
                                   <p className="text-[11px] text-slate-500">{timing.detail}</p>
                                 </div>
-                                <span className="text-sm font-semibold text-slate-900">
+                                <span className="text-base font-semibold text-slate-900">
                                   {peso(timing.total)}
                                 </span>
                               </div>
@@ -2586,10 +2588,10 @@ export default function PointOfSalePage() {
                       </div>
                     </div>
 
-                    <dl className="space-y-2 rounded-lg bg-slate-50 p-4 text-sm text-slate-600">
+                    <dl className="space-y-3 rounded-xl border border-slate-200 bg-gradient-to-b from-slate-50 to-white p-4 text-sm text-slate-700 shadow-sm">
                       <div className="flex items-center justify-between">
                         <dt>Subtotal</dt>
-                        <dd className="font-medium text-slate-900">{peso(subtotal)}</dd>
+                        <dd className="font-semibold text-slate-900">{peso(subtotal)}</dd>
                       </div>
                       <div className="flex items-center justify-between">
                         <dt>Descuento</dt>
@@ -2599,9 +2601,9 @@ export default function PointOfSalePage() {
                         <dt>Impuestos</dt>
                         <dd className="font-medium text-slate-900">{peso(taxValue)}</dd>
                       </div>
-                      <div className="flex items-center justify-between border-t border-slate-200 pt-2 text-base">
-                        <dt className="font-semibold text-slate-900">Total a cobrar</dt>
-                        <dd className="font-semibold text-blue-600">{peso(cartTotal)}</dd>
+                      <div className="flex items-center justify-between border-t border-slate-200 pt-2">
+                        <dt className="text-sm font-semibold text-slate-900">Total a cobrar</dt>
+                        <dd className="text-3xl font-bold text-blue-700">{peso(cartTotal)}</dd>
                       </div>
                     </dl>
 
@@ -2611,14 +2613,14 @@ export default function PointOfSalePage() {
                     <p className="text-sm text-red-600">{checkoutGuard.blockingReasons[0]}</p>
                   ) : null}
 
-                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-100 bg-blue-50/70 p-4 shadow-sm">
                     <Button type="button" variant="secondary" onClick={focusClientSearch}>
                       Asignar cliente
                     </Button>
                     <div className="flex items-center gap-4">
                       <div className="text-right">
-                        <p className="text-xs uppercase tracking-wide text-slate-400">Total</p>
-                        <p className="text-2xl font-bold text-slate-900">{peso(cartTotal)}</p>
+                        <p className="text-sm font-semibold uppercase tracking-wide text-blue-900">Total</p>
+                        <p className="text-3xl font-bold text-slate-900">{peso(cartTotal)}</p>
                       </div>
                       <Button
                         type="button"
@@ -2631,8 +2633,10 @@ export default function PointOfSalePage() {
                     </div>
                   </div>
                 </form>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
+                </CardContent>
+              </Card>
 
             {LEGACY_PAYMENTS_ENABLED && (
               <Card>
