@@ -279,14 +279,14 @@ export default function BulkAssignServicesModal({
     })
 
     const csvContent = [header, ...rows].join('\n')
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
+    const blob = new globalThis.Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = globalThis.URL.createObjectURL(blob)
 
     const link = document.createElement('a')
     link.href = url
     link.download = 'asignacion_servicios_internet.csv'
     link.click()
-    URL.revokeObjectURL(url)
+    globalThis.URL.revokeObjectURL(url)
   }
 
   const parseCsvAssignments = async (file) => {

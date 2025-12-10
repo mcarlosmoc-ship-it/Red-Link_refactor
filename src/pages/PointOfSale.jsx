@@ -2446,8 +2446,8 @@ export default function PointOfSalePage() {
                                     type="number"
                                     min="0"
                                     step="0.01"
-                                    value={tax}
-                                    onChange={(event) => setTax(event.target.value)}
+                                    value={taxRate}
+                                    onChange={(event) => setTaxRate(event.target.value)}
                                     className="rounded-xl border border-slate-200 px-3 py-2 text-sm shadow-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
                                   />
                                 </label>
