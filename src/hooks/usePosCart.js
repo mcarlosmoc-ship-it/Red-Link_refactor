@@ -47,6 +47,10 @@ export const resolveClientChangeForCart = ({
 const EMPTY_VALIDATION_FLAGS = Object.freeze({})
 
 const areMetadataEqual = (previous = {}, next = {}) => {
+  if (previous === next) {
+    return true
+  }
+
   const prevFlags = previous.validationFlags ?? EMPTY_VALIDATION_FLAGS
   const nextFlags = next.validationFlags ?? EMPTY_VALIDATION_FLAGS
 
@@ -61,8 +65,12 @@ const areMetadataEqual = (previous = {}, next = {}) => {
   )
 }
 
-const normalizeLineMetadata = (item, { activePeriodKey, productLookup, activeServices }) => {
-  const previous = item.metadata ?? {}
+const normalizeLineMetadata = (
+  item,
+  { activePeriodKey, productLookup, activeServices, metadataCache },
+) => {
+  const cached = metadataCache?.get?.(item.id)
+  const previous = item.metadata ?? cached ?? {}
   const sourceProduct = item.productId ? productLookup?.get?.(item.productId) : null
   const activeService = item.servicePlanId
     ? activeServices?.find((service) => String(service.id) === String(item.servicePlanId))
@@ -92,7 +100,17 @@ const normalizeLineMetadata = (item, { activePeriodKey, productLookup, activeSer
     serviceStatus: nextServiceStatus,
   }
 
-  return areMetadataEqual(previous, nextMetadata) ? previous : nextMetadata
+  const stableMetadata = areMetadataEqual(previous, nextMetadata)
+    ? previous
+    : areMetadataEqual(cached, nextMetadata)
+      ? cached
+      : nextMetadata
+
+  if (metadataCache) {
+    metadataCache.set(item.id, stableMetadata)
+  }
+
+  return stableMetadata
 }
 
 export const usePosCart = ({
@@ -106,6 +124,8 @@ export const usePosCart = ({
 } = {}) => {
   const [cartItems, setCartItems] = useState([])
   const previousClientIdRef = useRef(selectedClientId ?? '')
+  const metadataCacheRef = useRef(new Map())
+  const previousActiveServiceIdsRef = useRef()
 
   const enrichItem = useCallback(
     (item) => {
@@ -113,6 +133,7 @@ export const usePosCart = ({
         activePeriodKey,
         productLookup,
         activeServices,
+        metadataCache: metadataCacheRef.current,
       })
 
       return item.metadata === nextMetadata ? item : { ...item, metadata: nextMetadata }
@@ -180,6 +201,10 @@ export const usePosCart = ({
   )
 
   const refreshMetadata = useCallback(() => {
+    // Antes generábamos un ciclo de renders porque cada normalización devolvía
+    // nuevos objetos de metadata incluso cuando nada cambiaba. El caché de
+    // metadata y la reutilización de referencias evitan que `setCartItems`
+    // reciba entradas distintas en cada render.
     setCartItems((current) => {
       if (!current.length) {
         return current
@@ -188,7 +213,12 @@ export const usePosCart = ({
       let hasChanges = false
 
       const nextItems = current.map((item) => {
-        const nextMetadata = normalizeLineMetadata(item, { activePeriodKey, productLookup, activeServices })
+        const nextMetadata = normalizeLineMetadata(item, {
+          activePeriodKey,
+          productLookup,
+          activeServices,
+          metadataCache: metadataCacheRef.current,
+        })
 
         if (areMetadataEqual(item.metadata, nextMetadata)) {
           return item
@@ -207,6 +237,24 @@ export const usePosCart = ({
       setCartItems((current) => {
         let hasChanges = false
 
+        for (const item of current) {
+          const currentFlags = item.metadata?.validationFlags ?? EMPTY_VALIDATION_FLAGS
+          const nextHasIssue = Boolean(validationMap[item.id])
+          const nextMessage = validationMap[item.id] ?? ''
+
+          if (
+            currentFlags.hasIssue !== nextHasIssue ||
+            (currentFlags.message ?? '') !== nextMessage
+          ) {
+            hasChanges = true
+            break
+          }
+        }
+
+        if (!hasChanges) {
+          return current
+        }
+
         const nextItems = current.map((item) => {
           const currentFlags = item.metadata?.validationFlags ?? EMPTY_VALIDATION_FLAGS
           const nextHasIssue = Boolean(validationMap[item.id])
@@ -219,7 +267,6 @@ export const usePosCart = ({
             return item
           }
 
-          hasChanges = true
           const nextFlags = {
             ...currentFlags,
             hasIssue: nextHasIssue,
@@ -228,15 +275,16 @@ export const usePosCart = ({
 
           const nextMetadata = normalizeLineMetadata(
             { ...item, metadata: { ...item.metadata, validationFlags: nextFlags } },
-            { activePeriodKey, productLookup, activeServices },
+            {
+              activePeriodKey,
+              productLookup,
+              activeServices,
+              metadataCache: metadataCacheRef.current,
+            },
           )
 
           return item.metadata === nextMetadata ? item : { ...item, metadata: nextMetadata }
         })
-
-        if (!hasChanges) {
-          return current
-        }
 
         return nextItems
       })
@@ -276,11 +324,22 @@ export const usePosCart = ({
   }, [confirmClientChange, enrichItem, onClientCleared, onRevertClient, selectedClientId])
 
   useEffect(() => {
-    if (!activeServices?.length) {
+    const nextIds = activeServices?.map((service) => String(service.id)) ?? []
+    const previousIds = previousActiveServiceIdsRef.current
+
+    if (previousIds && nextIds.length === previousIds.length && nextIds.every((id, index) => id === previousIds[index])) {
       return
     }
 
-    const activeIds = new Set(activeServices.map((service) => String(service.id)))
+    previousActiveServiceIdsRef.current = nextIds
+
+    if (!nextIds.length) {
+      return
+    }
+
+    // Mantener la identidad de los ids evita recalcular el carrito cuando
+    // `activeServices` llega con la misma información en cada render.
+    const activeIds = new Set(nextIds)
     setCartItems((current) => {
       const filtered = current.filter(
         (item) => !SERVICE_LINE_TYPES.has(item.type) || !item.servicePlanId || activeIds.has(String(item.servicePlanId)),
