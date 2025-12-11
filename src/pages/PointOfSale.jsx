@@ -45,6 +45,16 @@ import { getServiceTypeLabel } from '../constants/serviceTypes.js'
 const PAYMENT_METHODS = ['Efectivo', 'Transferencia', 'Tarjeta', 'Revendedor', 'Otro']
 const POS_CHECKOUT_METHODS = ['Efectivo', 'Tarjeta', 'Transferencia', 'Vales']
 
+const areValidationMapsEqual = (a = {}, b = {}) => {
+  const aEntries = Object.entries(a)
+
+  if (aEntries.length !== Object.keys(b).length) {
+    return false
+  }
+
+  return aEntries.every(([id, message]) => b[id] === message)
+}
+
 const MAIN_TABS = [
   { id: 'ventas', label: 'Ventas', icon: ShoppingCart },
   { id: 'productos', label: 'Productos', icon: Box },
@@ -336,6 +346,7 @@ export default function PointOfSalePage() {
   const [lastSyncLabel] = useState(() => formatDateTime(new Date()))
   const cartValidationEnabled = isPosCartValidationEnabled()
   const clientSearchInputRef = useRef(null)
+  const lastValidationMapRef = useRef({})
 
   const closeCustomItemModal = () => {
     setIsCustomItemModalOpen(false)
@@ -1118,10 +1129,16 @@ export default function PointOfSalePage() {
   useEffect(() => {
     if (!cartValidationEnabled) {
       updateValidationFlags({})
+      lastValidationMapRef.current = {}
+      return
+    }
+
+    if (areValidationMapsEqual(cartValidation, lastValidationMapRef.current)) {
       return
     }
 
     updateValidationFlags(cartValidation)
+    lastValidationMapRef.current = cartValidation
   }, [cartValidation, cartValidationEnabled, updateValidationFlags])
 
   const checkoutGuard = useMemo(() => {

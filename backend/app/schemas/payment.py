@@ -94,6 +94,15 @@ class ServicePaymentRead(ServicePaymentBase):
 
     model_config = ConfigDict(from_attributes=True)
 
+    @model_validator(mode="after")
+    def _default_missing_method(self):
+        """Gracefully handle legacy rows that missed a payment method."""
+
+        if self.method is None and not self.methods:
+            self.method = PaymentMethod.EFECTIVO
+
+        return self
+
 
 class ServicePaymentListResponse(PaginatedResponse[ServicePaymentRead]):
     """Paginated payment listing."""

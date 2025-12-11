@@ -134,21 +134,43 @@ export const usePosCart = ({
 
   const updateValidationFlags = useCallback(
     (validationMap = {}) => {
-      updateCart((current) =>
-        current.map((item) => ({
-          ...item,
-          metadata: {
-            ...item.metadata,
-            validationFlags: {
-              ...item.metadata?.validationFlags,
-              hasIssue: Boolean(validationMap[item.id]),
-              message: validationMap[item.id] ?? '',
+      setCartItems((current) => {
+        let hasChanges = false
+
+        const nextItems = current.map((item) => {
+          const currentFlags = item.metadata?.validationFlags ?? {}
+          const nextHasIssue = Boolean(validationMap[item.id])
+          const nextMessage = validationMap[item.id] ?? ''
+
+          if (
+            currentFlags.hasIssue === nextHasIssue &&
+            (currentFlags.message ?? '') === nextMessage
+          ) {
+            return item
+          }
+
+          hasChanges = true
+          return {
+            ...item,
+            metadata: {
+              ...item.metadata,
+              validationFlags: {
+                ...currentFlags,
+                hasIssue: nextHasIssue,
+                message: nextMessage,
+              },
             },
-          },
-        })),
-      )
+          }
+        })
+
+        if (!hasChanges) {
+          return current
+        }
+
+        return nextItems.map(enrichItem)
+      })
     },
-    [updateCart],
+    [enrichItem],
   )
 
   useEffect(() => {
