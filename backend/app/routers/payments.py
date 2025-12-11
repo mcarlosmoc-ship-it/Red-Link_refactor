@@ -137,9 +137,14 @@ def list_payments(
     normalized_period = None
     if period_key:
         try:
-            normalized_period, _, _ = BillingPeriodService._normalize_period(period_key)
+            normalized_period, _, _ = BillingPeriodService._normalize_period(period_key.strip())
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        except Exception as exc:  # pragma: no cover - defensive guard against malformed keys
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid period key format, expected YYYY-MM",
+            ) from exc
 
     try:
         items, total = PaymentService.list_payments(

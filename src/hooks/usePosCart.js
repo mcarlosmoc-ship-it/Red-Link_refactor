@@ -44,6 +44,8 @@ export const resolveClientChangeForCart = ({
   return { nextCartItems: sanitizedItems, shouldUpdatePrevious: true }
 }
 
+const EMPTY_VALIDATION_FLAGS = Object.freeze({})
+
 const normalizeLineMetadata = (item, { activePeriodKey, productLookup, activeServices }) => {
   const sourceProduct = item.productId ? productLookup?.get?.(item.productId) : null
   const activeService = item.servicePlanId
@@ -55,7 +57,7 @@ const normalizeLineMetadata = (item, { activePeriodKey, productLookup, activeSer
     period: item.metadata?.period ?? activePeriodKey ?? null,
     months: item.metadata?.months ?? item.months ?? 1,
     availableStock: sourceProduct?.stockQuantity ?? null,
-    validationFlags: item.metadata?.validationFlags ?? {},
+    validationFlags: item.metadata?.validationFlags ?? EMPTY_VALIDATION_FLAGS,
     serviceStatus: activeService?.status ?? null,
   }
 }
