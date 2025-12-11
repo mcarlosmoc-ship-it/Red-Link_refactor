@@ -179,21 +179,30 @@ export const usePosCart = ({
 
   useEffect(() => {
     const previousId = previousClientIdRef.current
+    const nextId = selectedClientId ?? ''
 
-    const { nextCartItems, shouldUpdatePrevious } = resolveClientChangeForCart({
-      cartItems,
-      previousClientId: previousId,
-      nextClientId: selectedClientId ?? '',
-      confirmClientChange,
-      onClientCleared,
-      onRevertClient,
-    })
-
-    if (shouldUpdatePrevious) {
-      updateCart(() => nextCartItems)
-      previousClientIdRef.current = selectedClientId ?? ''
+    if (previousId === nextId) {
+      return
     }
-  }, [cartItems, confirmClientChange, onClientCleared, onRevertClient, selectedClientId, updateCart])
+
+    setCartItems((currentCart) => {
+      const { nextCartItems, shouldUpdatePrevious } = resolveClientChangeForCart({
+        cartItems: currentCart,
+        previousClientId: previousId,
+        nextClientId: nextId,
+        confirmClientChange,
+        onClientCleared,
+        onRevertClient,
+      })
+
+      if (!shouldUpdatePrevious) {
+        return currentCart
+      }
+
+      previousClientIdRef.current = nextId
+      return nextCartItems.map(enrichItem)
+    })
+  }, [confirmClientChange, enrichItem, onClientCleared, onRevertClient, selectedClientId])
 
   useEffect(() => {
     if (!activeServices?.length) {
