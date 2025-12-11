@@ -60,6 +60,14 @@ const normalizeLineMetadata = (item, { activePeriodKey, productLookup, activeSer
   }
 }
 
+const areMetadataEqual = (previous = {}, next = {}) =>
+  previous.type === next.type &&
+  previous.period === next.period &&
+  previous.months === next.months &&
+  previous.availableStock === next.availableStock &&
+  previous.validationFlags === next.validationFlags &&
+  previous.serviceStatus === next.serviceStatus
+
 export const usePosCart = ({
   selectedClientId,
   activePeriodKey,
@@ -129,8 +137,27 @@ export const usePosCart = ({
   )
 
   const refreshMetadata = useCallback(() => {
-    setCartItems((current) => current.map(enrichItem))
-  }, [enrichItem])
+    setCartItems((current) => {
+      if (!current.length) {
+        return current
+      }
+
+      let hasChanges = false
+
+      const nextItems = current.map((item) => {
+        const nextMetadata = normalizeLineMetadata(item, { activePeriodKey, productLookup, activeServices })
+
+        if (areMetadataEqual(item.metadata, nextMetadata)) {
+          return item
+        }
+
+        hasChanges = true
+        return { ...item, metadata: nextMetadata }
+      })
+
+      return hasChanges ? nextItems : current
+    })
+  }, [activePeriodKey, activeServices, productLookup])
 
   const updateValidationFlags = useCallback(
     (validationMap = {}) => {
