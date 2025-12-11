@@ -37,6 +37,10 @@ export const useClientReceipts = ({ clientId, limit = 6, enabled = true } = {}) 
   const queryKey = useMemo(() => queryKeys.clientReceipts({ clientId, limit }), [clientId, limit])
 
   const fetchReceipts = useCallback(async () => {
+    if (!clientId) {
+      return []
+    }
+
     try {
       const response = await apiClient.get('/payments', {
         query: { client_id: clientId, limit },
@@ -58,6 +62,9 @@ export const useClientReceipts = ({ clientId, limit = 6, enabled = true } = {}) 
     enabled: shouldFetch,
     staleTime: 10_000,
     retry: false,
+    retryOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   })
 
   return {
