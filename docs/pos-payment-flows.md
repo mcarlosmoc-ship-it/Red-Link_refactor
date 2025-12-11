@@ -14,11 +14,11 @@
   - El modal precarga un split igual al total, permite múltiples métodos (`paymentSplits`) y guarda cambio recibido; tras éxito limpia carrito y conserva resumen para imprimir recibo.【F:src/pages/PointOfSale.jsx†L1074-L1088】【F:src/pages/PointOfSale.jsx†L1175-L1188】
 
 ## Botón "Registrar pago" (pagos rápidos de clientes)
-- **Endpoint**: usa `recordPayment` del store de backoffice, que construye payload con cliente/servicio, monto o meses calculados y llama a `POST /payments`; invalida y recarga clientes, pagos y métricas globales.【F:src/pages/PointOfSale.jsx†L1299-L1306】【F:src/store/useBackofficeStore.js†L989-L1055】
+- **Endpoint**: usa `recordPayment` del store de backoffice, que construye payload con cliente/servicio, monto o meses calculados y llama a `POST /payments`; invalida y recarga clientes, pagos y métricas globales.【F:src/pages/PointOfSale.jsx†L1451-L1539】【F:src/store/useBackofficeStore.js†L989-L1055】
 - **Validaciones previas**:
-  - Cliente y servicio seleccionados; requiere monto o meses positivos para calcular el cobro.【F:src/pages/PointOfSale.jsx†L1238-L1278】
-  - Previene duplicados buscando recibos del periodo actual (`useClientReceipts` + llamada a `/receipts`); muestra advertencia si ya existe folio para el periodo/servicio antes de cobrar.【F:src/pages/PointOfSale.jsx†L1210-L1231】【F:src/pages/PointOfSale.jsx†L1282-L1297】
-- **Construcción de datos**: deriva meses y monto a registrar a partir de mensualidad del servicio o deuda; permite nota y método de pago POS, y tras éxito refresca recibos y limpia filtros del formulario.【F:src/pages/PointOfSale.jsx†L1270-L1321】
+  - Cliente y servicio seleccionados; requiere monto o meses positivos para calcular el cobro.【F:src/pages/PointOfSale.jsx†L1451-L1493】
+  - Previene duplicados buscando recibos del periodo actual (`useClientReceipts` + llamada a `/receipts`); muestra advertencia si ya existe folio para el periodo/servicio antes de cobrar.【F:src/pages/PointOfSale.jsx†L1505-L1520】
+- **Construcción de datos**: deriva meses y monto a registrar a partir de mensualidad del servicio o deuda; permite nota y método de pago POS, y tras éxito refresca recibos y limpia filtros del formulario.【F:src/pages/PointOfSale.jsx†L1495-L1545】
 
 ## Dependencias de estado y helpers
 - **Store global (Zustand)**: `useBackofficeStore` aporta `recordPayment` y los periodos activos (para validar duplicados por periodo) y mantiene cache de clientes/servicios usado por ambos flujos.【F:src/pages/PointOfSale.jsx†L253-L310】【F:src/store/useBackofficeStore.js†L989-L1055】
