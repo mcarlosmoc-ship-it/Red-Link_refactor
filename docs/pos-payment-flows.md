@@ -1,7 +1,8 @@
 # Punto de venta: flujos de cobro y registro de pagos
 
 ## Botón "Cobrar" (ventas en caja)
-- **Endpoint**: envía `POST /sales/transactions` mediante `recordSale` del hook `usePosSales` después de consolidar el payload con desglose de métodos de pago, totales y conceptos.【F:src/hooks/usePosSales.js†L60-L77】【F:src/pages/PointOfSale.jsx†L1091-L1188】
+- **Endpoint**: envía `POST /sales/transactions` mediante `recordSale` del hook `usePosSales` después de consolidar el payload con desglose de métodos de pago,
+  totales y conceptos.【F:src/hooks/usePosSales.js†L60-L77】【F:src/pages/PointOfSale.jsx†L1091-L1188】
 - **Desencadenante**: el formulario principal abre el modal de métodos de pago con `handleOpenPaymentModal`, y el botón **Cobrar** dentro del modal ejecuta `handleCheckout` para validar montos y despachar la transacción.【F:src/pages/PointOfSale.jsx†L1074-L1089】【F:src/pages/PointOfSale.jsx†L2378-L2416】【F:src/pages/PointOfSale.jsx†L3334-L3387】
 - **Validaciones**:
   - Carrito no vacío, sin alertas y con referencia obligatoria cuando hay descuentos (para reembolsos/cancelaciones).【F:src/pages/PointOfSale.jsx†L939-L958】
