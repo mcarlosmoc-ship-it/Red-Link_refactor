@@ -77,6 +77,6 @@ export const usePosSales = ({ limit = 10 } = {}) => {
   }
 }
 
-export const formatSaleTotal = (sale) => peso.format(sale.total ?? 0)
+export const formatSaleTotal = (sale) => peso(sale?.total ?? 0)
 
 export default usePosSales
