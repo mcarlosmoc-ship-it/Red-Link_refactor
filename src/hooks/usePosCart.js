@@ -69,6 +69,8 @@ const normalizeLineMetadata = (
   item,
   { activePeriodKey, productLookup, activeServices, metadataCache },
 ) => {
+  // Reutilizamos cualquier metadata previa o de caché cuando los valores coinciden
+  // para mantener la identidad de objetos/flags y evitar re-renders en cascada.
   const cached = metadataCache?.get?.(item.id)
   const previous = item.metadata ?? cached ?? {}
   const sourceProduct = item.productId ? productLookup?.get?.(item.productId) : null
@@ -201,10 +203,9 @@ export const usePosCart = ({
   )
 
   const refreshMetadata = useCallback(() => {
-    // Antes generábamos un ciclo de renders porque cada normalización devolvía
-    // nuevos objetos de metadata incluso cuando nada cambiaba. El caché de
-    // metadata y la reutilización de referencias evitan que `setCartItems`
-    // reciba entradas distintas en cada render.
+    // Solo recalculamos metadata cuando hay cambios reales; el cache interno
+    // devuelve las mismas referencias para evitar re-renders y bucles de
+    // normalización al enviar objetos nuevos en cada render.
     setCartItems((current) => {
       if (!current.length) {
         return current
@@ -242,6 +243,8 @@ export const usePosCart = ({
           const nextHasIssue = Boolean(validationMap[item.id])
           const nextMessage = validationMap[item.id] ?? ''
 
+          // Preservamos los flags actuales cuando coinciden para evitar
+          // reconstruir líneas y disparar renders innecesarios.
           if (
             currentFlags.hasIssue !== nextHasIssue ||
             (currentFlags.message ?? '') !== nextMessage
@@ -337,8 +340,9 @@ export const usePosCart = ({
       return
     }
 
-    // Mantener la identidad de los ids evita recalcular el carrito cuando
-    // `activeServices` llega con la misma información en cada render.
+    // El guardado de ids previos nos asegura que este efecto solo filtra el
+    // carrito cuando realmente cambian los servicios activos, conservando
+    // identidades para evitar renders en bucle.
     const activeIds = new Set(nextIds)
     setCartItems((current) => {
       const filtered = current.filter(
