@@ -37,6 +37,7 @@ from .services.scheduler_monitor import (
 )
 
 LOCAL_DEVELOPMENT_ORIGIN = "http://localhost:5174"
+LOCALHOST_ORIGIN_REGEX = r"https?://(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?$"
 
 DEFAULT_ALLOWED_ORIGINS = {
     "http://localhost:5173",
@@ -128,6 +129,7 @@ LOGGER = logging.getLogger(__name__)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_resolve_allowed_origins(),
+    allow_origin_regex=LOCALHOST_ORIGIN_REGEX,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
