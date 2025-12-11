@@ -38,10 +38,11 @@ export const useClientReceipts = ({ clientId, limit = 6, enabled = true } = {}) 
 
   const fetchReceipts = useCallback(async () => {
     try {
-      const response = await apiClient.get('/receipts', {
+      const response = await apiClient.get('/payments', {
         query: { client_id: clientId, limit },
       })
-      return extractReceiptItems(response.data).map(mapReceipt)
+
+      return extractReceiptItems(response.data?.items ?? response.data).map(mapReceipt)
     } catch (error) {
       if (error instanceof ApiError && error.status === 404) {
         setIsReceiptsSupported(false)
@@ -49,13 +50,14 @@ export const useClientReceipts = ({ clientId, limit = 6, enabled = true } = {}) 
       }
       throw error
     }
-  }, [clientId, limit, setIsReceiptsSupported])
+  }, [clientId, limit])
 
   const { data, status, error, isLoading, isFetching, refetch } = useQuery({
     queryKey,
     queryFn: fetchReceipts,
     enabled: shouldFetch,
     staleTime: 10_000,
+    retry: false,
   })
 
   return {

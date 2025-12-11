@@ -18,7 +18,7 @@ from ..database import get_db
 from ..models.client_service import ClientServiceType
 from ..models.payment import PaymentMethod
 from ..security import require_admin
-from ..services import PaymentService, PaymentServiceError
+from ..services import BillingPeriodService, PaymentService, PaymentServiceError
 
 LOGGER = logging.getLogger(__name__)
 
@@ -134,13 +134,20 @@ def list_payments(
             detail="min_amount cannot be greater than max_amount",
         )
 
+    normalized_period = None
+    if period_key:
+        try:
+            normalized_period, _, _ = BillingPeriodService._normalize_period(period_key)
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
     try:
         items, total = PaymentService.list_payments(
             db,
             client_id=client_id,
             client_service_id=client_service_id,
             service_type=service_type,
-            period_key=period_key,
+            period_key=normalized_period,
             start_date=start_date,
             end_date=end_date,
             method=method,
@@ -151,6 +158,12 @@ def list_payments(
         )
     except (PaymentServiceError, SQLAlchemyError) as exc:
         LOGGER.exception("Failed to list payments", exc_info=exc)
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"detail": "No se pudieron cargar los pagos. Inténtalo de nuevo más tarde."},
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        LOGGER.exception("Unexpected failure listing payments", exc_info=exc)
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"detail": "No se pudieron cargar los pagos. Inténtalo de nuevo más tarde."},
