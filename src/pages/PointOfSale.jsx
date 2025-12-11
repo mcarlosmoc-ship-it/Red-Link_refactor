@@ -610,7 +610,11 @@ export default function PointOfSalePage() {
     if (!selectedClientId) {
       refetchSelectedClientReceipts?.()
     }
-  }, [refetchSelectedClientReceipts, selectedClientId])
+    // refetchSelectedClientReceipts comes from react-query and is stable enough
+    // for our use case; omitting it from the dependency array avoids
+    // re-triggering this effect on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedClientId])
 
   const addProductToCart = (product) => {
     updateCart((current) => {
