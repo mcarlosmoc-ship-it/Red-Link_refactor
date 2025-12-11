@@ -237,12 +237,18 @@ export const usePosCart = ({
     }
 
     const activeIds = new Set(activeServices.map((service) => String(service.id)))
-    updateCart((current) =>
-      current.filter(
+    setCartItems((current) => {
+      const filtered = current.filter(
         (item) => !SERVICE_LINE_TYPES.has(item.type) || !item.servicePlanId || activeIds.has(String(item.servicePlanId)),
-      ),
-    )
-  }, [activeServices, updateCart])
+      )
+
+      if (filtered.length === current.length) {
+        return current
+      }
+
+      return filtered.map(enrichItem)
+    })
+  }, [activeServices, enrichItem])
 
   return {
     cartItems,
