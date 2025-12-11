@@ -46,29 +46,54 @@ export const resolveClientChangeForCart = ({
 
 const EMPTY_VALIDATION_FLAGS = Object.freeze({})
 
+const areMetadataEqual = (previous = {}, next = {}) => {
+  const prevFlags = previous.validationFlags ?? EMPTY_VALIDATION_FLAGS
+  const nextFlags = next.validationFlags ?? EMPTY_VALIDATION_FLAGS
+
+  return (
+    previous.type === next.type &&
+    previous.period === next.period &&
+    previous.months === next.months &&
+    previous.availableStock === next.availableStock &&
+    prevFlags.hasIssue === nextFlags.hasIssue &&
+    (prevFlags.message ?? '') === (nextFlags.message ?? '') &&
+    previous.serviceStatus === next.serviceStatus
+  )
+}
+
 const normalizeLineMetadata = (item, { activePeriodKey, productLookup, activeServices }) => {
+  const previous = item.metadata ?? {}
   const sourceProduct = item.productId ? productLookup?.get?.(item.productId) : null
   const activeService = item.servicePlanId
     ? activeServices?.find((service) => String(service.id) === String(item.servicePlanId))
     : null
 
-  return {
-    type: item.type ?? item.metadata?.type ?? 'product',
-    period: item.metadata?.period ?? activePeriodKey ?? null,
-    months: item.metadata?.months ?? item.months ?? 1,
-    availableStock: sourceProduct?.stockQuantity ?? null,
-    validationFlags: item.metadata?.validationFlags ?? EMPTY_VALIDATION_FLAGS,
-    serviceStatus: activeService?.status ?? null,
-  }
-}
+  const type = item.type ?? item.metadata?.type ?? previous.type ?? 'product'
+  const period = item.metadata?.period ?? activePeriodKey ?? null
+  const months = item.metadata?.months ?? item.months ?? previous.months ?? 1
+  const availableStock = sourceProduct?.stockQuantity ?? null
+  const nextServiceStatus = activeService?.status ?? null
 
-const areMetadataEqual = (previous = {}, next = {}) =>
-  previous.type === next.type &&
-  previous.period === next.period &&
-  previous.months === next.months &&
-  previous.availableStock === next.availableStock &&
-  previous.validationFlags === next.validationFlags &&
-  previous.serviceStatus === next.serviceStatus
+  const previousFlags = previous.validationFlags ?? EMPTY_VALIDATION_FLAGS
+  const sourceFlags = item.metadata?.validationFlags ?? previousFlags
+  const nextFlags =
+    previousFlags === sourceFlags ||
+    ((sourceFlags?.hasIssue ?? false) === (previousFlags.hasIssue ?? false) &&
+      (sourceFlags?.message ?? '') === (previousFlags.message ?? ''))
+      ? previousFlags
+      : { hasIssue: Boolean(sourceFlags?.hasIssue), message: sourceFlags?.message ?? '' }
+
+  const nextMetadata = {
+    type,
+    period,
+    months,
+    availableStock,
+    validationFlags: nextFlags,
+    serviceStatus: nextServiceStatus,
+  }
+
+  return areMetadataEqual(previous, nextMetadata) ? previous : nextMetadata
+}
 
 export const usePosCart = ({
   selectedClientId,
@@ -83,10 +108,15 @@ export const usePosCart = ({
   const previousClientIdRef = useRef(selectedClientId ?? '')
 
   const enrichItem = useCallback(
-    (item) => ({
-      ...item,
-      metadata: normalizeLineMetadata(item, { activePeriodKey, productLookup, activeServices }),
-    }),
+    (item) => {
+      const nextMetadata = normalizeLineMetadata(item, {
+        activePeriodKey,
+        productLookup,
+        activeServices,
+      })
+
+      return item.metadata === nextMetadata ? item : { ...item, metadata: nextMetadata }
+    },
     [activePeriodKey, productLookup, activeServices],
   )
 
@@ -94,7 +124,18 @@ export const usePosCart = ({
     (updater) => {
       setCartItems((current) => {
         const next = updater(current)
-        return next.map(enrichItem)
+        let hasChanges = next !== current
+
+        const enriched = next.map((item) => {
+          const nextItem = enrichItem(item)
+          if (nextItem !== item) {
+            hasChanges = true
+          }
+
+          return nextItem
+        })
+
+        return hasChanges ? enriched : current
       })
     },
     [enrichItem],
@@ -167,7 +208,7 @@ export const usePosCart = ({
         let hasChanges = false
 
         const nextItems = current.map((item) => {
-          const currentFlags = item.metadata?.validationFlags ?? {}
+          const currentFlags = item.metadata?.validationFlags ?? EMPTY_VALIDATION_FLAGS
           const nextHasIssue = Boolean(validationMap[item.id])
           const nextMessage = validationMap[item.id] ?? ''
 
@@ -179,27 +220,28 @@ export const usePosCart = ({
           }
 
           hasChanges = true
-          return {
-            ...item,
-            metadata: {
-              ...item.metadata,
-              validationFlags: {
-                ...currentFlags,
-                hasIssue: nextHasIssue,
-                message: nextMessage,
-              },
-            },
+          const nextFlags = {
+            ...currentFlags,
+            hasIssue: nextHasIssue,
+            message: nextMessage,
           }
+
+          const nextMetadata = normalizeLineMetadata(
+            { ...item, metadata: { ...item.metadata, validationFlags: nextFlags } },
+            { activePeriodKey, productLookup, activeServices },
+          )
+
+          return item.metadata === nextMetadata ? item : { ...item, metadata: nextMetadata }
         })
 
         if (!hasChanges) {
           return current
         }
 
-        return nextItems.map(enrichItem)
+        return nextItems
       })
     },
-    [enrichItem],
+    [activePeriodKey, activeServices, productLookup],
   )
 
   useEffect(() => {
