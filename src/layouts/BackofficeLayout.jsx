@@ -9,6 +9,7 @@ import { useBackofficeStore } from '../store/useBackofficeStore.js'
 import { useToast } from '../hooks/useToast.js'
 import { BackofficeRefreshProvider } from '../contexts/BackofficeRefreshContext.jsx'
 import { useInitializeBackoffice } from '../hooks/useInitializeBackoffice.js'
+import { apiClient } from '../services/apiClient.js'
 
 const cx = (...classes) => classes.filter(Boolean).join(' ')
 
@@ -65,6 +66,7 @@ export default function BackofficeLayout() {
   const { isLoading: isInitializing, retry } = useInitializeBackoffice()
   const lastClientsErrorRef = useRef(null)
   const lastPaymentsErrorRef = useRef(null)
+  const apiBaseUrl = apiClient.getBaseUrl()
 
   useEffect(() => {
     if (clientsStatus?.error && lastClientsErrorRef.current !== clientsStatus.error) {
@@ -157,8 +159,20 @@ export default function BackofficeLayout() {
               </Button>
             </div>
             {initializeStatus?.error && (
-              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800" role="alert">
-                Hubo un problema al sincronizar la información. Intenta nuevamente más tarde.
+              <div
+                className="mt-4 space-y-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"
+                role="alert"
+                aria-live="assertive"
+              >
+                <p className="font-semibold">Hubo un problema al sincronizar la información.</p>
+                <p className="leading-relaxed">{initializeStatus.error}</p>
+                <p className="text-xs text-amber-700">
+                  Verifica que el backend esté en ejecución en
+                  <span className="mx-1 rounded bg-amber-100 px-1.5 py-0.5 font-mono text-[11px]">{apiBaseUrl}</span>
+                  y que la variable <code className="font-mono text-[11px]">VITE_API_BASE_URL</code> apunte a esa URL.
+                  Si la API requiere autenticación, configura <code className="font-mono text-[11px]">VITE_API_ACCESS_TOKEN</code>
+                  o usa <code className="font-mono text-[11px]">window.__RED_LINK_API_CLIENT__.setAccessToken()</code> desde la consola.
+                </p>
               </div>
             )}
             <AccessTokenAlert />
