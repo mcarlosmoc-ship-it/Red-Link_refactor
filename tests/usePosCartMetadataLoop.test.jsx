@@ -236,4 +236,44 @@ describe('usePosCart - estabilidad de metadata', () => {
       harness.restore()
     }
   })
+
+  it('ignora actualizaciones estructuralmente iguales y evita bucles de render', async () => {
+    const { usePosCart } = await import('../src/hooks/usePosCart.js')
+    const harness = await createHookHarness(() =>
+      usePosCart({
+        activePeriodKey: 'monthly',
+        productLookup,
+        activeServices,
+      }),
+      { maxRenders: 6 },
+    )
+
+    try {
+      harness.render()
+      const { addItem, updateCart } = harness.getResult()
+
+      addItem({
+        id: 'line-1',
+        productId: 'prod-1',
+        quantity: 1,
+        price: 100,
+        type: 'product',
+        metadata: { period: 'monthly', months: 1 },
+      })
+
+      harness.flushRenders()
+
+      const setCallsAfterAdd = harness.setStateSpy.mock.calls.length
+
+      // Enviamos un array nuevo pero con el mismo contenido; la comparación
+      // estructural debe impedir el setState y, por ende, cualquier bucle.
+      updateCart((current) => current.map((item) => ({ ...item })))
+      harness.flushRenders()
+
+      expect(harness.setStateSpy.mock.calls.length).toBe(setCallsAfterAdd)
+      expect(harness.getResult().cartItems).toBe(harness.stateStore[0])
+    } finally {
+      harness.restore()
+    }
+  })
 })

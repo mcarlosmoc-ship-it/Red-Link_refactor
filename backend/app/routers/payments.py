@@ -25,6 +25,42 @@ LOGGER = logging.getLogger(__name__)
 router = APIRouter(dependencies=[Depends(require_admin)])
 
 
+def _validate_period_key(raw_period: Optional[str]) -> Optional[str]:
+    """Normalize and validate a period key.
+
+    Only accepts keys in the YYYY-MM format with a month between 01 and 12.
+    Returns a trimmed, normalized key or raises HTTPException 400 when invalid.
+    """
+
+    if raw_period is None:
+        return None
+
+    sanitized_period = raw_period.strip()
+    if not sanitized_period:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid period key format, expected YYYY-MM",
+        )
+
+    if not BillingPeriodService.VALID_PERIOD_PATTERN.match(sanitized_period):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid period key format, expected YYYY-MM",
+        )
+
+    try:
+        normalized_period, _, _ = BillingPeriodService._normalize_period(
+            sanitized_period
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid period key format, expected YYYY-MM",
+        ) from exc
+
+    return normalized_period
+
+
 @router.get(
     "/periods/status",
     response_model=schemas.ServicePeriodStatusListResponse,
@@ -134,18 +170,7 @@ def list_payments(
             detail="min_amount cannot be greater than max_amount",
         )
 
-    normalized_period = None
-    if period_key:
-        sanitized_period = period_key.strip()
-        try:
-            normalized_period, _, _ = BillingPeriodService._normalize_period(
-                sanitized_period
-            )
-        except Exception as exc:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid period key format, expected YYYY-MM",
-            ) from exc
+    normalized_period = _validate_period_key(period_key)
 
     try:
         items, total = PaymentService.list_payments(
