@@ -692,6 +692,7 @@ export default function PointOfSalePage() {
     taxValue,
   ])
   const cartTotal = useMemo(() => total, [total])
+  const isCartEmpty = cartItems.length === 0
 
   const paymentTotals = useMemo(() => {
     const normalizedSplits = paymentSplits.map((split) => clamp(normalizeNumericInput(split.amount, 0), 0))
@@ -2278,7 +2279,7 @@ export default function PointOfSalePage() {
                       </div>
 
                       <div className="space-y-6 px-5 py-6">
-                        {cartItems.length === 0 ? (
+                        {isCartEmpty ? (
                           <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 p-10 text-center text-sm text-slate-500">
                             <ShoppingCart className="mx-auto mb-4 h-7 w-7 text-slate-400" aria-hidden />
                             Agrega productos del catálogo o registra un artículo personalizado.
@@ -2566,65 +2567,80 @@ export default function PointOfSalePage() {
                             </div>
 
                             <div className="space-y-4">
-                              <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-lg text-sm text-slate-700">
-                                <div className="flex items-center justify-between">
-                                  <dt className="text-sm font-medium text-slate-600">Subtotal</dt>
-                                  <dd className="text-lg font-semibold text-slate-900">{peso(subtotal)}</dd>
+                              {isCartEmpty ? (
+                                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 p-6 text-sm text-slate-500">
+                                  <p className="font-semibold text-slate-700">Tu carrito está vacío.</p>
+                                  <p className="mt-1 text-[13px]">Agrega productos para calcular totales y habilitar el cobro.</p>
                                 </div>
-                                <div className="flex items-center justify-between">
-                                  <dt className="text-sm font-medium text-slate-600">Descuento</dt>
-                                  <dd className="text-base font-semibold text-emerald-700">{peso(discountValue)}</dd>
-                                </div>
-                                <div className="flex items-center justify-between">
-                                  <dt className="text-sm font-medium text-slate-600">Impuestos</dt>
-                                  <dd className="text-base font-semibold text-blue-700">{peso(taxValue)}</dd>
-                                </div>
-                                <div className="flex items-center justify-between border-t border-slate-200 pt-3">
-                                  <dt className="text-sm font-semibold text-slate-900">Total a cobrar</dt>
-                                  <dd className="text-3xl font-bold text-blue-700">{peso(cartTotal)}</dd>
-                                </div>
-                              </div>
+                              ) : (
+                                <>
+                                  <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-lg text-sm text-slate-700">
+                                    <div className="flex items-center justify-between">
+                                      <dt className="text-sm font-medium text-slate-600">Subtotal</dt>
+                                      <dd className="text-lg font-semibold text-slate-900">{peso(subtotal)}</dd>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                      <dt className="text-sm font-medium text-slate-600">Descuento</dt>
+                                      <dd className="text-base font-semibold text-emerald-700">{peso(discountValue)}</dd>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                      <dt className="text-sm font-medium text-slate-600">Impuestos</dt>
+                                      <dd className="text-base font-semibold text-blue-700">{peso(taxValue)}</dd>
+                                    </div>
+                                    <div className="flex items-center justify-between border-t border-slate-200 pt-3">
+                                      <dt className="text-sm font-semibold text-slate-900">Total a cobrar</dt>
+                                      <dd className="text-3xl font-bold text-blue-700">{peso(cartTotal)}</dd>
+                                    </div>
+                                  </div>
 
-                              {formError ? (
-                                <p className="text-sm text-red-600">{formError}</p>
-                              ) : !checkoutGuard.canCheckout && checkoutGuard.blockingReasons.length > 0 ? (
-                                <p className="text-sm text-red-600">{checkoutGuard.blockingReasons[0]}</p>
-                              ) : null}
+                                  {formError ? (
+                                    <p className="text-sm text-red-600">{formError}</p>
+                                  ) : !checkoutGuard.canCheckout && checkoutGuard.blockingReasons.length > 0 ? (
+                                    <p className="text-sm text-red-600">{checkoutGuard.blockingReasons[0]}</p>
+                                  ) : null}
 
-                              <div className="space-y-3 rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-100 via-emerald-50 to-white p-5 shadow-lg">
-                                <div className="flex items-center justify-between text-sm font-semibold text-emerald-900">
-                                  <span>Descuento</span>
-                                  <span>{peso(discountValue)}</span>
-                                </div>
-                                <div className="flex items-center justify-between text-sm font-semibold text-emerald-900">
-                                  <span>IVA</span>
-                                  <span>{peso(taxValue)}</span>
-                                </div>
-                                <div className="flex items-center justify-between rounded-xl bg-white px-3 py-2 text-lg font-bold text-emerald-900 shadow-sm">
-                                  <span>Total a pagar</span>
-                                  <span>{peso(cartTotal)}</span>
-                                </div>
-                                <Button
-                                  type="button"
-                                  size="lg"
-                                  className="w-full rounded-xl bg-emerald-600 text-lg font-bold text-white hover:bg-emerald-700"
-                                  disabled={isSubmittingSale || !checkoutGuard.canCheckout}
-                                  onClick={handleOpenPaymentModal}
-                                >
-                                  <Receipt className="mr-2 h-5 w-5" aria-hidden /> Pagar ahora
-                                </Button>
-                              </div>
+                                  <div className="space-y-3 rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-100 via-emerald-50 to-white p-5 shadow-lg">
+                                    <div className="flex items-center justify-between text-sm font-semibold text-emerald-900">
+                                      <span>Descuento</span>
+                                      <span>{peso(discountValue)}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between text-sm font-semibold text-emerald-900">
+                                      <span>IVA</span>
+                                      <span>{peso(taxValue)}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between rounded-xl bg-white px-3 py-2 text-lg font-bold text-emerald-900 shadow-sm">
+                                      <span>Total a pagar</span>
+                                      <span>{peso(cartTotal)}</span>
+                                    </div>
+                                    <Button
+                                      type="button"
+                                      size="lg"
+                                      className="w-full rounded-xl bg-emerald-600 text-lg font-bold text-white hover:bg-emerald-700"
+                                      disabled={isSubmittingSale || !checkoutGuard.canCheckout}
+                                      onClick={handleOpenPaymentModal}
+                                    >
+                                      <Receipt className="mr-2 h-5 w-5" aria-hidden /> Pagar ahora
+                                    </Button>
+                                  </div>
+                                </>
+                              )}
                             </div>
                           </div>
 
                           <div className="sticky bottom-0 space-y-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+                            {isCartEmpty ? (
+                              <p className="text-[12px] font-medium text-slate-600">
+                                Agrega productos para habilitar descuentos e impuestos.
+                              </p>
+                            ) : null}
                             <div className="grid gap-3 sm:grid-cols-2">
                               <div className="flex items-center gap-2">
                                 <label className="text-sm font-semibold text-slate-700">Descuento</label>
                                 <select
                                   value={discountType}
                                   onChange={(event) => setDiscountType(event.target.value)}
-                                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                                  className={`rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 ${isCartEmpty ? 'cursor-not-allowed opacity-60' : ''}`}
+                                  disabled={isCartEmpty}
                                 >
                                   <option value="amount">Monto</option>
                                   <option value="percent">%</option>
@@ -2635,7 +2651,8 @@ export default function PointOfSalePage() {
                                   step="0.01"
                                   value={discount}
                                   onChange={(event) => setDiscount(event.target.value)}
-                                  className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm shadow-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                                  className={`flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm shadow-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 ${isCartEmpty ? 'cursor-not-allowed opacity-60' : ''}`}
+                                  disabled={isCartEmpty}
                                   placeholder="0"
                                 />
                               </div>
@@ -2644,7 +2661,8 @@ export default function PointOfSalePage() {
                                 <select
                                   value={taxRate}
                                   onChange={(event) => setTaxRate(event.target.value)}
-                                  className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                                  className={`flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 ${isCartEmpty ? 'cursor-not-allowed opacity-60' : ''}`}
+                                  disabled={isCartEmpty}
                                 >
                                   <option value="0">0%</option>
                                   <option value="8">8%</option>
