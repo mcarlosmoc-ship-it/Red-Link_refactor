@@ -165,19 +165,9 @@ export default function BackofficeLayout() {
                 aria-live="assertive"
               >
                 <p className="font-semibold">Hubo un problema al sincronizar la información.</p>
-                <p className="leading-relaxed">
-                  {initializeStatus.error
-                    ?.split('\n')
-                    .filter(Boolean)
-                    .map((line, index, lines) => (
-                      <React.Fragment key={index}>
-                        {line}
-                        {index < lines.length - 1 && <br />}
-                      </React.Fragment>
-                    ))}
-                </p>
+                <p className="leading-relaxed">{initializeStatus.error}</p>
                 <p className="text-xs text-amber-700">
-                  Verifica que el backend esté en ejecución en{' '}
+                  Verifica que el backend esté en ejecución en
                   <span className="mx-1 rounded bg-amber-100 px-1.5 py-0.5 font-mono text-[11px]">{apiBaseUrl}</span>
                   y que la variable <code className="font-mono text-[11px]">VITE_API_BASE_URL</code> apunte a esa URL.
                   Si la API requiere autenticación, configura <code className="font-mono text-[11px]">VITE_API_ACCESS_TOKEN</code>
