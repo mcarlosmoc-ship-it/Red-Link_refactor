@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from calendar import monthrange
 from datetime import date
+import re
+from typing import Pattern
 
 from sqlalchemy.orm import Session
 
@@ -12,6 +14,8 @@ from .. import models
 
 class BillingPeriodService:
     """Utility helpers to ensure billing periods exist when needed."""
+
+    VALID_PERIOD_PATTERN: Pattern[str] = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 
     @staticmethod
     def ensure_period(db: Session, period_key: str) -> models.BillingPeriod:

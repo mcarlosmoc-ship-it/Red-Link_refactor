@@ -79,6 +79,22 @@ def test_payment_listing_rejects_malformed_period_key(client):
     assert response.json()["detail"] == "Invalid period key format, expected YYYY-MM"
 
 
+def test_payment_listing_rejects_out_of_range_month(client):
+    response = client.get("/payments", params={"period_key": "2025-13"})
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Invalid period key format, expected YYYY-MM"
+
+
+def test_payment_listing_accepts_valid_period_key_without_500(client):
+    response = client.get("/payments", params={"period_key": "2025-12"})
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["items"] == []
+    assert payload["total"] == 0
+
+
 def test_payment_listing_accepts_valid_period_key(client, seed_basic_data):
     response = client.get("/payments", params={"period_key": " 2025-01 "})
 

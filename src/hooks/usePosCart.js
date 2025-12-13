@@ -46,23 +46,45 @@ export const resolveClientChangeForCart = ({
 
 const EMPTY_VALIDATION_FLAGS = Object.freeze({})
 
-const areMetadataEqual = (previous = {}, next = {}) => {
-  if (previous === next) {
-    return true
-  }
+const areValidationFlagsEqual = (previous = EMPTY_VALIDATION_FLAGS, next = EMPTY_VALIDATION_FLAGS) =>
+  previous === next ||
+  (previous.hasIssue === next.hasIssue && (previous.message ?? '') === (next.message ?? ''))
 
-  const prevFlags = previous.validationFlags ?? EMPTY_VALIDATION_FLAGS
-  const nextFlags = next.validationFlags ?? EMPTY_VALIDATION_FLAGS
-
-  return (
-    previous.type === next.type &&
+const areMetadataEqual = (previous = {}, next = {}) =>
+  previous === next ||
+  (previous.type === next.type &&
     previous.period === next.period &&
     previous.months === next.months &&
     previous.availableStock === next.availableStock &&
-    prevFlags.hasIssue === nextFlags.hasIssue &&
-    (prevFlags.message ?? '') === (nextFlags.message ?? '') &&
-    previous.serviceStatus === next.serviceStatus
-  )
+    areValidationFlagsEqual(previous.validationFlags, next.validationFlags) &&
+    previous.serviceStatus === next.serviceStatus)
+
+const areCartItemsEqual = (previous = [], next = []) => {
+  if (previous === next || previous.length !== next.length) {
+    return previous === next && previous.length === next.length
+  }
+
+  for (let index = 0; index < previous.length; index += 1) {
+    const prevItem = previous[index]
+    const nextItem = next[index]
+
+    if (
+      prevItem === nextItem ||
+      (prevItem.id === nextItem.id &&
+        prevItem.type === nextItem.type &&
+        prevItem.productId === nextItem.productId &&
+        prevItem.servicePlanId === nextItem.servicePlanId &&
+        prevItem.quantity === nextItem.quantity &&
+        prevItem.price === nextItem.price &&
+        areMetadataEqual(prevItem.metadata, nextItem.metadata))
+    ) {
+      continue
+    }
+
+    return false
+  }
+
+  return true
 }
 
 const normalizeLineMetadata = (
@@ -147,18 +169,9 @@ export const usePosCart = ({
     (updater) => {
       setCartItems((current) => {
         const next = updater(current)
-        let hasChanges = next !== current
+        const enriched = next.map((item) => enrichItem(item))
 
-        const enriched = next.map((item) => {
-          const nextItem = enrichItem(item)
-          if (nextItem !== item) {
-            hasChanges = true
-          }
-
-          return nextItem
-        })
-
-        return hasChanges ? enriched : current
+        return areCartItemsEqual(current, enriched) ? current : enriched
       })
     },
     [enrichItem],
@@ -211,8 +224,6 @@ export const usePosCart = ({
         return current
       }
 
-      let hasChanges = false
-
       const nextItems = current.map((item) => {
         const nextMetadata = normalizeLineMetadata(item, {
           activePeriodKey,
@@ -225,11 +236,10 @@ export const usePosCart = ({
           return item
         }
 
-        hasChanges = true
         return { ...item, metadata: nextMetadata }
       })
 
-      return hasChanges ? nextItems : current
+      return areCartItemsEqual(current, nextItems) ? current : nextItems
     })
   }, [activePeriodKey, activeServices, productLookup])
 
@@ -270,11 +280,17 @@ export const usePosCart = ({
             return item
           }
 
-          const nextFlags = {
+          const nextFlags = areValidationFlagsEqual(currentFlags, {
             ...currentFlags,
             hasIssue: nextHasIssue,
             message: nextMessage,
-          }
+          })
+            ? currentFlags
+            : {
+                ...currentFlags,
+                hasIssue: nextHasIssue,
+                message: nextMessage,
+              }
 
           const nextMetadata = normalizeLineMetadata(
             { ...item, metadata: { ...item.metadata, validationFlags: nextFlags } },
