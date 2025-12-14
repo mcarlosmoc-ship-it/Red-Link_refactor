@@ -337,7 +337,7 @@ export const useBackofficeStore = create((set, get) => ({
           queryFn: async () => {
             const query = {
               query: {
-                ...(targetPeriod ? { period_key: targetPeriod } : {}),
+                ...(targetPeriod ? { period: targetPeriod } : {}),
                 limit: 200,
               },
             }

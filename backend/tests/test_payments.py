@@ -105,6 +105,25 @@ def test_payment_listing_accepts_period_alias_and_builds_date_range(client, monk
     assert captured["end_date"] == date(2025, 12, 31)
 
 
+def test_payment_listing_accepts_period_key_as_period_alias(client, monkeypatch):
+    captured = {}
+
+    def capture_params(_db, **kwargs):
+        captured.update(kwargs)
+        return [], 0
+
+    monkeypatch.setattr(
+        "backend.app.services.payments.PaymentService.list_payments",
+        capture_params,
+    )
+
+    response = client.get("/payments", params={"period_key": "2025-11"})
+
+    assert response.status_code == 200, response.text
+    assert captured["start_date"] == date(2025, 11, 1)
+    assert captured["end_date"] == date(2025, 11, 30)
+
+
 def test_payment_listing_rejects_invalid_period_alias(client):
     response = client.get("/payments", params={"period": "2025/12"})
 
