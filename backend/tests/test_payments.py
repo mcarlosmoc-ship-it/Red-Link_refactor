@@ -86,6 +86,42 @@ def test_payment_listing_rejects_out_of_range_month(client):
     assert response.json()["detail"] == "Invalid period key format, expected YYYY-MM"
 
 
+def test_payment_listing_accepts_period_alias_and_builds_date_range(client, monkeypatch):
+    captured = {}
+
+    def capture_params(_db, **kwargs):
+        captured.update(kwargs)
+        return [], 0
+
+    monkeypatch.setattr(
+        "backend.app.services.payments.PaymentService.list_payments",
+        capture_params,
+    )
+
+    response = client.get("/payments", params={"period": "2025-12"})
+
+    assert response.status_code == 200, response.text
+    assert captured["start_date"] == date(2025, 12, 1)
+    assert captured["end_date"] == date(2025, 12, 31)
+
+
+def test_payment_listing_rejects_invalid_period_alias(client):
+    response = client.get("/payments", params={"period": "2025/12"})
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Invalid period key format, expected YYYY-MM"
+
+
+def test_payment_listing_rejects_period_with_explicit_dates(client):
+    response = client.get(
+        "/payments",
+        params={"period": "2025-12", "start_date": "2025-12-05"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Cannot combine period with explicit start_date or end_date"
+
+
 def test_payment_listing_accepts_valid_period_key_without_500(client):
     response = client.get("/payments", params={"period_key": "2025-12"})
 
