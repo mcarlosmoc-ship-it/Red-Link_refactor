@@ -11,8 +11,9 @@ from backend.app.migrations import run_database_migrations
 
 
 def _configure_alembic_script() -> ScriptDirectory:
-    config = Config(str(Path("backend/alembic.ini").resolve()))
-    config.set_main_option("script_location", str(Path("backend/alembic").resolve()))
+    base_dir = Path(__file__).resolve().parents[1]
+    config = Config(str(base_dir / "alembic.ini"))
+    config.set_main_option("script_location", str(base_dir / "alembic"))
     return ScriptDirectory.from_config(config)
 
 
