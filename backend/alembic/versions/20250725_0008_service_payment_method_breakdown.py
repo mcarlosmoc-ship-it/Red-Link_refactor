@@ -6,6 +6,7 @@ from typing import Sequence
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects.sqlite import JSON as SQLiteJSON
 
 revision = "20250725_0008"
 down_revision = "20250710_0007"
@@ -26,7 +27,11 @@ def upgrade() -> None:
 
     op.add_column(
         "service_payments",
-        sa.Column("method_breakdown", sa.JSON(), nullable=True),
+        sa.Column(
+            "method_breakdown",
+            sa.JSON().with_variant(SQLiteJSON(), "sqlite"),
+            nullable=True,
+        ),
     )
 
 
