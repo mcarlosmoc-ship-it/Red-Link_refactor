@@ -61,6 +61,22 @@ def _validate_period_key(raw_period: Optional[str]) -> Optional[str]:
     return normalized_period
 
 
+def _parse_period_range(raw_period: Optional[str]) -> tuple[Optional[str], Optional[date], Optional[date]]:
+    """Convert a YYYY-MM string into an inclusive month range.
+
+    Returns ``(normalized_key, month_start, month_end)`` or ``(None, None, None)``
+    when the input is missing. Raises ``HTTPException`` with a 400 status code
+    when the format is invalid.
+    """
+
+    normalized_period = _validate_period_key(raw_period)
+    if normalized_period is None:
+        return None, None, None
+
+    _, month_start, month_end = BillingPeriodService._normalize_period(normalized_period)
+    return normalized_period, month_start, month_end
+
+
 @router.get(
     "/periods/status",
     response_model=schemas.ServicePeriodStatusListResponse,
@@ -150,6 +166,9 @@ def list_payments(
     period_key: Optional[str] = Query(None, description="Filter by billing period"),
     start_date: Optional[date] = Query(None, description="Return payments on or after this date"),
     end_date: Optional[date] = Query(None, description="Return payments on or before this date"),
+    period: Optional[str] = Query(
+        None, description="Filter payments by paid_on month using YYYY-MM"
+    ),
     method: Optional[PaymentMethod] = Query(None, description="Filter by payment method"),
     min_amount: Optional[Decimal] = Query(None, ge=0, description="Minimum amount threshold"),
     max_amount: Optional[Decimal] = Query(None, ge=0, description="Maximum amount threshold"),
@@ -171,6 +190,17 @@ def list_payments(
         )
 
     normalized_period = _validate_period_key(period_key)
+    _, month_start, month_end = _parse_period_range(period)
+
+    if period is not None and (start_date is not None or end_date is not None):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot combine period with explicit start_date or end_date",
+        )
+
+    if month_start and month_end:
+        start_date = month_start
+        end_date = month_end
 
     try:
         items, total = PaymentService.list_payments(
@@ -188,7 +218,18 @@ def list_payments(
             limit=limit,
         )
     except (PaymentServiceError, SQLAlchemyError) as exc:
-        LOGGER.exception("Failed to list payments", exc_info=exc)
+        LOGGER.exception(
+            "Failed to list payments",
+            exc_info=exc,
+            extra={
+                "period_key": normalized_period,
+                "period_range": period,
+                "start_date": str(start_date) if start_date else None,
+                "end_date": str(end_date) if end_date else None,
+                "limit": limit,
+                "skip": skip,
+            },
+        )
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"detail": "No se pudieron cargar los pagos. Inténtalo de nuevo más tarde."},
