@@ -189,8 +189,23 @@ def list_payments(
             detail="min_amount cannot be greater than max_amount",
         )
 
-    normalized_period = _validate_period_key(period_key)
-    _, month_start, month_end = _parse_period_range(period)
+    try:
+        normalized_period = _validate_period_key(period_key)
+    except HTTPException as exc:
+        LOGGER.warning(
+            "Rejecting payments request due to invalid period_key",  # pragma: no cover - logging
+            extra={"period_key": period_key},
+        )
+        raise exc
+
+    try:
+        _, month_start, month_end = _parse_period_range(period or period_key)
+    except HTTPException as exc:
+        LOGGER.warning(
+            "Rejecting payments request due to invalid period",  # pragma: no cover - logging
+            extra={"period": period, "period_key": period_key},
+        )
+        raise exc
 
     if period is not None and (start_date is not None or end_date is not None):
         raise HTTPException(
