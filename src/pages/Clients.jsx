@@ -5,6 +5,7 @@ import ClientsList from '../features/clients/ClientsList.jsx'
 import ClientForm from '../features/clients/ClientForm.jsx'
 import ClientDetailTabs from '../features/clients/ClientDetailTabs.jsx'
 import ServicesAssignments from '../features/clients/ServicesAssignments.jsx'
+import ClientBillingPanel from '../features/clients/ClientBillingPanel.jsx'
 import ImportClientsModal from '../components/clients/ImportClientsModal.jsx'
 import Button from '../components/ui/Button.jsx'
 import { useBackofficeStore } from '../store/useBackofficeStore.js'
@@ -762,6 +763,11 @@ export default function ClientsPage() {
               aria-labelledby="client-tab-payments"
               className="space-y-4"
             >
+              <ClientBillingPanel
+                clients={clients}
+                status={clientsStatus}
+                onReload={reloadClients}
+              />
               <Card>
                 <CardContent className="space-y-3">
                   <div>
