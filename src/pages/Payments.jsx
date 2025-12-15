@@ -144,6 +144,18 @@ export default function PaymentsPage() {
   const hasMonthsValue = Number.isFinite(monthsValue) && monthsValue > 0
   const hasAmountValue = Number.isFinite(amountValue) && amountValue > 0
 
+  const suggestedAmount = useMemo(() => {
+    if (!selectedServicePrice || !hasMonthsValue) return null
+    return selectedServicePrice * monthsValue
+  }, [selectedServicePrice, hasMonthsValue, monthsValue])
+
+  const inferredMonthsFromAmount = useMemo(() => {
+    if (!selectedServicePrice || !hasAmountValue) return null
+    const inferred = amountValue / selectedServicePrice
+    if (!Number.isFinite(inferred) || inferred <= 0) return null
+    return Number(inferred.toFixed(2))
+  }, [selectedServicePrice, hasAmountValue, amountValue])
+
   const resolveSelectedClientFromForm = (formData) =>
     clients.find((client) => String(client.id) === String(formData.clientId)) ?? null
 
@@ -451,7 +463,9 @@ export default function PaymentsPage() {
                   status={paymentFieldErrors.months ? 'error' : hasMonthsValue ? 'success' : 'default'}
                   message={
                     paymentFieldErrors.months ??
-                    'Ingresa la cobertura exacta; se aceptan medios meses.'
+                    (inferredMonthsFromAmount
+                      ? `Equivalente a ${inferredMonthsFromAmount} meses con tarifa ${peso(selectedServicePrice)}.`
+                      : 'Ingresa la cobertura exacta; se aceptan medios meses.')
                   }
                   tooltip="Útil cuando el precio no está configurado o se cobran varios periodos."
                 >
@@ -471,7 +485,9 @@ export default function PaymentsPage() {
                   status={paymentFieldErrors.amount ? 'error' : hasAmountValue ? 'success' : 'default'}
                   message={
                     paymentFieldErrors.amount ??
-                    'Registra el total recibido en efectivo, transferencia o tarjeta.'
+                    (suggestedAmount
+                      ? `Sugerido: ${peso(suggestedAmount)} para ${monthsValue} meses con tarifa ${peso(selectedServicePrice)}.`
+                      : 'Registra el total recibido en efectivo, transferencia o tarjeta.')
                   }
                   tooltip="Se registrará tal cual para reportes; incluye centavos si aplica."
                 >
