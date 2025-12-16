@@ -254,42 +254,6 @@ export default function PaymentsPage() {
     )
   }
 
-  const applyPaymentSuggestions = useCallback(
-    (form) => {
-      const client = resolveSelectedClientFromForm(form)
-      const service = resolveSelectedServiceFromForm(form)
-
-      const suggestedAmount = resolveOutstandingAmount(client, service)
-      const suggestedMonths = resolveOutstandingMonths(client, service)
-
-      const hasCustomMonths = Number(form.months) > 0
-
-      const nextForm = { ...form }
-      let hasUpdates = false
-
-      if (!hasCustomMonths && Number.isFinite(suggestedMonths) && suggestedMonths > 0) {
-        const normalizedSuggestedMonths = String(suggestedMonths)
-        if (form.months !== normalizedSuggestedMonths) {
-          nextForm.months = normalizedSuggestedMonths
-          hasUpdates = true
-        }
-      }
-
-      if (
-        !hasAmountBeenManuallyEdited &&
-        Number.isFinite(suggestedAmount) &&
-        suggestedAmount > 0 &&
-        Number(form.amount) !== suggestedAmount
-      ) {
-        nextForm.amount = String(suggestedAmount)
-        hasUpdates = true
-      }
-
-      return hasUpdates ? nextForm : form
-    },
-    [hasAmountBeenManuallyEdited, resolveOutstandingAmount, resolveOutstandingMonths],
-  )
-
   const resolveOutstandingAmount = useMemo(
     () =>
       (client, service) => {
@@ -355,6 +319,42 @@ export default function PaymentsPage() {
         return null
       },
     [],
+  )
+
+  const applyPaymentSuggestions = useCallback(
+    (form) => {
+      const client = resolveSelectedClientFromForm(form)
+      const service = resolveSelectedServiceFromForm(form)
+
+      const suggestedAmount = resolveOutstandingAmount(client, service)
+      const suggestedMonths = resolveOutstandingMonths(client, service)
+
+      const hasCustomMonths = Number(form.months) > 0
+
+      const nextForm = { ...form }
+      let hasUpdates = false
+
+      if (!hasCustomMonths && Number.isFinite(suggestedMonths) && suggestedMonths > 0) {
+        const normalizedSuggestedMonths = String(suggestedMonths)
+        if (form.months !== normalizedSuggestedMonths) {
+          nextForm.months = normalizedSuggestedMonths
+          hasUpdates = true
+        }
+      }
+
+      if (
+        !hasAmountBeenManuallyEdited &&
+        Number.isFinite(suggestedAmount) &&
+        suggestedAmount > 0 &&
+        Number(form.amount) !== suggestedAmount
+      ) {
+        nextForm.amount = String(suggestedAmount)
+        hasUpdates = true
+      }
+
+      return hasUpdates ? nextForm : form
+    },
+    [hasAmountBeenManuallyEdited, resolveOutstandingAmount, resolveOutstandingMonths],
   )
 
   useEffect(() => {
