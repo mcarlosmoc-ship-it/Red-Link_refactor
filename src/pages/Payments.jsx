@@ -20,6 +20,7 @@ import FormField from '../components/ui/FormField.jsx'
 const METHODS = ['Todos', 'Efectivo', 'Transferencia', 'Tarjeta', 'Revendedor']
 const METHOD_OPTIONS = METHODS.filter((method) => method !== 'Todos')
 const PAGE_SIZE_OPTIONS = [10, 25, 50]
+const QUICK_MONTH_OPTIONS = [0.5, 1, 2, 3]
 
 export default function PaymentsPage() {
   const { selectedPeriod, recordPayment, initializeStatus } = useBackofficeStore((state) => ({
@@ -47,6 +48,7 @@ export default function PaymentsPage() {
   const [paymentError, setPaymentError] = useState(null)
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false)
   const [paymentFieldErrors, setPaymentFieldErrors] = useState({})
+  const [hasAmountBeenManuallyEdited, setHasAmountBeenManuallyEdited] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(PAGE_SIZE_OPTIONS[0])
 
@@ -335,20 +337,45 @@ export default function PaymentsPage() {
   }
 
   const handlePaymentFieldChange = (field, value) => {
-    const nextForm = {
-      ...paymentForm,
-      [field]: value,
-    }
+    setPaymentForm((prev) => {
+      const nextForm = {
+        ...prev,
+        [field]: value,
+      }
 
-    if (field === 'clientId') {
-      nextForm.serviceId = ''
-      nextForm.months = ''
-      nextForm.amount = ''
-    }
+      if (field === 'clientId') {
+        nextForm.serviceId = ''
+        nextForm.months = ''
+        nextForm.amount = ''
+      }
 
-    setPaymentForm(nextForm)
-    syncPaymentValidation(nextForm)
-    setPaymentError(null)
+      if (field === 'serviceId') {
+        nextForm.months = ''
+        if (!hasAmountBeenManuallyEdited) {
+          nextForm.amount = ''
+        }
+      }
+
+      if (field === 'months') {
+        const normalizedMonths = Number(value)
+        if (selectedServicePrice > 0 && Number.isFinite(normalizedMonths) && normalizedMonths > 0) {
+          nextForm.amount = String(Number((normalizedMonths * selectedServicePrice).toFixed(2)))
+        } else if (!hasAmountBeenManuallyEdited) {
+          nextForm.amount = ''
+        }
+      }
+
+      syncPaymentValidation(nextForm)
+      setPaymentError(null)
+
+      return nextForm
+    })
+
+    if (field === 'amount') {
+      setHasAmountBeenManuallyEdited(true)
+    } else if (field === 'clientId' || field === 'serviceId' || field === 'months') {
+      setHasAmountBeenManuallyEdited(false)
+    }
   }
 
   const handlePaymentSubmit = async (event) => {
@@ -563,29 +590,41 @@ export default function PaymentsPage() {
                     ))}
                   </select>
                 </FormField>
-                <div className="rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-700 shadow-inner">
+                <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700 shadow-inner">
                   {selectedService ? (
-                    <div className="space-y-1">
-                      <p className="font-semibold text-slate-700">{selectedService.name}</p>
-                      <p className="capitalize text-slate-500">
-                        {selectedServiceTypeLabel ?? 'Servicio'} · Estado: {selectedServiceStatusLabel ?? 'Desconocido'}
+                    <div className="space-y-2">
+                      <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-800">{selectedService.name}</p>
+                          <p className="text-xs capitalize text-slate-500">{selectedServiceTypeLabel ?? 'Servicio'}</p>
+                        </div>
+                        {selectedServiceStatusLabel && (
+                          <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-1 text-[11px] font-semibold capitalize text-slate-700">
+                            Estado: {selectedServiceStatusLabel}
+                          </span>
+                        )}
+                      </div>
+
+                      <dl className="grid gap-2 text-xs text-slate-600 sm:grid-cols-2">
+                        <div className="space-y-0.5">
+                          <dt className="font-semibold text-slate-700">Tarifa mensual</dt>
+                          <dd>{selectedServicePrice > 0 ? `${peso(selectedServicePrice)} al mes` : 'Sin tarifa fija'}</dd>
+                        </div>
+                        <div className="space-y-0.5">
+                          <dt className="font-semibold text-slate-700">Cobro recurrente</dt>
+                          <dd>
+                            {selectedService.nextBillingDate
+                              ? `Próximo cobro: ${formatDate(selectedService.nextBillingDate)}`
+                              : selectedService.billingDay
+                                ? `Cobro el día ${selectedService.billingDay} de cada mes`
+                                : 'Sin fecha de cobro configurada'}
+                          </dd>
+                        </div>
+                      </dl>
+
+                      <p className="text-[11px] text-slate-500">
+                        Usa la cantidad de meses para calcular automáticamente el monto según la tarifa.
                       </p>
-                      {selectedServicePrice > 0 && (
-                        <p className="text-slate-500">
-                          Tarifa: {peso(selectedServicePrice)} al mes
-                        </p>
-                      )}
-                      {selectedService.nextBillingDate ? (
-                        <p className="text-slate-500">
-                          Próximo cobro: {formatDate(selectedService.nextBillingDate)}
-                        </p>
-                      ) : selectedService.billingDay ? (
-                        <p className="text-slate-500">
-                          Cobro recurrente día {selectedService.billingDay}
-                        </p>
-                      ) : (
-                        <p className="text-slate-500">Sin fecha de cobro configurada</p>
-                      )}
                     </div>
                   ) : (
                     <p className="text-slate-500">Selecciona un cliente y servicio para ver el detalle.</p>
@@ -602,19 +641,34 @@ export default function PaymentsPage() {
                     paymentFieldErrors.months ??
                     (inferredMonthsFromAmount
                       ? `Equivalente a ${inferredMonthsFromAmount} meses con tarifa ${peso(selectedServicePrice)}.`
-                      : 'Ingresa la cobertura exacta; se aceptan medios meses.')
+                      : 'Selecciona los meses a cubrir; el monto se calcula automáticamente con la tarifa.')
                   }
-                  tooltip="Útil cuando el precio no está configurado o se cobran varios periodos."
+                  tooltip="Elige o escribe meses enteros o medios meses; el monto sugerido se llenará solo."
                 >
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.5"
-                    value={paymentForm.months}
-                    onChange={(event) => handlePaymentFieldChange('months', event.target.value)}
-                    placeholder="0"
-                    disabled={!selectedService}
-                  />
+                  <div className="space-y-2">
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.5"
+                      value={paymentForm.months}
+                      onChange={(event) => handlePaymentFieldChange('months', event.target.value)}
+                      placeholder="0"
+                      disabled={!selectedService}
+                    />
+                    <div className="flex flex-wrap gap-2">
+                      {QUICK_MONTH_OPTIONS.map((option) => (
+                        <button
+                          key={option}
+                          type="button"
+                          className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+                          onClick={() => handlePaymentFieldChange('months', String(option))}
+                          disabled={!selectedService}
+                        >
+                          {option === 1 ? '1 mes' : `${option} meses`}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </FormField>
                 <FormField
                   label="Monto recibido (MXN)"
@@ -622,9 +676,11 @@ export default function PaymentsPage() {
                   status={paymentFieldErrors.amount ? 'error' : hasAmountValue ? 'success' : 'default'}
                   message={
                     paymentFieldErrors.amount ??
-                    (suggestedAmount
-                      ? `Sugerido: ${peso(suggestedAmount)} para ${monthsValue} meses con tarifa ${peso(selectedServicePrice)}.`
-                      : 'Registra el total recibido en efectivo, transferencia o tarjeta.')
+                    (hasMonthsValue && selectedServicePrice > 0
+                      ? `Calculado para ${monthsValue} meses con tarifa ${peso(selectedServicePrice)}. Ajusta si aplicas descuentos.`
+                      : suggestedAmount
+                        ? `Sugerido: ${peso(suggestedAmount)} para ${monthsValue} meses con tarifa ${peso(selectedServicePrice)}.`
+                        : 'Registra el total recibido en efectivo, transferencia o tarjeta.')
                   }
                   tooltip="Se registrará tal cual para reportes; incluye centavos si aplica."
                 >
