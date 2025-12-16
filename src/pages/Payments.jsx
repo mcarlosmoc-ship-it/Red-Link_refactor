@@ -56,10 +56,6 @@ export default function PaymentsPage() {
   const isLoadingClients = Boolean(clientsStatus?.isLoading && clients.length === 0)
   const shouldShowSkeleton = Boolean(initializeStatus?.isLoading) || isRefreshing
 
-  if (shouldShowSkeleton) {
-    return <PaymentsSkeleton />
-  }
-
   const clientOptions = useMemo(
     () =>
       [...clients]
@@ -423,6 +419,10 @@ export default function PaymentsPage() {
   )
 
   const totalAmount = filteredPayments.reduce((sum, payment) => sum + (payment.amount ?? 0), 0)
+
+  if (shouldShowSkeleton) {
+    return <PaymentsSkeleton />
+  }
 
   return (
     <div className="space-y-6">
