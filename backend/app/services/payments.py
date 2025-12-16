@@ -175,15 +175,6 @@ class PaymentService:
             outstanding_debt_months = Decimal(service.debt_months or 0)
             outstanding_debt_amount = Decimal(service.debt_amount or 0)
 
-            if outstanding_debt_months > Decimal("0"):
-                if months_paid is None or months_paid < outstanding_debt_months:
-                    raise ValueError(
-                        "Debes cubrir los meses vencidos antes de registrar meses adelantados."
-                    )
-
-            if outstanding_debt_amount > Decimal("0") and amount < outstanding_debt_amount:
-                raise ValueError("El monto no cubre el adeudo pendiente del servicio.")
-
             payment = models.ServicePayment(
                 client_service_id=service.id,
                 client_id=client.id,
@@ -354,6 +345,13 @@ class PaymentService:
         months_paid: Optional[Decimal],
         amount: Decimal,
     ) -> None:
+        has_outstanding_debt = Decimal(service.debt_amount or 0) > 0 or Decimal(
+            service.debt_months or 0
+        ) > 0
+
+        if has_outstanding_debt:
+            return
+
         months_to_apply = months_paid
         if months_to_apply is None:
             months_to_apply = cls._infer_months_from_amount(amount, service.effective_price)
