@@ -9,7 +9,7 @@ from typing import Optional
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -301,16 +301,16 @@ def get_payment(payment_id: str, db: Session = Depends(get_db)) -> schemas.Servi
 
 @router.get(
     "/{payment_id}/receipt",
-    response_model=schemas.PaymentReceipt,
-    summary="Descargar recibo simple del pago",
+    response_class=HTMLResponse,
+    summary="Recibo imprimible del pago",
 )
-def download_receipt(payment_id: str, db: Session = Depends(get_db)):
+def print_receipt(payment_id: str, db: Session = Depends(get_db)):
     payment = PaymentService.get_payment(db, payment_id)
     if payment is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Payment not found")
 
-    filename, content = PaymentService.build_receipt(payment)
-    return schemas.PaymentReceipt(filename=filename, content=content)
+    receipt = PaymentService.build_receipt(payment)
+    return HTMLResponse(content=receipt)
 
 
 @router.get("/schedules", response_model=schemas.PaymentScheduleListResponse)
