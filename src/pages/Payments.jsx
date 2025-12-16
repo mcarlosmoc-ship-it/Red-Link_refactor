@@ -23,7 +23,6 @@ import FormField from '../components/ui/FormField.jsx'
 const METHODS = ['Todos', 'Efectivo', 'Transferencia', 'Tarjeta', 'Revendedor']
 const METHOD_OPTIONS = METHODS.filter((method) => method !== 'Todos')
 const PAGE_SIZE_OPTIONS = [10, 25, 50]
-const QUICK_MONTH_OPTIONS = [1, 2, 3]
 const monthCountFormatter = new Intl.NumberFormat('es-MX', { maximumFractionDigits: 0 })
 
 const formatMonthsForUi = (value) => {
@@ -73,7 +72,6 @@ export default function PaymentsPage() {
   const [paymentForm, setPaymentForm] = useState({
     clientId: '',
     serviceId: '',
-    months: '',
     amount: '',
     method: METHOD_OPTIONS[0] ?? 'Efectivo',
     note: '',
@@ -245,40 +243,6 @@ export default function PaymentsPage() {
     [],
   )
 
-  const resolveOutstandingMonths = useMemo(
-    () =>
-      (client, service) => {
-        if (!client && !service) {
-          return null
-        }
-
-        const normalizedClientDebtMonths = Number(client?.debtMonths)
-        if (Number.isFinite(normalizedClientDebtMonths) && normalizedClientDebtMonths > 0) {
-          return normalizedClientDebtMonths
-        }
-
-        const normalizedServiceDebtMonths = Number(service?.debtMonths)
-        if (Number.isFinite(normalizedServiceDebtMonths) && normalizedServiceDebtMonths > 0) {
-          return normalizedServiceDebtMonths
-        }
-
-        const outstandingAmount = Number(service?.debtAmount ?? client?.debtAmount)
-        const referencePrice = Number(service?.price ?? client?.monthlyFee)
-        if (
-          Number.isFinite(outstandingAmount) &&
-          outstandingAmount > 0 &&
-          Number.isFinite(referencePrice) &&
-          referencePrice > 0
-        ) {
-          const months = outstandingAmount / referencePrice
-          return Number(months.toFixed(2))
-        }
-
-        return null
-      },
-    [],
-  )
-
   const resolveAheadAmount = useMemo(
     () =>
       (client, service) => {
@@ -330,22 +294,8 @@ export default function PaymentsPage() {
     ],
   )
 
-  const monthsValue = Number(paymentForm.months)
   const amountValue = Number(paymentForm.amount)
-  const hasMonthsValue = Number.isFinite(monthsValue) && monthsValue > 0
   const hasAmountValue = Number.isFinite(amountValue) && amountValue > 0
-
-  const suggestedAmountFromMonths = useMemo(() => {
-    if (!selectedServicePrice || !hasMonthsValue) return null
-    return selectedServicePrice * monthsValue
-  }, [selectedServicePrice, hasMonthsValue, monthsValue])
-
-  const inferredMonthsFromAmount = useMemo(() => {
-    if (!selectedServicePrice || !hasAmountValue) return null
-    const inferred = amountValue / selectedServicePrice
-    if (!Number.isFinite(inferred) || inferred <= 0) return null
-    return inferred
-  }, [selectedServicePrice, hasAmountValue, amountValue])
 
   const outstandingAmount = useMemo(() => {
     if (!selectedClient || !selectedService) {
@@ -406,25 +356,10 @@ export default function PaymentsPage() {
 
   const applyPaymentSuggestions = useCallback(
     (form) => {
-      const client = resolveSelectedClientFromForm(form)
-      const service = resolveSelectedServiceFromForm(form)
-
       const suggestedAmount = resolveSuggestedAmount(form)
-      const suggestedMonths = resolveOutstandingMonths(client, service)
-
-      const hasCustomMonths = Number(form.months) > 0
 
       const nextForm = { ...form }
       let hasUpdates = false
-
-      if (!hasCustomMonths && Number.isFinite(suggestedMonths) && suggestedMonths > 0) {
-        const normalizedSuggestedMonths = Math.max(1, Math.round(suggestedMonths))
-        const normalizedSuggestedMonthsLabel = String(normalizedSuggestedMonths)
-        if (form.months !== normalizedSuggestedMonthsLabel) {
-          nextForm.months = normalizedSuggestedMonthsLabel
-          hasUpdates = true
-        }
-      }
 
       if (
         !hasAmountBeenManuallyEdited &&
@@ -440,9 +375,6 @@ export default function PaymentsPage() {
     },
     [
       hasAmountBeenManuallyEdited,
-      resolveOutstandingMonths,
-      resolveSelectedClientFromForm,
-      resolveSelectedServiceFromForm,
       resolveSuggestedAmount,
     ],
   )
@@ -472,18 +404,10 @@ export default function PaymentsPage() {
       errors.serviceId = 'El cliente debe tener al menos un servicio activo.'
     }
 
-    const monthsValue = Number(formData.months)
     const amountValue = Number(formData.amount)
-    const normalizedMonths = Number.isFinite(monthsValue) && monthsValue > 0 ? monthsValue : 0
     const normalizedAmount = Number.isFinite(amountValue) && amountValue > 0 ? amountValue : 0
-    const requiresExplicitMonths = (Number(service?.price ?? 0) <= 0 && normalizedAmount <= 0) || false
-
-    if (normalizedMonths <= 0 && normalizedAmount <= 0) {
-      errors.amount = 'Ingresa meses pagados o un monto a registrar.'
-    }
-
-    if (service && requiresExplicitMonths && normalizedMonths <= 0) {
-      errors.months = 'Define los meses cubiertos cuando no hay tarifa fija.'
+    if (normalizedAmount <= 0) {
+      errors.amount = 'Ingresa un monto a registrar.'
     }
 
     return errors
@@ -503,22 +427,11 @@ export default function PaymentsPage() {
 
       if (field === 'clientId') {
         nextForm.serviceId = ''
-        nextForm.months = ''
         nextForm.amount = ''
       }
 
       if (field === 'serviceId') {
-        nextForm.months = ''
         if (!hasAmountBeenManuallyEdited) {
-          nextForm.amount = ''
-        }
-      }
-
-      if (field === 'months') {
-        const normalizedMonths = Number(value)
-        if (selectedServicePrice > 0 && Number.isFinite(normalizedMonths) && normalizedMonths > 0) {
-          nextForm.amount = String(Number((normalizedMonths * selectedServicePrice).toFixed(2)))
-        } else if (!hasAmountBeenManuallyEdited) {
           nextForm.amount = ''
         }
       }
@@ -533,7 +446,7 @@ export default function PaymentsPage() {
 
     if (field === 'amount') {
       setHasAmountBeenManuallyEdited(true)
-    } else if (field === 'clientId' || field === 'serviceId' || field === 'months') {
+    } else if (field === 'clientId' || field === 'serviceId') {
       setHasAmountBeenManuallyEdited(false)
     }
   }
@@ -547,9 +460,7 @@ export default function PaymentsPage() {
       return
     }
 
-    const monthsValue = Number(paymentForm.months)
     const amountValue = Number(paymentForm.amount)
-    const normalizedMonths = Number.isFinite(monthsValue) && monthsValue > 0 ? monthsValue : 0
     const normalizedAmount = Number.isFinite(amountValue) && amountValue > 0 ? amountValue : 0
 
     setPaymentError(null)
@@ -559,7 +470,6 @@ export default function PaymentsPage() {
       await recordPayment({
         clientId: paymentForm.clientId,
         serviceId: selectedService.id,
-        months: normalizedMonths,
         amount: normalizedAmount,
         method: paymentForm.method,
         note: paymentForm.note.trim(),
@@ -580,7 +490,6 @@ export default function PaymentsPage() {
 
       const nextForm = {
         ...paymentForm,
-        months: '',
         amount: '',
         note: '',
       }
@@ -825,7 +734,7 @@ export default function PaymentsPage() {
                       </dl>
 
                       <p className="text-[11px] text-slate-500">
-                        Usa la cantidad de meses para calcular automáticamente el monto según la tarifa.
+                        Ingresa el monto recibido; el sistema derivará la cobertura según la tarifa configurada.
                       </p>
                     </div>
                   ) : (
@@ -834,55 +743,16 @@ export default function PaymentsPage() {
                 </div>
               </div>
 
-              <div className="grid gap-3 md:grid-cols-3">
-                <FormField
-                  label="Meses pagados"
-                  htmlFor="payment-months"
-                  status={paymentFieldErrors.months ? 'error' : hasMonthsValue ? 'success' : 'default'}
-                  message={
-                    paymentFieldErrors.months ??
-                    (formatMonthsForUi(inferredMonthsFromAmount)
-                      ? `Equivalente aproximado a ${formatMonthsForUi(inferredMonthsFromAmount)} con tarifa ${peso(selectedServicePrice)}.`
-                      : 'Selecciona los meses a cubrir; se mostrará como número entero (sin decimales).')
-                  }
-                  tooltip="Elige o escribe meses completos; los fraccionarios se calculan internamente."
-                >
-                  <div className="space-y-2">
-                    <input
-                      type="number"
-                      min={0}
-                      step={1}
-                      value={paymentForm.months}
-                      onChange={(event) => handlePaymentFieldChange('months', event.target.value)}
-                      placeholder="1"
-                      disabled={!selectedService}
-                    />
-                    <div className="flex flex-wrap gap-2">
-                      {QUICK_MONTH_OPTIONS.map((option) => (
-                        <button
-                          key={option}
-                          type="button"
-                          className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
-                          onClick={() => handlePaymentFieldChange('months', String(option))}
-                          disabled={!selectedService}
-                        >
-                          {option === 1 ? '1 mes' : `${option} meses`}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </FormField>
+              <div className="grid gap-3 md:grid-cols-2">
                 <FormField
                   label="Monto recibido (MXN)"
                   htmlFor="payment-amount"
                   status={paymentFieldErrors.amount ? 'error' : hasAmountValue ? 'success' : 'default'}
                   message={
                     paymentFieldErrors.amount ??
-                    (hasMonthsValue && selectedServicePrice > 0
-                      ? `Calculado para ${formatMonthsForUi(monthsValue) ?? 'meses definidos'} con tarifa ${peso(selectedServicePrice)}. Ajusta si aplicas descuentos.`
-                      : suggestedCharge
-                        ? `Sugerido: ${peso(suggestedCharge)} considerando tarifa, saldos pendientes y saldo a favor.`
-                        : 'Registra el total recibido en efectivo, transferencia o tarjeta.')
+                    (suggestedCharge
+                      ? `Sugerido: ${peso(suggestedCharge)} considerando tarifa, saldos pendientes y saldo a favor.`
+                      : 'Registra el total recibido en efectivo, transferencia o tarjeta.')
                   }
                   tooltip="Se registrará tal cual para reportes; incluye centavos si aplica."
                 >
