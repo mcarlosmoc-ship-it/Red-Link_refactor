@@ -285,10 +285,14 @@ def _decode_jwt(token: str, key: bytes) -> dict[str, Any]:
 
 def _resolve_access_token_expiry() -> timedelta:
     raw = os.getenv(ACCESS_TOKEN_EXPIRE_MINUTES_ENV)
-    if not raw:
+    if raw is None:
         return timedelta(minutes=15)
+
+    normalized = raw.strip()
+    if normalized == "":
+        raise SecurityConfigurationError("ACCESS_TOKEN_EXPIRE_MINUTES must not be empty")
     try:
-        minutes = int(raw)
+        minutes = int(normalized)
     except ValueError as exc:  # pragma: no cover - defensive branch
         raise SecurityConfigurationError("ACCESS_TOKEN_EXPIRE_MINUTES must be an integer") from exc
     if minutes <= 0:

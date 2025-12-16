@@ -6,7 +6,11 @@ from fastapi.testclient import TestClient
 from backend.app import models
 from backend.app.database import get_db
 from backend.app.main import app
-from backend.app.security import _resolve_access_token_expiry, generate_totp_code
+from backend.app.security import (
+    SecurityConfigurationError,
+    _resolve_access_token_expiry,
+    generate_totp_code,
+)
 from backend.app.services.backups import perform_backup
 
 
@@ -151,6 +155,13 @@ def test_access_token_expiry_defaults_to_15_minutes(monkeypatch):
     expiry = _resolve_access_token_expiry()
 
     assert expiry == timedelta(minutes=15)
+
+
+def test_access_token_expiry_rejects_zero(monkeypatch):
+    monkeypatch.setenv("ACCESS_TOKEN_EXPIRE_MINUTES", "0")
+
+    with pytest.raises(SecurityConfigurationError):
+        _resolve_access_token_expiry()
 
 
 def test_perform_backup_creates_file(security_settings, tmp_path, monkeypatch):
