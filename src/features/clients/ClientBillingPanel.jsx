@@ -1165,13 +1165,13 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
                         <td className="px-3 py-2 text-right">
                           <div className="inline-flex flex-col items-end gap-2 sm:flex-row">
                             <Link
-                              to={`/clients?clientId=${client.id}&view=payments`}
+                              to={`/payments?clientId=${client.id}`}
                               className="inline-flex items-center gap-1 rounded-md border border-blue-100 px-3 py-1.5 text-xs font-semibold text-blue-600 transition hover:bg-blue-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40"
                             >
-                              Ver pagos
+                              Registrar pago
                             </Link>
                             <Link
-                              to={`/clients?clientId=${client.id}&view=services`}
+                              to={`/clients?clientId=${client.id}&view=payments#client-services`}
                               className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40"
                             >
                               Servicios

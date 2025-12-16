@@ -71,7 +71,7 @@ export default function ClientsPage() {
   const serviceFormRef = useRef(null)
 
   useEffect(() => {
-    if (location.hash?.includes('services')) {
+    if (location.hash === '#services' || location.hash === '#monthly-services') {
       setActiveMainTab('services')
     }
   }, [location.hash])
@@ -813,7 +813,7 @@ export default function ClientsPage() {
                     </CardContent>
                   </Card>
                 )}
-                <div ref={serviceFormRef}>
+                <div ref={serviceFormRef} id="client-services">
                   <ServicesAssignments
                     client={selectedClient}
                     servicePlans={servicePlans}

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   peso,
   formatDate,
@@ -30,6 +31,7 @@ export default function PaymentsPage() {
   const { showToast } = useToast()
   const { clients, status: clientsStatus } = useClients()
   const { isRefreshing } = useBackofficeRefresh()
+  const [searchParams] = useSearchParams()
   const [methodFilter, setMethodFilter] = useState('Todos')
   const [searchTerm, setSearchTerm] = useState('')
   const [isRetrying, setIsRetrying] = useState(false)
@@ -83,6 +85,19 @@ export default function PaymentsPage() {
       label: `${service.name} · ${(service.type || 'servicio').replace(/_/g, ' ')}`,
     }))
   }, [selectedClient])
+
+  useEffect(() => {
+    const clientIdFromParams = searchParams.get('clientId')
+    if (!clientIdFromParams || paymentForm.clientId) return
+
+    const matchingClient = clients.find(
+      (client) => String(client.id) === String(clientIdFromParams),
+    )
+
+    if (matchingClient) {
+      setPaymentForm((prev) => ({ ...prev, clientId: String(matchingClient.id) }))
+    }
+  }, [clients, paymentForm.clientId, searchParams])
 
   useEffect(() => {
     if (!selectedClient?.services?.length) {
