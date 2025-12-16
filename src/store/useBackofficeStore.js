@@ -1006,8 +1006,9 @@ export const useBackofficeStore = create((set, get) => ({
 
     const monthlyFee = service?.price ?? client?.monthlyFee ?? CLIENT_PRICE
     const normalizedAmount = normalizeDecimal(amount, 0)
+    const normalizedMonths = normalizeDecimal(months, 0)
 
-    const computedAmount = normalizedAmount > 0 ? normalizedAmount : monthlyFee
+    const computedAmount = normalizedAmount > 0 ? normalizedAmount : normalizedMonths * monthlyFee
 
     const payload = {
       client_id: client.id,
