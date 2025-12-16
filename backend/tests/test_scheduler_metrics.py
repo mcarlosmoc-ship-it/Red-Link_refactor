@@ -1,5 +1,5 @@
 from __future__ import annotations
-from backend.app.main import start_background_jobs
+from backend.app.main import start_background_jobs, stop_background_jobs
 from backend.app.services.scheduler_monitor import (
     JOB_BACKUPS,
     JOB_OVERDUE_MONITOR,
@@ -36,6 +36,28 @@ def test_background_jobs_respect_enable_flags(monkeypatch):
     assert snapshot[JOB_PAYMENT_REMINDERS]["enabled"] is False
     assert snapshot[JOB_BACKUPS]["enabled"] is False
     assert snapshot[JOB_OVERDUE_MONITOR]["last_tick"] is None
+
+
+def test_background_jobs_stop_all(monkeypatch):
+    stopped: list[str] = []
+
+    def _stub(job_name: str):
+        def _stop() -> None:
+            stopped.append(job_name)
+
+        return _stop
+
+    monkeypatch.setattr("backend.app.main.stop_overdue_monitor", _stub(JOB_OVERDUE_MONITOR))
+    monkeypatch.setattr(
+        "backend.app.main.stop_payment_reminder_scheduler", _stub(JOB_PAYMENT_REMINDERS)
+    )
+    monkeypatch.setattr("backend.app.main.stop_backup_scheduler", _stub(JOB_BACKUPS))
+
+    stop_background_jobs()
+
+    assert stopped.count(JOB_OVERDUE_MONITOR) >= 1
+    assert stopped.count(JOB_PAYMENT_REMINDERS) >= 1
+    assert stopped.count(JOB_BACKUPS) >= 1
 
 
 def test_scheduler_health_endpoint_reports_status(client):
