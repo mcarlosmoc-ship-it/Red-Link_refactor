@@ -1,4 +1,4 @@
-# Guía de despliegue recomendado
+# Guía de despliegue recomendada
 
 Esta guía resume un flujo de despliegue de producción para el backend FastAPI y el frontend Vite, usando PostgreSQL y un proxy inverso con HTTPS.
 
