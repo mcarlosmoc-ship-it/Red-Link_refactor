@@ -8,17 +8,21 @@ from typing import Optional
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 
-from .. import schemas
+from .. import models, schemas
 from ..database import get_db
 from ..models.client_service import ClientServiceType
 from ..models.payment import PaymentMethod
 from ..security import require_admin
 from ..services import BillingPeriodService, PaymentService, PaymentServiceError
+from ..services.payment_schedules import (
+    PaymentScheduleService,
+    PaymentScheduleServiceError,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -290,6 +294,94 @@ def get_payment(payment_id: str, db: Session = Depends(get_db)) -> schemas.Servi
     if payment is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Payment not found")
     return payment
+
+
+@router.get(
+    "/{payment_id}/receipt",
+    response_model=schemas.PaymentReceipt,
+    summary="Descargar recibo simple del pago",
+)
+def download_receipt(payment_id: str, db: Session = Depends(get_db)):
+    payment = PaymentService.get_payment(db, payment_id)
+    if payment is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Payment not found")
+
+    filename, content = PaymentService.build_receipt(payment)
+    return schemas.PaymentReceipt(filename=filename, content=content)
+
+
+@router.get("/schedules", response_model=schemas.PaymentScheduleListResponse)
+def list_payment_schedules(
+    db: Session = Depends(get_db),
+    status: Optional[models.PaymentScheduleStatus] = Query(None, description="Filtrar por estatus"),
+    client_id: Optional[str] = Query(None, description="Cliente asociado"),
+    execute_on_or_after: Optional[date] = Query(None, description="Fecha mínima programada"),
+    execute_on_or_before: Optional[date] = Query(None, description="Fecha máxima programada"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+) -> schemas.PaymentScheduleListResponse:
+    items, total = PaymentScheduleService.list_schedules(
+        db,
+        status=status,
+        client_id=client_id,
+        execute_on_or_after=execute_on_or_after,
+        execute_on_or_before=execute_on_or_before,
+        skip=skip,
+        limit=limit,
+    )
+    return schemas.PaymentScheduleListResponse(items=items, total=total, limit=limit, skip=skip)
+
+
+@router.post(
+    "/schedules",
+    response_model=schemas.PaymentScheduleRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Programar cobro diferido",
+)
+def create_payment_schedule(
+    payload: schemas.PaymentScheduleCreate, db: Session = Depends(get_db)
+) -> schemas.PaymentScheduleRead:
+    try:
+        schedule = PaymentScheduleService.create_schedule(db, payload)
+        return schedule
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except SQLAlchemyError as exc:  # pragma: no cover - defensive
+        LOGGER.exception("Failed to create payment schedule", exc_info=exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="No se pudo programar el pago diferido.",
+        ) from exc
+
+
+@router.post(
+    "/schedules/{schedule_id}/execute",
+    response_model=schemas.PaymentScheduleRead,
+    summary="Ejecutar pago diferido",
+)
+def execute_payment_schedule(
+    schedule_id: str,
+    paid_on: Optional[date] = Query(None, description="Fecha efectiva del pago"),
+    db: Session = Depends(get_db),
+) -> schemas.PaymentScheduleRead:
+    try:
+        schedule = PaymentScheduleService.execute_schedule(db, schedule_id, paid_on=paid_on)
+        return schedule
+    except (ValueError, PaymentScheduleServiceError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.post(
+    "/schedules/{schedule_id}/cancel",
+    response_model=schemas.PaymentScheduleRead,
+    summary="Cancelar pago diferido",
+)
+def cancel_payment_schedule(schedule_id: str, db: Session = Depends(get_db)) -> schemas.PaymentScheduleRead:
+    try:
+        schedule = PaymentScheduleService.cancel_schedule(db, schedule_id)
+        return schedule
+    except (ValueError, PaymentScheduleServiceError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
 @router.delete("/{payment_id}", status_code=status.HTTP_204_NO_CONTENT)

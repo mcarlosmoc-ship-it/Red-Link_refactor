@@ -596,6 +596,31 @@ class PaymentService:
         )
 
     @staticmethod
+    def build_receipt(payment: models.ServicePayment) -> tuple[str, str]:
+        """Return a lightweight text receipt for downloads."""
+
+        client_name = getattr(payment.client, "full_name", "Cliente")
+        service_name = getattr(payment.service, "name", None)
+        if not service_name and payment.service and payment.service.service_plan:
+            service_name = payment.service.service_plan.name
+        service_name = service_name or "Servicio"
+
+        lines = [
+            "Recibo de pago",
+            f"Pago ID: {payment.id}",
+            f"Cliente: {client_name}",
+            f"Servicio: {service_name}",
+            f"Fecha de pago: {payment.paid_on}",
+            f"Monto: ${Decimal(payment.amount):,.2f}",
+            f"Meses cubiertos: {payment.months_paid or 'N/D'}",
+            f"Método: {payment.method}",
+        ]
+        if payment.note:
+            lines.append(f"Nota: {payment.note}")
+        filename = f"recibo-{payment.id}.txt"
+        return filename, "\n".join(lines)
+
+    @staticmethod
     def total_amount_for_period(db: Session, period_key: str) -> Decimal:
         total = (
             db.query(func.coalesce(func.sum(models.ServicePayment.amount), 0))

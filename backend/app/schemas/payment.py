@@ -167,3 +167,53 @@ class PaymentDuplicateCheck(BaseModel):
     client_service_id: str
     period_key: str
     exists: bool
+
+
+class PaymentScheduleBase(BaseModel):
+    """Shared fields to program deferred payments."""
+
+    client_service_id: str = Field(..., description="Servicio al que se aplicará el cargo")
+    execute_on: date = Field(..., description="Fecha programada para ejecutar el pago")
+    amount: Decimal = Field(..., gt=0, description="Monto a cobrar cuando se ejecute")
+    months: Optional[Decimal] = Field(
+        default=None,
+        gt=0,
+        description="Meses que cubrirá el pago (se infiere si se omite)",
+    )
+    method: PaymentMethod = Field(..., description="Método previsto para el cobro")
+    note: Optional[str] = Field(default=None, description="Referencia para el cobro diferido")
+    recorded_by: Optional[str] = Field(default=None, description="Usuario que programó el pago")
+
+
+class PaymentScheduleCreate(PaymentScheduleBase):
+    """Payload to create a deferred payment schedule."""
+
+    pass
+
+
+class PaymentScheduleRead(PaymentScheduleBase):
+    """Representation of a scheduled payment."""
+
+    id: str
+    client_id: str
+    status: str
+    created_at: datetime
+    executed_at: Optional[datetime] = None
+    payment_id: Optional[str] = None
+    client: Optional["ClientRead"] = None
+    service: Optional["ClientServiceRead"] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PaymentScheduleListResponse(PaginatedResponse[PaymentScheduleRead]):
+    """Paginated list of deferred payments."""
+
+    pass
+
+
+class PaymentReceipt(BaseModel):
+    """Simple downloadable receipt payload."""
+
+    filename: str
+    content: str

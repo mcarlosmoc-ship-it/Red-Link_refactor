@@ -26,6 +26,10 @@ from .inventory import InventoryItem, InventoryStatus
 from .ip_pool import BaseIpPool, BaseIpReservation, IpReservationStatus
 from .inventory_movement import InventoryMovement, InventoryMovementType
 from .payment import PaymentMethod
+from .payment_schedule import (
+    PaymentSchedule,
+    PaymentScheduleStatus,
+)
 from .payment_reminder import (
     PaymentReminderLog,
     ReminderDeliveryStatus,
@@ -69,6 +73,8 @@ __all__ = [
     "PaymentAuditAction",
     "PaymentAuditLog",
     "PaymentMethod",
+    "PaymentSchedule",
+    "PaymentScheduleStatus",
     "PaymentReminderLog",
     "ReminderDeliveryStatus",
     "ReminderType",
