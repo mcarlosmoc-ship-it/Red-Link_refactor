@@ -107,6 +107,8 @@ describe('page skeletons', () => {
     )
 
     expect(screen.queryByTestId('dashboard-skeleton')).not.toBeInTheDocument()
+    expect(screen.getByTestId('stat-card')).toBeInTheDocument()
+    expect(screen.getByTestId('earnings-card')).toBeInTheDocument()
   })
 
   it('renders the reports skeleton while a manual refresh is in progress', async () => {
@@ -119,5 +121,18 @@ describe('page skeletons', () => {
     )
 
     expect(screen.getByTestId('reports-skeleton')).toBeInTheDocument()
+  })
+
+  it('renders the reports content when not refreshing', async () => {
+    const { default: ReportsPage } = await import('../src/pages/Reports.jsx')
+
+    render(
+      <BackofficeRefreshProvider value={{ isRefreshing: false }}>
+        <ReportsPage />
+      </BackofficeRefreshProvider>,
+    )
+
+    expect(screen.queryByTestId('reports-skeleton')).not.toBeInTheDocument()
+    expect(screen.getByTestId('financial-summary')).toBeInTheDocument()
   })
 })

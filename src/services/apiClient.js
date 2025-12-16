@@ -34,7 +34,7 @@ const isRunningOnDevServer = ({ isLocalHost, port }) => {
   return DEV_SERVER_PORTS.has(port ?? '')
 }
 
-const resolveBrowserDefaultBaseUrl = () => {
+export const resolveBrowserDefaultBaseUrl = () => {
   if (typeof globalThis === 'undefined') {
     return null
   }
@@ -59,11 +59,11 @@ const resolveBrowserDefaultBaseUrl = () => {
     return `${location.protocol}//${backendHost}:${backendPort}`
   }
 
-  // If the app is being served locally but not by the Vite dev server
-  // (for example, a `vite preview` running on a custom port), prefer the
+  // When serving the static assets locally from a port other than the
+  // backend (for example, `vite preview` on a custom port), prefer the
   // dedicated backend port instead of the frontend server origin. This
   // keeps the default FastAPI target on localhost:8000 even when the
-  // static assets are served from another local port.
+  // frontend is bundled and served separately from the API.
   if (isLocalHost && port && port !== backendPort) {
     return `${location.protocol}//${backendHost}:${backendPort}`
   }
