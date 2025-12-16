@@ -226,6 +226,40 @@ export default function PaymentsPage() {
     [],
   )
 
+  const resolveOutstandingMonths = useMemo(
+    () =>
+      (client, service) => {
+        if (!client && !service) {
+          return null
+        }
+
+        const normalizedClientDebtMonths = Number(client?.debtMonths)
+        if (Number.isFinite(normalizedClientDebtMonths) && normalizedClientDebtMonths > 0) {
+          return normalizedClientDebtMonths
+        }
+
+        const normalizedServiceDebtMonths = Number(service?.debtMonths)
+        if (Number.isFinite(normalizedServiceDebtMonths) && normalizedServiceDebtMonths > 0) {
+          return normalizedServiceDebtMonths
+        }
+
+        const outstandingAmount = Number(service?.debtAmount ?? client?.debtAmount)
+        const referencePrice = Number(service?.price ?? client?.monthlyFee)
+        if (
+          Number.isFinite(outstandingAmount) &&
+          outstandingAmount > 0 &&
+          Number.isFinite(referencePrice) &&
+          referencePrice > 0
+        ) {
+          const months = outstandingAmount / referencePrice
+          return Number(months.toFixed(2))
+        }
+
+        return null
+      },
+    [],
+  )
+
   useEffect(() => {
     if (!selectedClient || !selectedService) {
       return
@@ -234,23 +268,39 @@ export default function PaymentsPage() {
     setPaymentForm((prev) => {
       const isSameClient = String(prev.clientId) === String(selectedClient.id)
       const hasCustomAmount = Number(prev.amount) > 0
-      if (!isSameClient || hasCustomAmount) {
+      const hasCustomMonths = Number(prev.months) > 0
+
+      if (!isSameClient) {
         return prev
       }
 
       const suggestedAmount = resolveOutstandingAmount(selectedClient, selectedService)
-      if (!suggestedAmount) {
-        return prev
+      const suggestedMonths = resolveOutstandingMonths(selectedClient, selectedService)
+
+      const nextForm = { ...prev }
+      let hasUpdates = false
+
+      if (!hasCustomMonths && Number.isFinite(suggestedMonths) && suggestedMonths > 0) {
+        const normalizedSuggestedMonths = String(suggestedMonths)
+        if (prev.months !== normalizedSuggestedMonths) {
+          nextForm.months = normalizedSuggestedMonths
+          hasUpdates = true
+        }
       }
 
-      const currentAmount = Number(prev.amount)
-      if (Number.isFinite(currentAmount) && currentAmount === suggestedAmount) {
-        return prev
+      if (
+        !hasCustomAmount &&
+        Number.isFinite(suggestedAmount) &&
+        suggestedAmount > 0 &&
+        Number(prev.amount) !== suggestedAmount
+      ) {
+        nextForm.amount = String(suggestedAmount)
+        hasUpdates = true
       }
 
-      return { ...prev, amount: String(suggestedAmount) }
+      return hasUpdates ? nextForm : prev
     })
-  }, [selectedClient, selectedService, resolveOutstandingAmount])
+  }, [selectedClient, selectedService, resolveOutstandingAmount, resolveOutstandingMonths])
 
   const validatePaymentForm = (formData, service = selectedService) => {
     const errors = {}
