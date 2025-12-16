@@ -69,8 +69,11 @@ from .payment import (
     OverduePeriod,
     OverduePeriodListResponse,
     PaymentDuplicateCheck,
+    PaymentBalanceSnapshot,
+    PaymentCaptureSummary,
     PaymentMethodBreakdown,
     PaymentReceipt,
+    PaymentSuggestedAmount,
     PaymentScheduleCreate,
     PaymentScheduleListResponse,
     PaymentScheduleRead,
@@ -79,6 +82,8 @@ from .payment import (
     ServicePaymentCreate,
     ServicePaymentListResponse,
     ServicePaymentRead,
+    ServicePaymentResult,
+    ServicePaymentWithSummary,
     ServicePaymentUpdate,
     ServicePeriodStatus,
     ServicePeriodStatusListResponse,
@@ -163,9 +168,13 @@ __all__ = [
     "PaginatedResponse",
     "ServicePaymentBase",
     "ServicePaymentCreate",
+    "PaymentBalanceSnapshot",
+    "PaymentCaptureSummary",
     "PaymentMethodBreakdown",
     "ServicePaymentRead",
     "ServicePaymentListResponse",
+    "ServicePaymentResult",
+    "ServicePaymentWithSummary",
     "ServicePaymentUpdate",
     "ServicePeriodStatus",
     "ServicePeriodStatusListResponse",
@@ -173,6 +182,7 @@ __all__ = [
     "OverduePeriod",
     "OverduePeriodListResponse",
     "PaymentDuplicateCheck",
+    "PaymentSuggestedAmount",
     "PaymentScheduleCreate",
     "PaymentScheduleRead",
     "PaymentScheduleListResponse",
@@ -260,4 +270,12 @@ ClientServiceListResponse.model_rebuild(
 )
 ServicePaymentListResponse.model_rebuild(
     _types_namespace={"ServicePaymentRead": ServicePaymentRead}
+)
+ServicePaymentWithSummary.model_rebuild(
+    _types_namespace={
+        "ClientRead": ClientRead,
+        "ClientServiceRead": ClientServiceRead,
+        "PaymentCaptureSummary": PaymentCaptureSummary,
+        "PaymentBalanceSnapshot": PaymentBalanceSnapshot,
+    }
 )

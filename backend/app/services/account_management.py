@@ -400,7 +400,7 @@ class AccountService:
             )
 
         try:
-            payment = PaymentService.create_payment(
+            payment_result = PaymentService.create_payment(
                 db,
                 schemas.ServicePaymentCreate(
                     client_service_id=str(account.client_service_id),
@@ -412,6 +412,7 @@ class AccountService:
                     recorded_by=actor.username if actor else None,
                 ),
             )
+            payment = payment_result.payment
         except (ValueError, PaymentServiceError) as exc:
             raise AccountServiceError(str(exc)) from exc
 

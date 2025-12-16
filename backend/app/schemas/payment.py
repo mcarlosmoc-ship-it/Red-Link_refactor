@@ -217,3 +217,46 @@ class PaymentReceipt(BaseModel):
 
     filename: str
     content: str
+
+
+class PaymentBalanceSnapshot(BaseModel):
+    """Balances before or after applying a payment."""
+
+    monthly_fee: Optional[Decimal] = Field(default=None, ge=0)
+    debt_amount: Decimal = Field(default=Decimal("0"), ge=0)
+    debt_months: Decimal = Field(default=Decimal("0"), ge=0)
+    credit_months: Decimal = Field(default=Decimal("0"), ge=0)
+    credit_amount: Decimal = Field(default=Decimal("0"), ge=0)
+
+
+class PaymentCaptureSummary(BaseModel):
+    """Summarizes the effect of a payment on balances and coverage."""
+
+    previous: PaymentBalanceSnapshot
+    resulting: PaymentBalanceSnapshot
+    coverage_start: Optional[date] = None
+    coverage_end: Optional[date] = None
+
+
+class ServicePaymentResult(BaseModel):
+    """Response returned after recording a payment."""
+
+    payment: ServicePaymentRead
+    summary: PaymentCaptureSummary
+
+
+class ServicePaymentWithSummary(ServicePaymentRead):
+    """Backward compatible payment payload including optional summary."""
+
+    summary: Optional[PaymentCaptureSummary] = None
+
+
+class PaymentSuggestedAmount(BaseModel):
+    """Suggested charge based on tariff, debts and credits."""
+
+    client_id: str
+    client_service_id: str
+    monthly_fee: Optional[Decimal] = Field(default=None, ge=0)
+    pending_amount: Decimal = Field(default=Decimal("0"), ge=0)
+    credit_amount: Decimal = Field(default=Decimal("0"), ge=0)
+    suggested_amount: Decimal = Field(default=Decimal("0"), ge=0)

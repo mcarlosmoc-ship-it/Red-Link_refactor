@@ -12,7 +12,7 @@ from .. import schemas
 from ..models.client import ServiceStatus
 from ..database import get_db
 from ..security import require_admin
-from ..services import ClientContractService, ClientService
+from ..services import ClientContractService, ClientService, PaymentService
 
 router = APIRouter(dependencies=[Depends(require_admin)])
 
@@ -181,6 +181,28 @@ def update_client(
     if client is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client not found")
     return ClientService.update_client(db, client, client_in)
+
+
+@router.get(
+    "/{client_id}/services/{service_id}/suggested-amount",
+    response_model=schemas.PaymentSuggestedAmount,
+    summary="Monto sugerido considerando tarifa, adeudos y saldos a favor",
+)
+def suggested_amount(
+    client_id: str, service_id: str, db: Session = Depends(get_db)
+) -> schemas.PaymentSuggestedAmount:
+    try:
+        return PaymentService.suggested_charge(
+            db, client_id=client_id, service_id=service_id
+        )
+    except ValueError as exc:
+        detail = str(exc) if exc.args else "Unable to compute suggested amount"
+        status_code = (
+            status.HTTP_404_NOT_FOUND
+            if "not" in detail.lower() or "belong" in detail.lower()
+            else status.HTTP_400_BAD_REQUEST
+        )
+        raise HTTPException(status_code=status_code, detail=detail) from exc
 
 
 @router.get("/import/template", response_class=StreamingResponse)
