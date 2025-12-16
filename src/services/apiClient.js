@@ -17,7 +17,16 @@ const readDevBackendPort = () => {
   }
 
   const trimmed = raw.trim()
-  return trimmed || DEFAULT_DEV_BACKEND_PORT
+  if (!trimmed) {
+    return DEFAULT_DEV_BACKEND_PORT
+  }
+
+  const parsed = Number.parseInt(trimmed, 10)
+  if (Number.isNaN(parsed)) {
+    return DEFAULT_DEV_BACKEND_PORT
+  }
+
+  return String(parsed)
 }
 
 const DEV_SERVER_PORTS = new Set(['5173', '5174', '4173', '4174'])
@@ -34,6 +43,13 @@ const isRunningOnDevServer = ({ isLocalHost, port }) => {
   return DEV_SERVER_PORTS.has(port ?? '')
 }
 
+const selectBackendProtocol = (locationProtocol, isLocalHost) => {
+  if (isLocalHost && locationProtocol === 'https:') {
+    return 'http:'
+  }
+  return locationProtocol ?? 'http:'
+}
+
 export const resolveBrowserDefaultBaseUrl = () => {
   if (typeof globalThis === 'undefined') {
     return null
@@ -48,6 +64,8 @@ export const resolveBrowserDefaultBaseUrl = () => {
   const port = location.port ?? ''
   const isLocalHost = ['localhost', '127.0.0.1', '0.0.0.0'].includes(hostname)
 
+  const backendProtocol = selectBackendProtocol(location.protocol, isLocalHost)
+
   const backendHost = hostname === '0.0.0.0' ? '127.0.0.1' : hostname
   const backendPort = readDevBackendPort()
 
@@ -57,7 +75,7 @@ export const resolveBrowserDefaultBaseUrl = () => {
     // client to the FastAPI service listening on port 8000. This mirrors the
     // default value suggested in the documentation and avoids accidental
     // calls to the dev server.
-    return `${location.protocol}//${backendHost}:${backendPort}`
+    return `${backendProtocol}//${backendHost}:${backendPort}`
   }
 
   // When serving the static assets locally from a port other than the
@@ -66,7 +84,7 @@ export const resolveBrowserDefaultBaseUrl = () => {
   // keeps the default FastAPI target on localhost:8000 even when the
   // frontend is bundled and served separately from the API.
   if (isLocalHost && port && port !== backendPort) {
-    return `${location.protocol}//${backendHost}:${backendPort}`
+    return `${backendProtocol}//${backendHost}:${backendPort}`
   }
 
   return location.origin
@@ -79,6 +97,32 @@ const LEGACY_ACCESS_TOKEN_STORAGE_KEYS = ['red-link.accessToken']
 
 const STORAGE_CANDIDATES = ['localStorage', 'sessionStorage']
 const STORAGE_TEST_KEY = '__red-link.storage.test__'
+
+const shouldLogStorageErrors = () => {
+  if (typeof import.meta !== 'undefined' && import.meta?.env?.DEV) {
+    return true
+  }
+  if (
+    typeof globalThis !== 'undefined' &&
+    typeof globalThis?.process?.env?.NODE_ENV === 'string' &&
+    globalThis.process.env.NODE_ENV
+  ) {
+    return globalThis.process.env.NODE_ENV !== 'production'
+  }
+  return false
+}
+
+const logStorageError = (candidate, error) => {
+  if (!shouldLogStorageErrors()) {
+    return
+  }
+  if (typeof console !== 'undefined' && typeof console.debug === 'function') {
+    console.debug(
+      `[apiClient] ${candidate} is not accessible and was ignored.`,
+      error,
+    )
+  }
+}
 
 export const ACCESS_TOKEN_EVENT = 'red-link:access-token-changed'
 
@@ -138,6 +182,9 @@ const readAccessTokenFromEnv = () => {
   return trimmed ? trimmed : null
 }
 
+// Detect storages that are usable in the current environment. Failures are
+// ignored to avoid breaking consumers, but in non-production environments a
+// debug log is emitted for visibility.
 const detectAccessibleStorages = () => {
   if (typeof globalThis === 'undefined') {
     return []
@@ -153,6 +200,7 @@ const detectAccessibleStorages = () => {
       storage.removeItem(STORAGE_TEST_KEY)
       return [{ name: candidate, storage }]
     } catch (error) {
+      logStorageError(candidate, error)
       return []
     }
   })
