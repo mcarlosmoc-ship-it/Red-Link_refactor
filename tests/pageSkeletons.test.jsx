@@ -54,11 +54,11 @@ vi.mock('../src/hooks/useToast.js', () => ({
 }))
 
 vi.mock('../src/components/dashboard/StatCard.jsx', () => ({
-  default: () => <div data-testid="stat-card" />,
+  default: ({ title }) => <div>{title}</div>,
 }))
 
 vi.mock('../src/components/dashboard/EarningsCard.jsx', () => ({
-  default: () => <div data-testid="earnings-card" />,
+  default: () => <div>Earnings card</div>,
 }))
 
 vi.mock('../src/components/reports/FinancialSummary.jsx', () => ({
@@ -107,8 +107,8 @@ describe('page skeletons', () => {
     )
 
     expect(screen.queryByTestId('dashboard-skeleton')).not.toBeInTheDocument()
-    expect(screen.getByTestId('stat-card')).toBeInTheDocument()
-    expect(screen.getByTestId('earnings-card')).toBeInTheDocument()
+    expect(screen.getByText('Pagos del servicio')).toBeInTheDocument()
+    expect(screen.getByText('Earnings card')).toBeInTheDocument()
   })
 
   it('renders the reports skeleton while a manual refresh is in progress', async () => {
