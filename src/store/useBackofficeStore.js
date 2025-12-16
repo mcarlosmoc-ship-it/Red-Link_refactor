@@ -1005,29 +1005,16 @@ export const useBackofficeStore = create((set, get) => ({
     }
 
     const monthlyFee = service?.price ?? client?.monthlyFee ?? CLIENT_PRICE
-    const normalizedMonths = normalizeDecimal(months, 0)
     const normalizedAmount = normalizeDecimal(amount, 0)
+    const normalizedMonths = normalizeDecimal(months, 0)
 
     const computedAmount = normalizedAmount > 0 ? normalizedAmount : normalizedMonths * monthlyFee
-    const computedMonths = (() => {
-      if (normalizedMonths > 0) {
-        return normalizedMonths
-      }
-
-      if (monthlyFee > 0) {
-        const monthsFromAmount = computedAmount / monthlyFee
-        return monthsFromAmount > 0 ? monthsFromAmount : 0
-      }
-
-      return computedAmount > 0 ? 1 : 0
-    })()
 
     const payload = {
       client_id: client.id,
       period_key: periodKey ?? state.periods?.selected ?? state.periods?.current,
       paid_on: paidOn ?? today(),
       amount: computedAmount,
-      months_paid: computedMonths > 0 ? computedMonths : null,
       method: method ?? 'Efectivo',
       note: note ?? '',
     }
