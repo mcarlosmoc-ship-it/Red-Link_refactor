@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
   peso,
@@ -195,6 +195,42 @@ export default function PaymentsPage() {
     )
   }
 
+  const applyPaymentSuggestions = useCallback(
+    (form) => {
+      const client = resolveSelectedClientFromForm(form)
+      const service = resolveSelectedServiceFromForm(form)
+
+      const suggestedAmount = resolveOutstandingAmount(client, service)
+      const suggestedMonths = resolveOutstandingMonths(client, service)
+
+      const hasCustomMonths = Number(form.months) > 0
+
+      const nextForm = { ...form }
+      let hasUpdates = false
+
+      if (!hasCustomMonths && Number.isFinite(suggestedMonths) && suggestedMonths > 0) {
+        const normalizedSuggestedMonths = String(suggestedMonths)
+        if (form.months !== normalizedSuggestedMonths) {
+          nextForm.months = normalizedSuggestedMonths
+          hasUpdates = true
+        }
+      }
+
+      if (
+        !hasAmountBeenManuallyEdited &&
+        Number.isFinite(suggestedAmount) &&
+        suggestedAmount > 0 &&
+        Number(form.amount) !== suggestedAmount
+      ) {
+        nextForm.amount = String(suggestedAmount)
+        hasUpdates = true
+      }
+
+      return hasUpdates ? nextForm : form
+    },
+    [hasAmountBeenManuallyEdited, resolveOutstandingAmount, resolveOutstandingMonths],
+  )
+
   const resolveOutstandingAmount = useMemo(
     () =>
       (client, service) => {
@@ -269,40 +305,13 @@ export default function PaymentsPage() {
 
     setPaymentForm((prev) => {
       const isSameClient = String(prev.clientId) === String(selectedClient.id)
-      const hasCustomAmount = Number(prev.amount) > 0
-      const hasCustomMonths = Number(prev.months) > 0
-
       if (!isSameClient) {
         return prev
       }
 
-      const suggestedAmount = resolveOutstandingAmount(selectedClient, selectedService)
-      const suggestedMonths = resolveOutstandingMonths(selectedClient, selectedService)
-
-      const nextForm = { ...prev }
-      let hasUpdates = false
-
-      if (!hasCustomMonths && Number.isFinite(suggestedMonths) && suggestedMonths > 0) {
-        const normalizedSuggestedMonths = String(suggestedMonths)
-        if (prev.months !== normalizedSuggestedMonths) {
-          nextForm.months = normalizedSuggestedMonths
-          hasUpdates = true
-        }
-      }
-
-      if (
-        !hasCustomAmount &&
-        Number.isFinite(suggestedAmount) &&
-        suggestedAmount > 0 &&
-        Number(prev.amount) !== suggestedAmount
-      ) {
-        nextForm.amount = String(suggestedAmount)
-        hasUpdates = true
-      }
-
-      return hasUpdates ? nextForm : prev
+      return applyPaymentSuggestions(prev)
     })
-  }, [selectedClient, selectedService, resolveOutstandingAmount, resolveOutstandingMonths])
+  }, [selectedClient, selectedService, applyPaymentSuggestions])
 
   const validatePaymentForm = (formData, service = selectedService) => {
     const errors = {}
@@ -365,10 +374,12 @@ export default function PaymentsPage() {
         }
       }
 
-      syncPaymentValidation(nextForm)
+      const formWithSuggestions = applyPaymentSuggestions(nextForm)
+
+      syncPaymentValidation(formWithSuggestions)
       setPaymentError(null)
 
-      return nextForm
+      return formWithSuggestions
     })
 
     if (field === 'amount') {
