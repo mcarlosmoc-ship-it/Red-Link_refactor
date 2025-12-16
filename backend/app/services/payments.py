@@ -847,10 +847,10 @@ class PaymentService:
     </div>
   </div>
   <script>
-    window.onload = () => {
+    window.onload = () => {{
       window.print();
       setTimeout(() => window.close(), 300);
-    };
+    }};
   </script>
 </body>
 </html>
