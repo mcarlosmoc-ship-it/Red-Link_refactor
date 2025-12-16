@@ -199,6 +199,19 @@ export default function PaymentsPage() {
     return Number.isFinite(parsed) ? parsed : 0
   }, [selectedService])
 
+  const resolveSelectedClientFromForm = (formData) =>
+    clients.find((client) => String(client.id) === String(formData.clientId)) ?? null
+
+  const resolveSelectedServiceFromForm = (formData) => {
+    const client = resolveSelectedClientFromForm(formData)
+    if (!client?.services?.length) return null
+    return (
+      client.services.find((service) => String(service.id) === String(formData.serviceId)) ??
+      client.services[0] ??
+      null
+    )
+  }
+
   const resolveOutstandingAmount = useMemo(
     () =>
       (client, service) => {
@@ -390,19 +403,6 @@ export default function PaymentsPage() {
   const monthsCoveredLabel = formatMonthsForUi(monthsCovered)
   const baseCoveragePeriod = getPeriodFromDateString(paymentForm.paidOn) ?? selectedPeriod ?? null
   const coveragePeriodLabel = baseCoveragePeriod ? formatPeriodLabel(baseCoveragePeriod) : null
-
-  const resolveSelectedClientFromForm = (formData) =>
-    clients.find((client) => String(client.id) === String(formData.clientId)) ?? null
-
-  const resolveSelectedServiceFromForm = (formData) => {
-    const client = resolveSelectedClientFromForm(formData)
-    if (!client?.services?.length) return null
-    return (
-      client.services.find((service) => String(service.id) === String(formData.serviceId)) ??
-      client.services[0] ??
-      null
-    )
-  }
 
   const applyPaymentSuggestions = useCallback(
     (form) => {
