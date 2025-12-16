@@ -20,7 +20,7 @@ const readDevBackendPort = () => {
   return trimmed || DEFAULT_DEV_BACKEND_PORT
 }
 
-const DEV_SERVER_PORTS = new Set(['5173', '5174', '4173'])
+const DEV_SERVER_PORTS = new Set(['5173', '5174', '4173', '4174'])
 
 const isRunningOnDevServer = ({ isLocalHost, port }) => {
   if (!isLocalHost) {
@@ -52,10 +52,11 @@ export const resolveBrowserDefaultBaseUrl = () => {
   const backendPort = readDevBackendPort()
 
   if (isRunningOnDevServer({ isLocalHost, port })) {
-    // When running the SPA locally through Vite we want to keep the
-    // historical behaviour of pointing the client to the FastAPI service
-    // listening on port 8000. This mirrors the default value suggested in
-    // the documentation and avoids accidental calls to the dev server.
+    // When running the SPA locally through Vite (dev on 5173/5174 or preview
+    // on 4173/4174) we want to keep the historical behaviour of pointing the
+    // client to the FastAPI service listening on port 8000. This mirrors the
+    // default value suggested in the documentation and avoids accidental
+    // calls to the dev server.
     return `${location.protocol}//${backendHost}:${backendPort}`
   }
 
