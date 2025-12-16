@@ -266,24 +266,27 @@ def list_payments(
 
 @router.post(
     "",
-    response_model=schemas.ServicePaymentRead,
+    response_model=schemas.ServicePaymentWithSummary,
     status_code=status.HTTP_201_CREATED,
 )
 def create_payment(
     payment_in: schemas.ServicePaymentCreate, db: Session = Depends(get_db)
-) -> schemas.ServicePaymentRead:
+) -> schemas.ServicePaymentWithSummary:
     """Record a new payment and update client balances."""
     try:
-        payment = PaymentService.create_payment(db, payment_in)
+        result = PaymentService.create_payment(db, payment_in)
         LOGGER.info(
             "Payment created",
             extra={
-                "client_id": payment.client_id,
-                "client_service_id": payment.client_service_id,
-                "payment_id": payment.id,
+                "client_id": result.payment.client_id,
+                "client_service_id": result.payment.client_service_id,
+                "payment_id": result.payment.id,
             },
         )
-        return payment
+        payment_payload = schemas.ServicePaymentRead.model_validate(result.payment).model_dump()
+        return schemas.ServicePaymentWithSummary(
+            **payment_payload, summary=result.summary
+        )
     except (ValueError, PaymentServiceError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 

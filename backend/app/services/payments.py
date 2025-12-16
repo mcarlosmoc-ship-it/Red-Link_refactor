@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from calendar import monthrange
+from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from math import ceil
@@ -21,6 +22,14 @@ from .observability import MetricOutcome, ObservabilityService
 
 class PaymentServiceError(RuntimeError):
     """Raised when payment operations cannot be completed."""
+
+
+@dataclass
+class PaymentRecordResult:
+    """Result from creating a payment including its impact summary."""
+
+    payment: models.ServicePayment
+    summary: schemas.PaymentCaptureSummary
 
 
 class PaymentService:
@@ -99,6 +108,38 @@ class PaymentService:
             raise ValueError("months_paid must be greater than zero")
         return months
 
+    @staticmethod
+    def _balance_snapshot(
+        service: models.ClientService, client: models.Client
+    ) -> schemas.PaymentBalanceSnapshot:
+        monthly_fee = (
+            Decimal(service.effective_price)
+            if service.effective_price is not None
+            else None
+        )
+        debt_amount = Decimal(service.debt_amount or 0).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        debt_months = Decimal(service.debt_months or 0).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        credit_months = Decimal(client.paid_months_ahead or 0).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        credit_amount = Decimal("0")
+        if monthly_fee is not None:
+            credit_amount = (monthly_fee * credit_months).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+
+        return schemas.PaymentBalanceSnapshot(
+            monthly_fee=monthly_fee,
+            debt_amount=debt_amount,
+            debt_months=debt_months,
+            credit_months=credit_months,
+            credit_amount=credit_amount,
+        )
+
     @classmethod
     def _normalize_method_breakdown(
         cls, data: schemas.ServicePaymentBase
@@ -132,15 +173,22 @@ class PaymentService:
         return method, breakdown
 
     @staticmethod
-    def _resolve_service(db: Session, service_id: str) -> models.ClientService:
-        service = (
+    def _resolve_service(
+        db: Session, service_id: str, *, for_update: bool = False
+    ) -> models.ClientService:
+        query = (
             db.query(models.ClientService)
             .options(selectinload(models.ClientService.client))
             .options(selectinload(models.ClientService.streaming_account))
             .options(selectinload(models.ClientService.service_plan))
             .filter(models.ClientService.id == service_id)
-            .first()
         )
+
+        if for_update and getattr(getattr(db, "bind", None), "dialect", None):
+            if getattr(db.bind.dialect, "supports_for_update", False):
+                query = query.with_for_update()
+
+        service = query.first()
         if service is None:
             raise ValueError("Service not found")
         return service
@@ -148,7 +196,7 @@ class PaymentService:
     @classmethod
     def create_payment(
         cls, db: Session, data: schemas.ServicePaymentCreate
-    ) -> models.ServicePayment:
+    ) -> PaymentRecordResult:
         start = perf_counter()
         tags: dict[str, object] = {
             "client_service_id": data.client_service_id,
@@ -157,7 +205,7 @@ class PaymentService:
         }
 
         try:
-            service = cls._resolve_service(db, data.client_service_id)
+            service = cls._resolve_service(db, data.client_service_id, for_update=True)
             client = service.client
 
             period_key = None
@@ -172,8 +220,7 @@ class PaymentService:
 
             method, breakdown = cls._normalize_method_breakdown(data)
 
-            outstanding_debt_months = Decimal(service.debt_months or 0)
-            outstanding_debt_amount = Decimal(service.debt_amount or 0)
+            previous_snapshot = cls._balance_snapshot(service, client)
 
             payment = models.ServicePayment(
                 client_service_id=service.id,
@@ -192,6 +239,13 @@ class PaymentService:
             cls._apply_service_debt(service, amount, months_paid)
             cls._update_next_billing(service, payment.paid_on, months_paid, amount)
 
+            coverage = cls._coverage_range(service, payment.paid_on, months_paid)
+
+            resulting_snapshot = cls._balance_snapshot(service, client)
+            summary = cls._build_capture_summary(
+                previous=previous_snapshot, resulting=resulting_snapshot, coverage=coverage
+            )
+
             if period_key:
                 FinancialSnapshotService.apply_payment(db, period_key, amount)
 
@@ -209,13 +263,29 @@ class PaymentService:
                     "method_breakdown": breakdown,
                     "paid_on": str(payment.paid_on),
                     "recorded_by": payment.recorded_by,
+                    "previous_balance": cls._encode_balance_snapshot(previous_snapshot),
+                    "resulting_balance": cls._encode_balance_snapshot(resulting_snapshot),
+                    "coverage_start": str(summary.coverage_start)
+                    if summary.coverage_start
+                    else None,
+                    "coverage_end": str(summary.coverage_end) if summary.coverage_end else None,
+                    "period_key": period_key,
+                    "client_id": str(client.id),
+                    "client_name": client.full_name,
+                    "service_id": str(service.id),
+                    "service_name": getattr(service.service_plan, "name", None)
+                    or getattr(service, "name", None),
+                    "monthly_fee": str(service.effective_price)
+                    if service.effective_price is not None
+                    else None,
                 },
             )
             db.add(audit_entry)
 
             db.commit()
+            db.refresh(payment)
 
-            return payment
+            return PaymentRecordResult(payment=payment, summary=summary)
         except ValueError as exc:
             ObservabilityService.record_validation_result(
                 db,
@@ -297,6 +367,45 @@ class PaymentService:
             is not None
         )
 
+    @classmethod
+    def suggested_charge(
+        cls, db: Session, *, client_id: str, service_id: str
+    ) -> schemas.PaymentSuggestedAmount:
+        service = cls._resolve_service(db, service_id, for_update=True)
+        if str(service.client_id) != str(client_id):
+            raise ValueError("Service does not belong to the specified client")
+
+        monthly_fee = (
+            Decimal(service.effective_price)
+            if service.effective_price is not None
+            else None
+        )
+        pending_amount = Decimal(service.debt_amount or 0)
+        credit_amount = Decimal("0")
+        if monthly_fee is not None:
+            credit_amount = Decimal(service.client.paid_months_ahead or 0) * monthly_fee
+
+        suggested = monthly_fee or Decimal("0")
+        suggested += pending_amount
+        suggested -= credit_amount
+
+        normalized_suggested = cls._normalize_amount(max(suggested, Decimal("0")))
+        normalized_pending = cls._normalize_amount(pending_amount)
+        normalized_credit = (
+            cls._normalize_amount(credit_amount)
+            if credit_amount is not None
+            else Decimal("0")
+        )
+
+        return schemas.PaymentSuggestedAmount(
+            client_id=str(service.client_id),
+            client_service_id=str(service.id),
+            monthly_fee=monthly_fee,
+            pending_amount=normalized_pending,
+            credit_amount=normalized_credit,
+            suggested_amount=normalized_suggested,
+        )
+
     @staticmethod
     def _add_months(start: date, months: Decimal | float | int) -> date:
         whole_months = int(ceil(float(months)))
@@ -336,6 +445,44 @@ class PaymentService:
         end = next_cycle - timedelta(days=1)
         period_key = f"{start.year:04d}-{start.month:02d}"
         return start, end, period_key
+
+    @classmethod
+    def _coverage_range(
+        cls, service: models.ClientService, paid_on: date, months_paid: Decimal | None
+    ) -> tuple[Optional[date], Optional[date]]:
+        if months_paid is None or months_paid <= 0:
+            return None, None
+
+        start, _, _ = cls._billing_window(service, paid_on)
+        end = cls._add_months(start, months_paid) - timedelta(days=1)
+        return start, end
+
+    @staticmethod
+    def _build_capture_summary(
+        *,
+        previous: schemas.PaymentBalanceSnapshot,
+        resulting: schemas.PaymentBalanceSnapshot,
+        coverage: tuple[Optional[date], Optional[date]],
+    ) -> schemas.PaymentCaptureSummary:
+        coverage_start, coverage_end = coverage
+        return schemas.PaymentCaptureSummary(
+            previous=previous,
+            resulting=resulting,
+            coverage_start=coverage_start,
+            coverage_end=coverage_end,
+        )
+
+    @staticmethod
+    def _encode_balance_snapshot(snapshot: schemas.PaymentBalanceSnapshot) -> dict:
+        return {
+            "monthly_fee": str(snapshot.monthly_fee)
+            if snapshot.monthly_fee is not None
+            else None,
+            "debt_amount": str(snapshot.debt_amount),
+            "debt_months": str(snapshot.debt_months),
+            "credit_months": str(snapshot.credit_months),
+            "credit_amount": str(snapshot.credit_amount),
+        }
 
     @classmethod
     def _update_next_billing(
@@ -591,6 +738,7 @@ class PaymentService:
             db.query(models.ServicePayment)
             .options(selectinload(models.ServicePayment.client))
             .options(selectinload(models.ServicePayment.service))
+            .options(selectinload(models.ServicePayment.audit_trail))
             .filter(models.ServicePayment.id == payment_id)
             .first()
         )
@@ -599,11 +747,29 @@ class PaymentService:
     def build_receipt(payment: models.ServicePayment) -> tuple[str, str]:
         """Return a lightweight text receipt for downloads."""
 
-        client_name = getattr(payment.client, "full_name", "Cliente")
-        service_name = getattr(payment.service, "name", None)
-        if not service_name and payment.service and payment.service.service_plan:
-            service_name = payment.service.service_plan.name
+        creation_snapshot = None
+        for entry in getattr(payment, "audit_trail", []) or []:
+            if (
+                getattr(entry, "action", None) == models.PaymentAuditAction.CREATED
+                and entry.snapshot
+            ):
+                creation_snapshot = entry.snapshot
+                break
+
+        client_name = (creation_snapshot or {}).get(
+            "client_name", getattr(payment.client, "full_name", "Cliente")
+        )
+        service_name = (creation_snapshot or {}).get(
+            "service_name",
+            getattr(payment.service, "name", None)
+            or getattr(getattr(payment, "service", None), "service_plan", None)
+            and payment.service.service_plan.name,
+        )
         service_name = service_name or "Servicio"
+        monthly_fee = (creation_snapshot or {}).get("monthly_fee")
+
+        coverage_start = (creation_snapshot or {}).get("coverage_start")
+        coverage_end = (creation_snapshot or {}).get("coverage_end")
 
         lines = [
             "Recibo de pago",
@@ -615,6 +781,10 @@ class PaymentService:
             f"Meses cubiertos: {payment.months_paid or 'N/D'}",
             f"Método: {payment.method}",
         ]
+        if monthly_fee:
+            lines.append(f"Tarifa mensual: ${Decimal(monthly_fee):,.2f}")
+        if coverage_start and coverage_end:
+            lines.append(f"Periodo cubierto: {coverage_start} - {coverage_end}")
         if payment.note:
             lines.append(f"Nota: {payment.note}")
         filename = f"recibo-{payment.id}.txt"

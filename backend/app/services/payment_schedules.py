@@ -104,7 +104,8 @@ class PaymentScheduleService:
             note=schedule.note,
             recorded_by=schedule.recorded_by if hasattr(schedule, "recorded_by") else None,
         )
-        payment = PaymentService.create_payment(db, payment_payload)
+        payment_result = PaymentService.create_payment(db, payment_payload)
+        payment = payment_result.payment
 
         schedule.status = models.PaymentScheduleStatus.EXECUTED
         schedule.executed_at = datetime.utcnow()
