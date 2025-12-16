@@ -986,7 +986,7 @@ export const useBackofficeStore = create((set, get) => ({
 
     return get().updateClientServiceStatus(clientId, targetService.id, nextStatus)
   },
-  recordPayment: async ({ clientId, serviceId, months, amount, method, note, periodKey, paidOn }) => {
+  recordPayment: async ({ clientId, serviceId, amount, method, note, periodKey, paidOn }) => {
     const state = get()
     const client = state.clients.find((item) => String(item.id) === String(clientId))
     if (!client) {

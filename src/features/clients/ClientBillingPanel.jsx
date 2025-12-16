@@ -561,7 +561,6 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
       await recordPayment({
         clientId: paymentForm.clientId,
         serviceId: normalizedServiceId,
-        months: monthsToRegister,
         amount: amountToRegister,
         method: paymentForm.method,
         note: combinedNote,
