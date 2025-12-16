@@ -599,32 +599,39 @@ export default function PaymentsPage() {
     }
   }
 
-  const handleDownloadReceipt = async (paymentId) => {
+  const handlePrintReceipt = async (paymentId) => {
     try {
       const url = buildApiUrl(`/payments/${paymentId}/receipt`)
       const token = apiClient.getAccessToken?.()
       const response = await fetch(url, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       })
-      const payload = await response.json()
-      const blob = new Blob([payload?.content ?? ''], { type: 'text/plain' })
-      const link = document.createElement('a')
-      link.href = URL.createObjectURL(blob)
-      link.download = payload?.filename ?? `recibo-${paymentId}.txt`
-      document.body.appendChild(link)
-      link.click()
-      link.remove()
-      URL.revokeObjectURL(link.href)
+
+      if (!response.ok) {
+        throw new Error('No se pudo generar el recibo')
+      }
+
+      const html = await response.text()
+      const receiptWindow = window.open('', '_blank', 'noopener,noreferrer')
+
+      if (!receiptWindow) {
+        throw new Error('No se pudo abrir la ventana de impresión')
+      }
+
+      receiptWindow.document.open()
+      receiptWindow.document.write(html)
+      receiptWindow.document.close()
+
       showToast({
         type: 'success',
         title: 'Recibo listo',
-        description: 'Se descargó el comprobante del pago.',
+        description: 'Se abrió la ventana de impresión.',
       })
     } catch (error) {
       showToast({
         type: 'error',
-        title: 'No se pudo descargar',
-        description: 'Intenta nuevamente o verifica tu conexión.',
+        title: 'No se pudo imprimir',
+        description: error?.message ?? 'Intenta nuevamente o verifica tu conexión.',
       })
     }
   }
@@ -1149,9 +1156,9 @@ export default function PaymentsPage() {
                           type="button"
                           size="xs"
                           variant="secondary"
-                          onClick={() => handleDownloadReceipt(payment.id)}
+                          onClick={() => handlePrintReceipt(payment.id)}
                         >
-                          Recibo
+                          Imprimir
                         </Button>
                       </td>
                     </tr>

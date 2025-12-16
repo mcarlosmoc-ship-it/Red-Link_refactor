@@ -744,8 +744,10 @@ class PaymentService:
         )
 
     @staticmethod
-    def build_receipt(payment: models.ServicePayment) -> tuple[str, str]:
-        """Return a lightweight text receipt for downloads."""
+    def build_receipt(payment: models.ServicePayment) -> str:
+        """Return an HTML receipt ready for printing."""
+
+        import html as htmllib
 
         creation_snapshot = None
         for entry in getattr(payment, "audit_trail", []) or []:
@@ -756,39 +758,105 @@ class PaymentService:
                 creation_snapshot = entry.snapshot
                 break
 
-        client_name = (creation_snapshot or {}).get(
+        snapshot = creation_snapshot or {}
+
+        def _esc(value: object, fallback: str = "") -> str:
+            return htmllib.escape(str(value if value is not None else fallback))
+
+        def _currency(value: object) -> str:
+            return f"${Decimal(value or 0):,.2f}"
+
+        client_name = snapshot.get(
             "client_name", getattr(payment.client, "full_name", "Cliente")
         )
-        service_name = (creation_snapshot or {}).get(
+        service_name = snapshot.get(
             "service_name",
             getattr(payment.service, "name", None)
             or getattr(getattr(payment, "service", None), "service_plan", None)
             and payment.service.service_plan.name,
         )
         service_name = service_name or "Servicio"
-        monthly_fee = (creation_snapshot or {}).get("monthly_fee")
+        monthly_fee = snapshot.get("monthly_fee")
 
-        coverage_start = (creation_snapshot or {}).get("coverage_start")
-        coverage_end = (creation_snapshot or {}).get("coverage_end")
+        coverage_start = snapshot.get("coverage_start")
+        coverage_end = snapshot.get("coverage_end")
+        period_key = snapshot.get("period_key") or payment.period_key
 
-        lines = [
-            "Recibo de pago",
-            f"Pago ID: {payment.id}",
-            f"Cliente: {client_name}",
-            f"Servicio: {service_name}",
-            f"Fecha de pago: {payment.paid_on}",
-            f"Monto: ${Decimal(payment.amount):,.2f}",
-            f"Meses cubiertos: {payment.months_paid or 'N/D'}",
-            f"Método: {payment.method}",
-        ]
-        if monthly_fee:
-            lines.append(f"Tarifa mensual: ${Decimal(monthly_fee):,.2f}")
+        resulting_balance = snapshot.get("resulting_balance") or {}
+        pending_amount = Decimal(resulting_balance.get("debt_amount") or 0)
+        credit_amount = Decimal(resulting_balance.get("credit_amount") or 0)
+
+        balance_label = "Saldo al corriente"
+        if pending_amount > 0:
+            balance_label = f"Saldo pendiente: {_currency(pending_amount)}"
+        elif credit_amount > 0:
+            balance_label = f"Saldo a favor: {_currency(credit_amount)}"
+
+        coverage_label = "Cobertura no especificada"
         if coverage_start and coverage_end:
-            lines.append(f"Periodo cubierto: {coverage_start} - {coverage_end}")
-        if payment.note:
-            lines.append(f"Nota: {payment.note}")
-        filename = f"recibo-{payment.id}.txt"
-        return filename, "\n".join(lines)
+            coverage_label = f"{coverage_start} a {coverage_end}"
+
+        receipt_title = "Recibo de pago"
+
+        html_content = f"""
+<!DOCTYPE html>
+<html lang=\"es\">
+<head>
+  <meta charset=\"utf-8\" />
+  <title>{_esc(receipt_title)}</title>
+  <style>
+    body {{ font-family: 'Inter', system-ui, -apple-system, sans-serif; background: #f8fafc; color: #0f172a; }}
+    .receipt {{ max-width: 520px; margin: 24px auto; padding: 24px; background: white; border-radius: 12px; box-shadow: 0 10px 30px rgba(15,23,42,0.12); }}
+    .header {{ display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }}
+    .title {{ font-size: 20px; font-weight: 700; }}
+    .meta {{ color: #475569; font-size: 13px; }}
+    .section {{ margin-top: 16px; padding-top: 12px; border-top: 1px solid #e2e8f0; }}
+    .row {{ display: flex; justify-content: space-between; margin: 6px 0; font-size: 14px; }}
+    .label {{ color: #475569; }}
+    .value {{ font-weight: 600; color: #0f172a; text-align: right; }}
+    .highlight {{ font-size: 18px; color: #0f172a; font-weight: 700; }}
+  </style>
+</head>
+<body>
+  <div class=\"receipt\">
+    <div class=\"header\">
+      <div>
+        <div class=\"title\">{_esc(receipt_title)}</div>
+        <div class=\"meta\">Pago ID: {_esc(payment.id)}</div>
+      </div>
+      <div class=\"meta\">{_esc(payment.paid_on)}</div>
+    </div>
+
+    <div class=\"section\">
+      <div class=\"row\"><span class=\"label\">Cliente</span><span class=\"value\">{_esc(client_name)}</span></div>
+      <div class=\"row\"><span class=\"label\">Servicio</span><span class=\"value\">{_esc(service_name)}</span></div>
+      <div class=\"row\"><span class=\"label\">Periodo</span><span class=\"value\">{_esc(period_key or '—')}</span></div>
+    </div>
+
+    <div class=\"section\">
+      <div class=\"row\"><span class=\"label\">Monto</span><span class=\"value highlight\">{_currency(payment.amount)}</span></div>
+      <div class=\"row\"><span class=\"label\">Método</span><span class=\"value\">{_esc(snapshot.get('method', payment.method))}</span></div>
+      <div class=\"row\"><span class=\"label\">Meses cubiertos</span><span class=\"value\">{_esc(payment.months_paid or snapshot.get('months_paid') or 'N/D')}</span></div>
+      <div class=\"row\"><span class=\"label\">Cobertura</span><span class=\"value\">{_esc(coverage_label)}</span></div>
+      {f"<div class=\\\"row\\\"><span class=\\\"label\\\">Tarifa mensual</span><span class=\\\"value\\\">{_currency(monthly_fee)}</span></div>" if monthly_fee is not None else ''}
+    </div>
+
+    <div class=\"section\">
+      <div class=\"row\"><span class=\"label\">{_esc(balance_label)}</span><span class=\"value\"></span></div>
+      {f"<div class=\\\"row\\\"><span class=\\\"label\\\">Nota</span><span class=\\\"value\\\">{_esc(payment.note)}</span></div>" if payment.note else ''}
+    </div>
+  </div>
+  <script>
+    window.onload = () => {
+      window.print();
+      setTimeout(() => window.close(), 300);
+    };
+  </script>
+</body>
+</html>
+"""
+
+        return html_content
 
     @staticmethod
     def total_amount_for_period(db: Session, period_key: str) -> Decimal:
