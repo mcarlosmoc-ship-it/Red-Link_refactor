@@ -39,8 +39,8 @@ const COLUMN_PRESETS = [
   {
     key: 'basic',
     label: 'Básico',
-    description: 'Contacto y notas',
-    columns: ['email', 'comentarios'],
+    description: 'Contacto, coordenadas y notas',
+    columns: ['email', 'coordenadas', 'comentarios'],
   },
   {
     key: 'services',

@@ -33,13 +33,16 @@ export default function ClientForm({ onSubmit, isSubmitting }) {
     event.preventDefault()
     setError('')
     try {
+      const paidMonthsAhead = Math.max(0, Number(formState.paidMonthsAhead) || 0)
+      const debtMonths = Math.max(0, Number(formState.debtMonths) || 0)
+
       const payload = {
         type: formState.type,
         name: formState.name.trim(),
         location: formState.location.trim(),
         zoneId: formState.zoneId ? Number(formState.zoneId) : null,
-        paidMonthsAhead: 0,
-        debtMonths: 0,
+        paidMonthsAhead,
+        debtMonths,
         notes: formState.notes?.trim() || '',
       }
 
@@ -60,7 +63,7 @@ export default function ClientForm({ onSubmit, isSubmitting }) {
       <CardHeader className="relative border-b border-slate-100 bg-gradient-to-r from-white via-indigo-50/50 to-white">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-500">Wishub flow</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-500">Flujo de alta</p>
             <CardTitle className="text-xl text-slate-900">Agregar cliente</CardTitle>
             <p className="text-sm text-slate-600">
               Dale un ingreso suave y profesional a tus clientes con datos claros desde el inicio.
