@@ -81,6 +81,7 @@ export default function ClientsList({
   const [currentPage, setCurrentPage] = useState(1)
   const [selectedPlanId, setSelectedPlanId] = useState('')
   const [isRunningSelectionAction, setIsRunningSelectionAction] = useState(false)
+  const [sortConfig, setSortConfig] = useState({ field: 'name', direction: 'asc' })
 
   const [internalSelection, setInternalSelection] = useState(controlledSelectedIds ?? [])
 
@@ -174,6 +175,36 @@ export default function ClientsList({
     normalizedSearchTerm,
   ])
 
+  const getSortValue = (client, field) => {
+    if (field === 'name') return client.name ?? ''
+    if (field === 'location') return client.location ?? ''
+
+    const primaryService = getPrimaryService(client)
+
+    if (field === 'plan') return primaryService?.plan?.name ?? ''
+    if (field === 'status') return primaryService?.status ?? ''
+
+    return ''
+  }
+
+  const sortedClients = useMemo(() => {
+    const { field, direction } = sortConfig || {}
+    if (!field) return filteredClients
+
+    const sorted = [...filteredClients]
+    sorted.sort((a, b) => {
+      const aValue = getSortValue(a, field)
+      const bValue = getSortValue(b, field)
+
+      if (aValue === bValue) return 0
+
+      const comparison = String(aValue).localeCompare(String(bValue), 'es', { sensitivity: 'base' })
+      return direction === 'desc' ? -comparison : comparison
+    })
+
+    return sorted
+  }, [filteredClients, sortConfig])
+
   useEffect(() => {
     updateSelection((prev) =>
       prev.filter((id) => filteredClients.some((client) => normalizeId(client.id) === id)),
@@ -197,8 +228,8 @@ export default function ClientsList({
   }, [currentPage])
 
   const totalPages = useMemo(
-    () => Math.max(1, Math.ceil(filteredClients.length / PAGE_SIZE)),
-    [filteredClients.length],
+    () => Math.max(1, Math.ceil(sortedClients.length / PAGE_SIZE)),
+    [sortedClients.length],
   )
 
   useEffect(() => {
@@ -209,8 +240,8 @@ export default function ClientsList({
 
   const paginatedClients = useMemo(() => {
     const start = (currentPage - 1) * PAGE_SIZE
-    return filteredClients.slice(start, start + PAGE_SIZE)
-  }, [currentPage, filteredClients])
+    return sortedClients.slice(start, start + PAGE_SIZE)
+  }, [currentPage, sortedClients])
 
   const currentPageClientIds = useMemo(
     () => paginatedClients.map((client) => normalizeId(client.id)).filter(Boolean),
@@ -311,6 +342,30 @@ export default function ClientsList({
     isSelectionActionRunning || isLoading || isMutating || isProcessing
   const isSelectionDisabled =
     isSelectionLocked || selectedClientIds.length === 0
+
+  const handleSort = (field) => {
+    setSortConfig((prev) => {
+      if (prev?.field === field) {
+        return {
+          field,
+          direction: prev.direction === 'asc' ? 'desc' : 'asc',
+        }
+      }
+      return { field, direction: 'asc' }
+    })
+  }
+
+  const SortIndicator = ({ field }) => {
+    const isActive = sortConfig?.field === field
+    const isAsc = sortConfig?.direction === 'asc'
+
+    return (
+      <span className={`ml-1 inline-flex flex-col text-[10px] leading-none ${isActive ? 'text-blue-600' : 'text-slate-400'}`}>
+        <span className={isActive && isAsc ? 'font-bold' : ''}>▲</span>
+        <span className={isActive && !isAsc ? 'font-bold' : ''}>▼</span>
+      </span>
+    )
+  }
 
   return (
     <Card data-testid="clients-list">
@@ -490,10 +545,46 @@ export default function ClientsList({
                     aria-label="Seleccionar todos"
                   />
                 </th>
-                <th className="px-3 py-2">Nombre</th>
-                <th className="px-3 py-2">Ubicación</th>
-                <th className="px-3 py-2">Plan principal</th>
-                <th className="px-3 py-2">Estado del servicio</th>
+                <th className="px-3 py-2">
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 font-semibold text-slate-700"
+                    onClick={() => handleSort('name')}
+                  >
+                    Nombre
+                    <SortIndicator field="name" />
+                  </button>
+                </th>
+                <th className="px-3 py-2">
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 font-semibold text-slate-700"
+                    onClick={() => handleSort('location')}
+                  >
+                    Ubicación
+                    <SortIndicator field="location" />
+                  </button>
+                </th>
+                <th className="px-3 py-2">
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 font-semibold text-slate-700"
+                    onClick={() => handleSort('plan')}
+                  >
+                    Plan principal
+                    <SortIndicator field="plan" />
+                  </button>
+                </th>
+                <th className="px-3 py-2">
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 font-semibold text-slate-700"
+                    onClick={() => handleSort('status')}
+                  >
+                    Estado del servicio
+                    <SortIndicator field="status" />
+                  </button>
+                </th>
                 <th className="px-3 py-2">Base / IP</th>
                 <th className="px-3 py-2">Acciones</th>
               </tr>

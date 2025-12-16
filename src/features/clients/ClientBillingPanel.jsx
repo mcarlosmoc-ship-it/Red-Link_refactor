@@ -70,6 +70,7 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
   const [isRetryingSync, setIsRetryingSync] = useState(false)
   const [showEarningsBreakdown, setShowEarningsBreakdown] = useState(false)
   const [expandedClientId, setExpandedClientId] = useState(null)
+  const [sortConfig, setSortConfig] = useState({ field: 'name', direction: 'asc' })
   const paymentFormRef = useRef(null)
   const paymentMonthsInputRef = useRef(null)
   const paymentAmountInputRef = useRef(null)
@@ -134,6 +135,40 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
     [clients, normalizedSearchTerm, statusFilter],
   )
 
+  const getSortValue = useCallback(
+    (client, field) => {
+      if (field === 'name') return client.name ?? ''
+      if (field === 'location') return client.location ?? ''
+      if (field === 'fee') return getClientMonthlyFee(client, CLIENT_PRICE)
+      if (field === 'status') return getClientDebtSummary(client, CLIENT_PRICE).debtMonths
+      return ''
+    },
+    [clients],
+  )
+
+  const sortedClients = useMemo(() => {
+    const { field, direction } = sortConfig || {}
+    if (!field) return filteredClients
+
+    const sorted = [...filteredClients]
+    sorted.sort((a, b) => {
+      const aValue = getSortValue(a, field)
+      const bValue = getSortValue(b, field)
+
+      if (aValue === bValue) return 0
+
+      if (typeof aValue === 'number' && typeof bValue === 'number') {
+        const numericComparison = aValue - bValue
+        return direction === 'desc' ? -numericComparison : numericComparison
+      }
+
+      const comparison = String(aValue).localeCompare(String(bValue), 'es', { sensitivity: 'base' })
+      return direction === 'desc' ? -comparison : comparison
+    })
+
+    return sorted
+  }, [filteredClients, getSortValue, sortConfig])
+
   const periodLabel = formatPeriodLabel(selectedPeriod ?? currentPeriod)
   const currentPeriodLabel = formatPeriodLabel(currentPeriod ?? selectedPeriod)
   const canGoPrevious = diffPeriods(historyStart ?? selectedPeriod, selectedPeriod ?? currentPeriod) > 0
@@ -163,6 +198,30 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
     dashboardStatus.expenses?.error?.message ??
     'No pudimos cargar la información.'
   const shouldShowSkeleton = Boolean(initializeStatus?.isLoading) || isRefreshing
+
+  const handleSort = (field) => {
+    setSortConfig((prev) => {
+      if (prev?.field === field) {
+        return {
+          field,
+          direction: prev.direction === 'asc' ? 'desc' : 'asc',
+        }
+      }
+      return { field, direction: 'asc' }
+    })
+  }
+
+  const SortIndicator = ({ field }) => {
+    const isActive = sortConfig?.field === field
+    const isAsc = sortConfig?.direction === 'asc'
+
+    return (
+      <span className={`ml-1 inline-flex flex-col text-[10px] leading-none ${isActive ? 'text-blue-600' : 'text-slate-400'}`}>
+        <span className={isActive && isAsc ? 'font-bold' : ''}>▲</span>
+        <span className={isActive && !isAsc ? 'font-bold' : ''}>▼</span>
+      </span>
+    )
+  }
 
   useEffect(() => {
     if (!isCurrentPeriod) {
@@ -1017,7 +1076,7 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
               </Button>
             </div>
             <p className="text-sm text-slate-500" role="status">
-              {filteredClients.length} cliente(s) coinciden con el filtro en {periodLabel}.
+              {sortedClients.length} cliente(s) coinciden con el filtro en {periodLabel}.
             </p>
           </div>
 
@@ -1033,16 +1092,44 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
                 <thead className="bg-slate-50 text-slate-600">
                   <tr>
                     <th scope="col" className="px-3 py-2 font-medium">
-                      Nombre
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1 text-slate-700"
+                        onClick={() => handleSort('name')}
+                      >
+                        Nombre
+                        <SortIndicator field="name" />
+                      </button>
                     </th>
                     <th scope="col" className="px-3 py-2 font-medium">
-                      Localidad
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1 text-slate-700"
+                        onClick={() => handleSort('location')}
+                      >
+                        Localidad
+                        <SortIndicator field="location" />
+                      </button>
                     </th>
                     <th scope="col" className="px-3 py-2 font-medium">
-                      Pago mensual
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1 text-slate-700"
+                        onClick={() => handleSort('fee')}
+                      >
+                        Pago mensual
+                        <SortIndicator field="fee" />
+                      </button>
                     </th>
                     <th scope="col" className="px-3 py-2 font-medium">
-                      Estado
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1 text-slate-700"
+                        onClick={() => handleSort('status')}
+                      >
+                        Estado
+                        <SortIndicator field="status" />
+                      </button>
                     </th>
                     <th scope="col" className="px-3 py-2 font-medium text-right">
                       Acciones
@@ -1071,7 +1158,7 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
                     </td>
                   </tr>
                 )}
-                {!hasDataError && !isDataLoading && filteredClients.length === 0 && (
+                {!hasDataError && !isDataLoading && sortedClients.length === 0 && (
                   <tr>
                     <td colSpan={5} className="px-3 py-6 text-center text-sm text-slate-500">
                       <div className="space-y-2">
@@ -1095,7 +1182,7 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
                     </td>
                   </tr>
                 )}
-                {filteredClients.map((client) => {
+                {sortedClients.map((client) => {
                   const primaryService = getPrimaryService(client)
                   const statusLabel = primaryService
                     ? formatServiceStatus(primaryService.status)
