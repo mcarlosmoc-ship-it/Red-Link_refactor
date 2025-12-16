@@ -54,8 +54,8 @@ export const usePosSales = ({ limit = 10 } = {}) => {
   })
 
   const invalidateSales = useCallback(() => {
-    queryClient.invalidateQueries(queryKeys.posSales({ limit }))
-  }, [queryClient, limit])
+    return queryClient.invalidateQueries({ queryKey })
+  }, [queryClient, queryKey])
 
   const recordSale = useCallback(
     async (payload) => {
