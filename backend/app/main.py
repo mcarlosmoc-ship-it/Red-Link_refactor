@@ -74,12 +74,13 @@ def _split_raw_origins(raw_value: str) -> list[str]:
     """Split a raw origin string using commas or whitespace as separators."""
 
     # Developers sometimes provide environment variables separated only by
-    # spaces (e.g. ``"http://localhost:5173 http://127.0.0.1:5173"``). The
-    # previous implementation only recognised commas which caused the entire
-    # string to be treated as a single origin and, consequently, FastAPI did
-    # not emit the ``Access-Control-Allow-Origin`` header. Accepting both
-    # commas and whitespace makes the configuration more forgiving while
-    # keeping explicit control of the allowed origins.
+    # spaces (e.g. ``BACKEND_ALLOWED_ORIGINS="http://localhost:5173 http://127.0.0.1:5173"``),
+    # not just comma-separated lists. The previous implementation only
+    # recognised commas which caused the entire string to be treated as a
+    # single origin and, consequently, FastAPI did not emit the
+    # ``Access-Control-Allow-Origin`` header. Accepting both commas and
+    # whitespace makes the configuration more forgiving while keeping explicit
+    # control of the allowed origins.
     return [origin for origin in re.split(r"[\s,]+", raw_value) if origin]
 
 
