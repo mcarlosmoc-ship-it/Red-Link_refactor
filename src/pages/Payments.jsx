@@ -1,4 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react'
+/* global fetch, Blob, URL */
+
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
   peso,
@@ -21,7 +23,38 @@ import FormField from '../components/ui/FormField.jsx'
 const METHODS = ['Todos', 'Efectivo', 'Transferencia', 'Tarjeta', 'Revendedor']
 const METHOD_OPTIONS = METHODS.filter((method) => method !== 'Todos')
 const PAGE_SIZE_OPTIONS = [10, 25, 50]
-const QUICK_MONTH_OPTIONS = [0.5, 1, 2, 3]
+const QUICK_MONTH_OPTIONS = [1, 2, 3]
+const monthCountFormatter = new Intl.NumberFormat('es-MX', { maximumFractionDigits: 0 })
+
+const formatMonthsForUi = (value) => {
+  const numericValue = Number(value)
+  if (!Number.isFinite(numericValue) || numericValue <= 0) {
+    return null
+  }
+
+  if (numericValue < 1) {
+    return 'Pago parcial'
+  }
+
+  const wholeMonths = Math.max(1, Math.round(numericValue))
+  return `${monthCountFormatter.format(wholeMonths)} mes${wholeMonths === 1 ? '' : 'es'}`
+}
+
+const resolveCoverageLabel = ({ monthsCovered, hasOutstandingBalance }) => {
+  if (!Number.isFinite(monthsCovered)) {
+    return 'Sin tarifa definida'
+  }
+
+  if (monthsCovered >= 1) {
+    return monthsCovered > 1 ? 'Mensualidad cubierta (saldo a favor)' : 'Mensualidad cubierta'
+  }
+
+  if (monthsCovered > 0) {
+    return 'Pago parcial'
+  }
+
+  return hasOutstandingBalance ? 'Saldo pendiente' : 'Pago parcial'
+}
 
 export default function PaymentsPage() {
   const { selectedPeriod, recordPayment, initializeStatus } = useBackofficeStore((state) => ({
@@ -171,7 +204,7 @@ export default function PaymentsPage() {
   const hasMonthsValue = Number.isFinite(monthsValue) && monthsValue > 0
   const hasAmountValue = Number.isFinite(amountValue) && amountValue > 0
 
-  const suggestedAmount = useMemo(() => {
+  const suggestedAmountFromMonths = useMemo(() => {
     if (!selectedServicePrice || !hasMonthsValue) return null
     return selectedServicePrice * monthsValue
   }, [selectedServicePrice, hasMonthsValue, monthsValue])
@@ -180,19 +213,65 @@ export default function PaymentsPage() {
     if (!selectedServicePrice || !hasAmountValue) return null
     const inferred = amountValue / selectedServicePrice
     if (!Number.isFinite(inferred) || inferred <= 0) return null
-    return Number(inferred.toFixed(2))
+    return inferred
   }, [selectedServicePrice, hasAmountValue, amountValue])
 
-  const clientDebtMonths = Number(selectedClient?.debtMonths ?? 0)
-  const aheadPreview = useMemo(() => {
-    if (hasMonthsValue) {
-      return Math.max(0, monthsValue - Math.max(clientDebtMonths, 0))
+  const outstandingAmount = useMemo(() => {
+    if (!selectedClient || !selectedService) {
+      return 0
     }
-    if (inferredMonthsFromAmount) {
-      return Math.max(0, inferredMonthsFromAmount - Math.max(clientDebtMonths, 0))
+
+    return Number(resolveOutstandingAmount(selectedClient, selectedService) ?? 0)
+  }, [resolveOutstandingAmount, selectedClient, selectedService])
+
+  const aheadAmount = useMemo(() => {
+    if (!selectedClient || !selectedService) {
+      return 0
     }
-    return 0
-  }, [clientDebtMonths, hasMonthsValue, inferredMonthsFromAmount, monthsValue])
+
+    return Number(resolveAheadAmount(selectedClient, selectedService) ?? 0)
+  }, [resolveAheadAmount, selectedClient, selectedService])
+
+  const suggestedCharge = useMemo(
+    () => resolveSuggestedAmount(paymentForm),
+    [paymentForm, resolveSuggestedAmount],
+  )
+
+  const totalDue = useMemo(() => {
+    const base = Number.isFinite(selectedServicePrice) && selectedServicePrice > 0 ? selectedServicePrice : 0
+    const pending = Number.isFinite(outstandingAmount) && outstandingAmount > 0 ? outstandingAmount : 0
+    const credit = Number.isFinite(aheadAmount) && aheadAmount > 0 ? aheadAmount : 0
+    const total = base + pending - credit
+    return total > 0 ? Number(total.toFixed(2)) : 0
+  }, [aheadAmount, outstandingAmount, selectedServicePrice])
+
+  const resultingBalance = useMemo(() => {
+    const received = hasAmountValue ? amountValue : 0
+    const balance = totalDue - received
+    return Number(balance.toFixed(2))
+  }, [amountValue, hasAmountValue, totalDue])
+
+  const resultingPending = Math.max(0, resultingBalance)
+  const resultingAhead = Math.max(0, -resultingBalance)
+
+  const monthsCovered = useMemo(() => {
+    if (!selectedServicePrice) {
+      return Number.NaN
+    }
+
+    const effectiveContribution = (hasAmountValue ? amountValue : 0) + aheadAmount - outstandingAmount
+    const covered = effectiveContribution / selectedServicePrice
+    return Number.isFinite(covered) ? covered : Number.NaN
+  }, [aheadAmount, amountValue, hasAmountValue, outstandingAmount, selectedServicePrice])
+
+  const coverageLabel = resolveCoverageLabel({
+    monthsCovered,
+    hasOutstandingBalance: outstandingAmount > 0,
+  })
+
+  const monthsCoveredLabel = formatMonthsForUi(monthsCovered)
+  const baseCoveragePeriod = getPeriodFromDateString(paymentForm.paidOn) ?? selectedPeriod ?? null
+  const coveragePeriodLabel = baseCoveragePeriod ? formatPeriodLabel(baseCoveragePeriod) : null
 
   const resolveSelectedClientFromForm = (formData) =>
     clients.find((client) => String(client.id) === String(formData.clientId)) ?? null
@@ -274,12 +353,63 @@ export default function PaymentsPage() {
     [],
   )
 
+  const resolveAheadAmount = useMemo(
+    () =>
+      (client, service) => {
+        if (!client && !service) {
+          return 0
+        }
+
+        const aheadMonths = Number(service?.paidMonthsAhead ?? client?.paidMonthsAhead)
+        const referencePrice = Number(service?.price ?? client?.monthlyFee)
+
+        if (!Number.isFinite(aheadMonths) || aheadMonths <= 0) {
+          return 0
+        }
+
+        if (!Number.isFinite(referencePrice) || referencePrice <= 0) {
+          return 0
+        }
+
+        return Number((aheadMonths * referencePrice).toFixed(2))
+      },
+    [],
+  )
+
+  const resolveSuggestedAmount = useCallback(
+    (form) => {
+      const client = resolveSelectedClientFromForm(form)
+      const service = resolveSelectedServiceFromForm(form)
+
+      if (!client || !service) {
+        return null
+      }
+
+      const referencePrice = Number(service?.price ?? client?.monthlyFee)
+      const outstandingAmount = Number(resolveOutstandingAmount(client, service) ?? 0)
+      const aheadAmount = Number(resolveAheadAmount(client, service) ?? 0)
+
+      if (!Number.isFinite(referencePrice) || referencePrice <= 0) {
+        return outstandingAmount > 0 ? outstandingAmount - aheadAmount : null
+      }
+
+      const suggested = referencePrice + outstandingAmount - aheadAmount
+      return suggested > 0 ? Number(suggested.toFixed(2)) : 0
+    },
+    [
+      resolveSelectedClientFromForm,
+      resolveSelectedServiceFromForm,
+      resolveOutstandingAmount,
+      resolveAheadAmount,
+    ],
+  )
+
   const applyPaymentSuggestions = useCallback(
     (form) => {
       const client = resolveSelectedClientFromForm(form)
       const service = resolveSelectedServiceFromForm(form)
 
-      const suggestedAmount = resolveOutstandingAmount(client, service)
+      const suggestedAmount = resolveSuggestedAmount(form)
       const suggestedMonths = resolveOutstandingMonths(client, service)
 
       const hasCustomMonths = Number(form.months) > 0
@@ -288,9 +418,10 @@ export default function PaymentsPage() {
       let hasUpdates = false
 
       if (!hasCustomMonths && Number.isFinite(suggestedMonths) && suggestedMonths > 0) {
-        const normalizedSuggestedMonths = String(suggestedMonths)
-        if (form.months !== normalizedSuggestedMonths) {
-          nextForm.months = normalizedSuggestedMonths
+        const normalizedSuggestedMonths = Math.max(1, Math.round(suggestedMonths))
+        const normalizedSuggestedMonthsLabel = String(normalizedSuggestedMonths)
+        if (form.months !== normalizedSuggestedMonthsLabel) {
+          nextForm.months = normalizedSuggestedMonthsLabel
           hasUpdates = true
         }
       }
@@ -307,7 +438,13 @@ export default function PaymentsPage() {
 
       return hasUpdates ? nextForm : form
     },
-    [hasAmountBeenManuallyEdited, resolveOutstandingAmount, resolveOutstandingMonths],
+    [
+      hasAmountBeenManuallyEdited,
+      resolveOutstandingMonths,
+      resolveSelectedClientFromForm,
+      resolveSelectedServiceFromForm,
+      resolveSuggestedAmount,
+    ],
   )
 
   useEffect(() => {
@@ -419,14 +556,6 @@ export default function PaymentsPage() {
     setIsSubmittingPayment(true)
 
     try {
-      const inferredMonths = normalizedMonths || inferredMonthsFromAmount || 0
-      const currentDebt = Number(selectedClient?.debtMonths ?? 0)
-      const aheadContribution = Math.max(0, inferredMonths - Math.max(currentDebt, 0))
-      const aheadMessage =
-        aheadContribution > 0
-          ? `Saldo a favor generado: ${aheadContribution.toFixed(2)} mes(es).`
-          : 'La cobranza se actualizó correctamente.'
-
       await recordPayment({
         clientId: paymentForm.clientId,
         serviceId: selectedService.id,
@@ -441,7 +570,12 @@ export default function PaymentsPage() {
       showToast({
         type: 'success',
         title: 'Pago registrado',
-        description: aheadMessage,
+        description:
+          resultingAhead > 0
+            ? `Saldo a favor generado: ${peso(resultingAhead)}.`
+            : resultingPending > 0
+              ? `Queda saldo pendiente de ${peso(resultingPending)}.`
+              : 'La cobranza se actualizó correctamente.',
       })
 
       const nextForm = {
@@ -700,20 +834,20 @@ export default function PaymentsPage() {
                   status={paymentFieldErrors.months ? 'error' : hasMonthsValue ? 'success' : 'default'}
                   message={
                     paymentFieldErrors.months ??
-                    (inferredMonthsFromAmount
-                      ? `Equivalente a ${inferredMonthsFromAmount} meses con tarifa ${peso(selectedServicePrice)}.`
-                      : 'Selecciona los meses a cubrir; el monto se calcula automáticamente con la tarifa.')
+                    (formatMonthsForUi(inferredMonthsFromAmount)
+                      ? `Equivalente aproximado a ${formatMonthsForUi(inferredMonthsFromAmount)} con tarifa ${peso(selectedServicePrice)}.`
+                      : 'Selecciona los meses a cubrir; se mostrará como número entero (sin decimales).')
                   }
-                  tooltip="Elige o escribe meses enteros o medios meses; el monto sugerido se llenará solo."
+                  tooltip="Elige o escribe meses completos; los fraccionarios se calculan internamente."
                 >
                   <div className="space-y-2">
                     <input
                       type="number"
                       min={0}
-                      step="0.5"
+                      step={1}
                       value={paymentForm.months}
                       onChange={(event) => handlePaymentFieldChange('months', event.target.value)}
-                      placeholder="0"
+                      placeholder="1"
                       disabled={!selectedService}
                     />
                     <div className="flex flex-wrap gap-2">
@@ -738,9 +872,9 @@ export default function PaymentsPage() {
                   message={
                     paymentFieldErrors.amount ??
                     (hasMonthsValue && selectedServicePrice > 0
-                      ? `Calculado para ${monthsValue} meses con tarifa ${peso(selectedServicePrice)}. Ajusta si aplicas descuentos.`
-                      : suggestedAmount
-                        ? `Sugerido: ${peso(suggestedAmount)} para ${monthsValue} meses con tarifa ${peso(selectedServicePrice)}.`
+                      ? `Calculado para ${formatMonthsForUi(monthsValue) ?? 'meses definidos'} con tarifa ${peso(selectedServicePrice)}. Ajusta si aplicas descuentos.`
+                      : suggestedCharge
+                        ? `Sugerido: ${peso(suggestedCharge)} considerando tarifa, saldos pendientes y saldo a favor.`
                         : 'Registra el total recibido en efectivo, transferencia o tarjeta.')
                   }
                   tooltip="Se registrará tal cual para reportes; incluye centavos si aplica."
@@ -794,12 +928,76 @@ export default function PaymentsPage() {
                 />
               </FormField>
 
-              {aheadPreview > 0 && (
-                <div className="rounded-md border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
-                  Este pago cubrirá adeudos y dejará {aheadPreview.toFixed(2)} mes(es) a favor. El
-                  comprobante reflejará el saldo adelantado.
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <p className="font-semibold text-slate-800">Resumen previo</p>
+                  <span className="text-xs text-slate-500">Visible antes de registrar el pago</span>
                 </div>
-              )}
+
+                <dl className="grid gap-3 md:grid-cols-2">
+                  <div className="flex items-center justify-between gap-3 rounded-md bg-white px-3 py-2 shadow-sm">
+                    <dt className="text-xs font-medium text-slate-500">Tarifa mensual</dt>
+                    <dd className="text-sm font-semibold text-slate-800">
+                      {selectedService ? peso(selectedServicePrice) : '—'}
+                    </dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 rounded-md bg-white px-3 py-2 shadow-sm">
+                    <dt className="text-xs font-medium text-slate-500">Saldo pendiente previo</dt>
+                    <dd className="text-sm font-semibold text-slate-800">
+                      {outstandingAmount > 0 ? peso(outstandingAmount) : 'Sin pendiente'}
+                    </dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 rounded-md bg-white px-3 py-2 shadow-sm">
+                    <dt className="text-xs font-medium text-slate-500">Saldo a favor previo</dt>
+                    <dd className="text-sm font-semibold text-emerald-700">
+                      {aheadAmount > 0 ? peso(aheadAmount) : 'Sin saldo a favor'}
+                    </dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 rounded-md bg-white px-3 py-2 shadow-sm">
+                    <dt className="text-xs font-medium text-slate-500">Monto sugerido</dt>
+                    <dd className="text-sm font-semibold text-blue-700">
+                      {suggestedCharge > 0 ? peso(suggestedCharge) : 'Define el monto a cobrar'}
+                    </dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 rounded-md bg-white px-3 py-2 shadow-sm">
+                    <dt className="text-xs font-medium text-slate-500">Monto recibido</dt>
+                    <dd className="text-sm font-semibold text-slate-800">
+                      {hasAmountValue ? peso(amountValue) : 'Pendiente de captura'}
+                    </dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 rounded-md bg-white px-3 py-2 shadow-sm">
+                    <dt className="text-xs font-medium text-slate-500">Saldo resultante</dt>
+                    <dd
+                      className={`text-sm font-semibold ${
+                        resultingPending > 0
+                          ? 'text-amber-700'
+                          : resultingAhead > 0
+                            ? 'text-emerald-700'
+                            : 'text-slate-800'
+                      }`}
+                    >
+                      {resultingPending > 0
+                        ? `${peso(resultingPending)} pendiente`
+                        : resultingAhead > 0
+                          ? `${peso(resultingAhead)} a favor`
+                          : 'Al corriente'}
+                    </dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 rounded-md bg-white px-3 py-2 shadow-sm">
+                    <dt className="text-xs font-medium text-slate-500">Estado</dt>
+                    <dd className="text-sm font-semibold text-slate-800">
+                      {coverageLabel}
+                      {monthsCoveredLabel ? ` · ${monthsCoveredLabel}` : ''}
+                    </dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 rounded-md bg-white px-3 py-2 shadow-sm">
+                    <dt className="text-xs font-medium text-slate-500">Periodo cubierto</dt>
+                    <dd className="text-sm font-semibold text-slate-800">
+                      {coveragePeriodLabel ?? 'Sin periodo definido'}
+                    </dd>
+                  </div>
+                </dl>
+              </div>
 
               {paymentError && (
                 <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
@@ -912,7 +1110,7 @@ export default function PaymentsPage() {
                       Servicio
                     </th>
                     <th scope="col" className="px-3 py-2 font-medium">
-                      Periodos
+                      Cobertura
                     </th>
                     <th scope="col" className="px-3 py-2 font-medium">
                       Método
@@ -933,7 +1131,15 @@ export default function PaymentsPage() {
                       <td className="px-3 py-2 text-slate-700">{payment.clientName}</td>
                       <td className="px-3 py-2 text-slate-600">{payment.serviceName}</td>
                       <td className="px-3 py-2 text-slate-600">
-                        {payment.months ? `${payment.months} mes(es)` : '—'}
+                        <div className="flex flex-col">
+                          <span>{formatPeriodLabel(getPeriodFromDateString(payment.date)) || 'Periodo sin definir'}</span>
+                          <span className="text-xs text-slate-500">
+                            {formatMonthsForUi(payment.months) ??
+                              (Number(payment.months) >= 1
+                                ? 'Mensualidad cubierta'
+                                : 'Pago parcial / saldo pendiente')}
+                          </span>
+                        </div>
                       </td>
                       <td className="px-3 py-2 text-slate-600">{payment.method}</td>
                       <td className="px-3 py-2 text-slate-600">{peso(payment.amount)}</td>
