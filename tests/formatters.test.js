@@ -13,8 +13,8 @@ describe('getPeriodFromDateString', () => {
     expect(getPeriodFromDateString('2025-01-15')).toBe('2025-01')
   })
 
-  it('returns multiple candidates for ambiguous slash dates', () => {
-    expect(getPeriodFromDateString('01/02/2025')).toEqual(['2025-02', '2025-01'])
+  it('returns null for ambiguous slash dates to avoid returning arrays', () => {
+    expect(getPeriodFromDateString('01/02/2025')).toBeNull()
   })
 
   it('returns a single candidate when only one combination is valid', () => {

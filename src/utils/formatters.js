@@ -172,7 +172,7 @@ export const getPeriodFromDateString = (value) => {
     }
 
     if (candidates.length > 1) {
-      return candidates
+      return null
     }
   }
 
