@@ -14,6 +14,7 @@ import { usePayments } from '../hooks/usePayments.js'
 import { useToast } from '../hooks/useToast.js'
 import { useClients } from '../hooks/useClients.js'
 import { useBackofficeRefresh } from '../contexts/BackofficeRefreshContext.jsx'
+import { apiClient, buildApiUrl } from '../services/apiClient.js'
 import PaymentsSkeleton from './PaymentsSkeleton.jsx'
 import FormField from '../components/ui/FormField.jsx'
 
@@ -45,10 +46,23 @@ export default function PaymentsPage() {
     note: '',
     paidOn: today(),
   })
+  const [scheduleForm, setScheduleForm] = useState({
+    clientId: '',
+    serviceId: '',
+    months: '',
+    amount: '',
+    method: METHOD_OPTIONS[0] ?? 'Efectivo',
+    executeOn: today(),
+    note: '',
+  })
   const [paymentError, setPaymentError] = useState(null)
+  const [scheduleError, setScheduleError] = useState(null)
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false)
+  const [isSubmittingSchedule, setIsSubmittingSchedule] = useState(false)
   const [paymentFieldErrors, setPaymentFieldErrors] = useState({})
   const [hasAmountBeenManuallyEdited, setHasAmountBeenManuallyEdited] = useState(false)
+  const [schedules, setSchedules] = useState([])
+  const [isLoadingSchedules, setIsLoadingSchedules] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(PAGE_SIZE_OPTIONS[0])
 
@@ -74,6 +88,11 @@ export default function PaymentsPage() {
     [clients, paymentForm.clientId],
   )
 
+  const scheduleSelectedClient = useMemo(
+    () => clients.find((client) => String(client.id) === String(scheduleForm.clientId)) ?? null,
+    [clients, scheduleForm.clientId],
+  )
+
   const serviceOptions = useMemo(() => {
     if (!selectedClient) {
       return []
@@ -83,6 +102,16 @@ export default function PaymentsPage() {
       label: `${service.name} · ${(service.type || 'servicio').replace(/_/g, ' ')}`,
     }))
   }, [selectedClient])
+
+  const scheduleServiceOptions = useMemo(() => {
+    if (!scheduleSelectedClient) {
+      return []
+    }
+    return (scheduleSelectedClient.services ?? []).map((service) => ({
+      value: String(service.id),
+      label: `${service.name} · ${(service.type || 'servicio').replace(/_/g, ' ')}`,
+    }))
+  }, [scheduleSelectedClient])
 
   useEffect(() => {
     const clientIdFromParams = searchParams.get('clientId')
@@ -94,6 +123,7 @@ export default function PaymentsPage() {
 
     if (matchingClient) {
       setPaymentForm((prev) => ({ ...prev, clientId: String(matchingClient.id) }))
+      setScheduleForm((prev) => ({ ...prev, clientId: String(matchingClient.id) }))
     }
   }, [clients, paymentForm.clientId, searchParams])
 
@@ -114,6 +144,24 @@ export default function PaymentsPage() {
     const defaultServiceId = String(selectedClient.services[0].id)
     setPaymentForm((prev) => ({ ...prev, serviceId: defaultServiceId }))
   }, [selectedClient, paymentForm.serviceId])
+
+  useEffect(() => {
+    if (!scheduleSelectedClient?.services?.length) {
+      setScheduleForm((prev) => (prev.serviceId === '' ? prev : { ...prev, serviceId: '' }))
+      return
+    }
+
+    const hasCurrentService = scheduleSelectedClient.services.some(
+      (service) => String(service.id) === String(scheduleForm.serviceId),
+    )
+
+    if (hasCurrentService) {
+      return
+    }
+
+    const defaultServiceId = String(scheduleSelectedClient.services[0].id)
+    setScheduleForm((prev) => ({ ...prev, serviceId: defaultServiceId }))
+  }, [scheduleSelectedClient, scheduleForm.serviceId])
 
   const selectedService = useMemo(() => {
     if (!selectedClient?.services?.length) {
@@ -181,6 +229,17 @@ export default function PaymentsPage() {
     if (!Number.isFinite(inferred) || inferred <= 0) return null
     return Number(inferred.toFixed(2))
   }, [selectedServicePrice, hasAmountValue, amountValue])
+
+  const clientDebtMonths = Number(selectedClient?.debtMonths ?? 0)
+  const aheadPreview = useMemo(() => {
+    if (hasMonthsValue) {
+      return Math.max(0, monthsValue - Math.max(clientDebtMonths, 0))
+    }
+    if (inferredMonthsFromAmount) {
+      return Math.max(0, inferredMonthsFromAmount - Math.max(clientDebtMonths, 0))
+    }
+    return 0
+  }, [clientDebtMonths, hasMonthsValue, inferredMonthsFromAmount, monthsValue])
 
   const resolveSelectedClientFromForm = (formData) =>
     clients.find((client) => String(client.id) === String(formData.clientId)) ?? null
@@ -407,6 +466,14 @@ export default function PaymentsPage() {
     setIsSubmittingPayment(true)
 
     try {
+      const inferredMonths = normalizedMonths || inferredMonthsFromAmount || 0
+      const currentDebt = Number(selectedClient?.debtMonths ?? 0)
+      const aheadContribution = Math.max(0, inferredMonths - Math.max(currentDebt, 0))
+      const aheadMessage =
+        aheadContribution > 0
+          ? `Saldo a favor generado: ${aheadContribution.toFixed(2)} mes(es).`
+          : 'La cobranza se actualizó correctamente.'
+
       await recordPayment({
         clientId: paymentForm.clientId,
         serviceId: selectedService.id,
@@ -421,7 +488,7 @@ export default function PaymentsPage() {
       showToast({
         type: 'success',
         title: 'Pago registrado',
-        description: 'La cobranza se actualizó correctamente.',
+        description: aheadMessage,
       })
 
       const nextForm = {
@@ -442,6 +509,142 @@ export default function PaymentsPage() {
       })
     } finally {
       setIsSubmittingPayment(false)
+    }
+  }
+
+  const syncScheduleSelection = (nextForm, field) => {
+    if (field === 'clientId') {
+      const client = clients.find((candidate) => String(candidate.id) === String(nextForm.clientId))
+      const defaultServiceId = client?.services?.[0]?.id
+      if (defaultServiceId) {
+        return { ...nextForm, serviceId: String(defaultServiceId) }
+      }
+    }
+    return nextForm
+  }
+
+  const handleScheduleFieldChange = (field, value) => {
+    setScheduleForm((prev) => {
+      const nextForm = syncScheduleSelection({ ...prev, [field]: value }, field)
+      if (field === 'clientId' && !nextForm.serviceId) {
+        setScheduleError('Selecciona un servicio para programar el cobro')
+      } else {
+        setScheduleError(null)
+      }
+      return nextForm
+    })
+  }
+
+  const loadSchedules = useCallback(async () => {
+    setIsLoadingSchedules(true)
+    setScheduleError(null)
+    try {
+      const response = await apiClient.get('/payments/schedules', { query: { limit: 200 } })
+      const items = Array.isArray(response?.data?.items) ? response.data.items : []
+      setSchedules(items)
+    } catch (error) {
+      setScheduleError('No se pudieron cargar los pagos diferidos')
+    } finally {
+      setIsLoadingSchedules(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadSchedules().catch(() => {})
+  }, [loadSchedules])
+
+  const handleScheduleSubmit = async (event) => {
+    event.preventDefault()
+    if (!scheduleForm.clientId || !scheduleForm.serviceId) {
+      setScheduleError('Selecciona un cliente y servicio para programar el cobro')
+      return
+    }
+
+    setIsSubmittingSchedule(true)
+    setScheduleError(null)
+    try {
+      await apiClient.post('/payments/schedules', {
+        client_service_id: scheduleForm.serviceId,
+        execute_on: scheduleForm.executeOn,
+        amount: Number(scheduleForm.amount),
+        months: scheduleForm.months ? Number(scheduleForm.months) : null,
+        method: scheduleForm.method,
+        note: scheduleForm.note || undefined,
+      })
+      showToast({
+        type: 'success',
+        title: 'Pago diferido programado',
+        description: 'Se programó el cobro y se notificará en la fecha indicada.',
+      })
+      setScheduleForm((prev) => ({
+        ...prev,
+        months: '',
+        amount: '',
+        note: '',
+      }))
+      await loadSchedules()
+    } catch (error) {
+      const message = error?.message ?? 'No se pudo programar el cobro diferido'
+      setScheduleError(message)
+      showToast({
+        type: 'error',
+        title: 'No se pudo programar el cobro',
+        description: message,
+      })
+    } finally {
+      setIsSubmittingSchedule(false)
+    }
+  }
+
+  const handleScheduleAction = async (scheduleId, action) => {
+    const endpoint = action === 'execute' ? 'execute' : 'cancel'
+    try {
+      await apiClient.post(`/payments/schedules/${scheduleId}/${endpoint}`)
+      await loadSchedules()
+      showToast({
+        type: 'success',
+        title: action === 'execute' ? 'Pago ejecutado' : 'Pago cancelado',
+        description:
+          action === 'execute'
+            ? 'El pago diferido se aplicó y actualizó la cuenta.'
+            : 'El cobro diferido se canceló.',
+      })
+    } catch (error) {
+      showToast({
+        type: 'error',
+        title: 'Acción no completada',
+        description: error?.message ?? 'No se pudo actualizar el pago diferido',
+      })
+    }
+  }
+
+  const handleDownloadReceipt = async (paymentId) => {
+    try {
+      const url = buildApiUrl(`/payments/${paymentId}/receipt`)
+      const token = apiClient.getAccessToken?.()
+      const response = await fetch(url, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+      const payload = await response.json()
+      const blob = new Blob([payload?.content ?? ''], { type: 'text/plain' })
+      const link = document.createElement('a')
+      link.href = URL.createObjectURL(blob)
+      link.download = payload?.filename ?? `recibo-${paymentId}.txt`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(link.href)
+      showToast({
+        type: 'success',
+        title: 'Recibo listo',
+        description: 'Se descargó el comprobante del pago.',
+      })
+    } catch (error) {
+      showToast({
+        type: 'error',
+        title: 'No se pudo descargar',
+        description: 'Intenta nuevamente o verifica tu conexión.',
+      })
     }
   }
 
@@ -744,6 +947,13 @@ export default function PaymentsPage() {
                 />
               </FormField>
 
+              {aheadPreview > 0 && (
+                <div className="rounded-md border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+                  Este pago cubrirá adeudos y dejará {aheadPreview.toFixed(2)} mes(es) a favor. El
+                  comprobante reflejará el saldo adelantado.
+                </div>
+              )}
+
               {paymentError && (
                 <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
                   {paymentError}
@@ -759,6 +969,202 @@ export default function PaymentsPage() {
                 </Button>
               </div>
             </form>
+          </CardContent>
+        </Card>
+      </section>
+
+      <section aria-labelledby="pagos-diferidos" className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 id="pagos-diferidos" className="text-lg font-semibold text-slate-900">
+              Pagos diferidos programados
+            </h2>
+            <p className="text-sm text-slate-500">
+              Agenda cobros futuros, cancela o ejecuta anticipadamente cuando el cliente confirme el pago.
+            </p>
+          </div>
+        </div>
+
+        <Card>
+          <CardContent className="space-y-4">
+            <h3 className="text-sm font-semibold text-slate-800">Programar nuevo cobro</h3>
+            <form className="space-y-4" onSubmit={handleScheduleSubmit}>
+              <div className="grid gap-4 md:grid-cols-2">
+                <FormField label="Cliente" htmlFor="schedule-client" status="default">
+                  <select
+                    id="schedule-client"
+                    value={scheduleForm.clientId}
+                    onChange={(event) => handleScheduleFieldChange('clientId', event.target.value)}
+                  >
+                    <option value="">Selecciona un cliente</option>
+                    {clientOptions.map((client) => (
+                      <option key={client.value} value={client.value}>
+                        {client.label}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
+                <FormField label="Servicio" htmlFor="schedule-service" status="default">
+                  <select
+                    id="schedule-service"
+                    value={scheduleForm.serviceId}
+                    onChange={(event) => handleScheduleFieldChange('serviceId', event.target.value)}
+                    disabled={!scheduleForm.clientId}
+                  >
+                    <option value="">Selecciona un servicio</option>
+                    {scheduleServiceOptions.map((service) => (
+                      <option key={service.value} value={service.value}>
+                        {service.label}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-3">
+                <FormField label="Fecha programada" htmlFor="schedule-date" status="default">
+                  <input
+                    id="schedule-date"
+                    type="date"
+                    value={scheduleForm.executeOn}
+                    onChange={(event) => handleScheduleFieldChange('executeOn', event.target.value)}
+                    required
+                  />
+                </FormField>
+                <FormField
+                  label="Meses a cubrir"
+                  htmlFor="schedule-months"
+                  status={scheduleForm.months ? 'success' : 'default'}
+                  message="Opcional: se infiere con el precio mensual."
+                >
+                  <input
+                    id="schedule-months"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={scheduleForm.months}
+                    onChange={(event) => handleScheduleFieldChange('months', event.target.value)}
+                  />
+                </FormField>
+                <FormField
+                  label="Monto"
+                  htmlFor="schedule-amount"
+                  status={scheduleForm.amount ? 'success' : 'default'}
+                  message="Define el cargo a programar"
+                >
+                  <input
+                    id="schedule-amount"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={scheduleForm.amount}
+                    onChange={(event) => handleScheduleFieldChange('amount', event.target.value)}
+                    required
+                  />
+                </FormField>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <FormField label="Método" htmlFor="schedule-method" status="default">
+                  <select
+                    id="schedule-method"
+                    value={scheduleForm.method}
+                    onChange={(event) => handleScheduleFieldChange('method', event.target.value)}
+                  >
+                    {METHOD_OPTIONS.map((method) => (
+                      <option key={method} value={method}>
+                        {method}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
+                <FormField label="Nota" htmlFor="schedule-note" status="default">
+                  <input
+                    id="schedule-note"
+                    type="text"
+                    value={scheduleForm.note}
+                    onChange={(event) => handleScheduleFieldChange('note', event.target.value)}
+                    placeholder="Referencia o folio"
+                  />
+                </FormField>
+              </div>
+
+              {scheduleError && (
+                <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                  {scheduleError}
+                </div>
+              )}
+
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-slate-500">Los pagos programados respetarán la fecha y podrás cancelarlos si el cliente cambia de opinión.</p>
+                <Button type="submit" disabled={isSubmittingSchedule}>
+                  {isSubmittingSchedule ? 'Guardando…' : 'Programar cobro'}
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-slate-800">Cobros pendientes</h3>
+              {isLoadingSchedules && <span className="text-xs text-slate-500">Sincronizando…</span>}
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
+                <thead className="bg-slate-50 text-slate-600">
+                  <tr>
+                    <th className="px-3 py-2 font-medium">Fecha</th>
+                    <th className="px-3 py-2 font-medium">Cliente</th>
+                    <th className="px-3 py-2 font-medium">Servicio</th>
+                    <th className="px-3 py-2 font-medium">Monto</th>
+                    <th className="px-3 py-2 font-medium">Estatus</th>
+                    <th className="px-3 py-2 font-medium">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {schedules.map((schedule) => (
+                    <tr key={schedule.id}>
+                      <td className="px-3 py-2 text-slate-600">{schedule.execute_on}</td>
+                      <td className="px-3 py-2 text-slate-700">{schedule.client?.full_name ?? 'Cliente'}</td>
+                      <td className="px-3 py-2 text-slate-600">{schedule.service?.name ?? schedule.service?.service_plan?.name ?? 'Servicio'}</td>
+                      <td className="px-3 py-2 text-slate-600">{peso(schedule.amount)}</td>
+                      <td className="px-3 py-2 text-slate-600">{schedule.status}</td>
+                      <td className="px-3 py-2 text-slate-600">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Button
+                            type="button"
+                            size="xs"
+                            variant="secondary"
+                            disabled={schedule.status !== 'scheduled'}
+                            onClick={() => handleScheduleAction(schedule.id, 'execute')}
+                          >
+                            Ejecutar
+                          </Button>
+                          <Button
+                            type="button"
+                            size="xs"
+                            variant="ghost"
+                            disabled={schedule.status !== 'scheduled'}
+                            onClick={() => handleScheduleAction(schedule.id, 'cancel')}
+                          >
+                            Cancelar
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {schedules.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="px-3 py-6 text-center text-sm text-slate-500">
+                        No hay cobros diferidos programados.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </CardContent>
         </Card>
       </section>
@@ -866,6 +1272,7 @@ export default function PaymentsPage() {
                     <th scope="col" className="px-3 py-2 font-medium">
                       Nota
                     </th>
+                    <th scope="col" className="px-3 py-2 font-medium">Recibo</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -880,11 +1287,21 @@ export default function PaymentsPage() {
                       <td className="px-3 py-2 text-slate-600">{payment.method}</td>
                       <td className="px-3 py-2 text-slate-600">{peso(payment.amount)}</td>
                       <td className="px-3 py-2 text-slate-500">{payment.note || '—'}</td>
+                      <td className="px-3 py-2 text-slate-600">
+                        <Button
+                          type="button"
+                          size="xs"
+                          variant="secondary"
+                          onClick={() => handleDownloadReceipt(payment.id)}
+                        >
+                          Recibo
+                        </Button>
+                      </td>
                     </tr>
                   ))}
                   {paginatedPayments.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="px-3 py-6 text-center text-sm text-slate-500">
+                      <td colSpan={8} className="px-3 py-6 text-center text-sm text-slate-500">
                         No hay pagos registrados con los criterios seleccionados en {periodLabel}.
                       </td>
                     </tr>
