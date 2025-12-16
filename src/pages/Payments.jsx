@@ -199,93 +199,6 @@ export default function PaymentsPage() {
     return Number.isFinite(parsed) ? parsed : 0
   }, [selectedService])
 
-  const monthsValue = Number(paymentForm.months)
-  const amountValue = Number(paymentForm.amount)
-  const hasMonthsValue = Number.isFinite(monthsValue) && monthsValue > 0
-  const hasAmountValue = Number.isFinite(amountValue) && amountValue > 0
-
-  const suggestedAmountFromMonths = useMemo(() => {
-    if (!selectedServicePrice || !hasMonthsValue) return null
-    return selectedServicePrice * monthsValue
-  }, [selectedServicePrice, hasMonthsValue, monthsValue])
-
-  const inferredMonthsFromAmount = useMemo(() => {
-    if (!selectedServicePrice || !hasAmountValue) return null
-    const inferred = amountValue / selectedServicePrice
-    if (!Number.isFinite(inferred) || inferred <= 0) return null
-    return inferred
-  }, [selectedServicePrice, hasAmountValue, amountValue])
-
-  const outstandingAmount = useMemo(() => {
-    if (!selectedClient || !selectedService) {
-      return 0
-    }
-
-    return Number(resolveOutstandingAmount(selectedClient, selectedService) ?? 0)
-  }, [resolveOutstandingAmount, selectedClient, selectedService])
-
-  const aheadAmount = useMemo(() => {
-    if (!selectedClient || !selectedService) {
-      return 0
-    }
-
-    return Number(resolveAheadAmount(selectedClient, selectedService) ?? 0)
-  }, [resolveAheadAmount, selectedClient, selectedService])
-
-  const suggestedCharge = useMemo(
-    () => resolveSuggestedAmount(paymentForm),
-    [paymentForm, resolveSuggestedAmount],
-  )
-
-  const totalDue = useMemo(() => {
-    const base = Number.isFinite(selectedServicePrice) && selectedServicePrice > 0 ? selectedServicePrice : 0
-    const pending = Number.isFinite(outstandingAmount) && outstandingAmount > 0 ? outstandingAmount : 0
-    const credit = Number.isFinite(aheadAmount) && aheadAmount > 0 ? aheadAmount : 0
-    const total = base + pending - credit
-    return total > 0 ? Number(total.toFixed(2)) : 0
-  }, [aheadAmount, outstandingAmount, selectedServicePrice])
-
-  const resultingBalance = useMemo(() => {
-    const received = hasAmountValue ? amountValue : 0
-    const balance = totalDue - received
-    return Number(balance.toFixed(2))
-  }, [amountValue, hasAmountValue, totalDue])
-
-  const resultingPending = Math.max(0, resultingBalance)
-  const resultingAhead = Math.max(0, -resultingBalance)
-
-  const monthsCovered = useMemo(() => {
-    if (!selectedServicePrice) {
-      return Number.NaN
-    }
-
-    const effectiveContribution = (hasAmountValue ? amountValue : 0) + aheadAmount - outstandingAmount
-    const covered = effectiveContribution / selectedServicePrice
-    return Number.isFinite(covered) ? covered : Number.NaN
-  }, [aheadAmount, amountValue, hasAmountValue, outstandingAmount, selectedServicePrice])
-
-  const coverageLabel = resolveCoverageLabel({
-    monthsCovered,
-    hasOutstandingBalance: outstandingAmount > 0,
-  })
-
-  const monthsCoveredLabel = formatMonthsForUi(monthsCovered)
-  const baseCoveragePeriod = getPeriodFromDateString(paymentForm.paidOn) ?? selectedPeriod ?? null
-  const coveragePeriodLabel = baseCoveragePeriod ? formatPeriodLabel(baseCoveragePeriod) : null
-
-  const resolveSelectedClientFromForm = (formData) =>
-    clients.find((client) => String(client.id) === String(formData.clientId)) ?? null
-
-  const resolveSelectedServiceFromForm = (formData) => {
-    const client = resolveSelectedClientFromForm(formData)
-    if (!client?.services?.length) return null
-    return (
-      client.services.find((service) => String(service.id) === String(formData.serviceId)) ??
-      client.services[0] ??
-      null
-    )
-  }
-
   const resolveOutstandingAmount = useMemo(
     () =>
       (client, service) => {
@@ -403,6 +316,93 @@ export default function PaymentsPage() {
       resolveAheadAmount,
     ],
   )
+
+  const monthsValue = Number(paymentForm.months)
+  const amountValue = Number(paymentForm.amount)
+  const hasMonthsValue = Number.isFinite(monthsValue) && monthsValue > 0
+  const hasAmountValue = Number.isFinite(amountValue) && amountValue > 0
+
+  const suggestedAmountFromMonths = useMemo(() => {
+    if (!selectedServicePrice || !hasMonthsValue) return null
+    return selectedServicePrice * monthsValue
+  }, [selectedServicePrice, hasMonthsValue, monthsValue])
+
+  const inferredMonthsFromAmount = useMemo(() => {
+    if (!selectedServicePrice || !hasAmountValue) return null
+    const inferred = amountValue / selectedServicePrice
+    if (!Number.isFinite(inferred) || inferred <= 0) return null
+    return inferred
+  }, [selectedServicePrice, hasAmountValue, amountValue])
+
+  const outstandingAmount = useMemo(() => {
+    if (!selectedClient || !selectedService) {
+      return 0
+    }
+
+    return Number(resolveOutstandingAmount(selectedClient, selectedService) ?? 0)
+  }, [resolveOutstandingAmount, selectedClient, selectedService])
+
+  const aheadAmount = useMemo(() => {
+    if (!selectedClient || !selectedService) {
+      return 0
+    }
+
+    return Number(resolveAheadAmount(selectedClient, selectedService) ?? 0)
+  }, [resolveAheadAmount, selectedClient, selectedService])
+
+  const suggestedCharge = useMemo(
+    () => resolveSuggestedAmount(paymentForm),
+    [paymentForm, resolveSuggestedAmount],
+  )
+
+  const totalDue = useMemo(() => {
+    const base = Number.isFinite(selectedServicePrice) && selectedServicePrice > 0 ? selectedServicePrice : 0
+    const pending = Number.isFinite(outstandingAmount) && outstandingAmount > 0 ? outstandingAmount : 0
+    const credit = Number.isFinite(aheadAmount) && aheadAmount > 0 ? aheadAmount : 0
+    const total = base + pending - credit
+    return total > 0 ? Number(total.toFixed(2)) : 0
+  }, [aheadAmount, outstandingAmount, selectedServicePrice])
+
+  const resultingBalance = useMemo(() => {
+    const received = hasAmountValue ? amountValue : 0
+    const balance = totalDue - received
+    return Number(balance.toFixed(2))
+  }, [amountValue, hasAmountValue, totalDue])
+
+  const resultingPending = Math.max(0, resultingBalance)
+  const resultingAhead = Math.max(0, -resultingBalance)
+
+  const monthsCovered = useMemo(() => {
+    if (!selectedServicePrice) {
+      return Number.NaN
+    }
+
+    const effectiveContribution = (hasAmountValue ? amountValue : 0) + aheadAmount - outstandingAmount
+    const covered = effectiveContribution / selectedServicePrice
+    return Number.isFinite(covered) ? covered : Number.NaN
+  }, [aheadAmount, amountValue, hasAmountValue, outstandingAmount, selectedServicePrice])
+
+  const coverageLabel = resolveCoverageLabel({
+    monthsCovered,
+    hasOutstandingBalance: outstandingAmount > 0,
+  })
+
+  const monthsCoveredLabel = formatMonthsForUi(monthsCovered)
+  const baseCoveragePeriod = getPeriodFromDateString(paymentForm.paidOn) ?? selectedPeriod ?? null
+  const coveragePeriodLabel = baseCoveragePeriod ? formatPeriodLabel(baseCoveragePeriod) : null
+
+  const resolveSelectedClientFromForm = (formData) =>
+    clients.find((client) => String(client.id) === String(formData.clientId)) ?? null
+
+  const resolveSelectedServiceFromForm = (formData) => {
+    const client = resolveSelectedClientFromForm(formData)
+    if (!client?.services?.length) return null
+    return (
+      client.services.find((service) => String(service.id) === String(formData.serviceId)) ??
+      client.services[0] ??
+      null
+    )
+  }
 
   const applyPaymentSuggestions = useCallback(
     (form) => {
