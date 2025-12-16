@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { CalendarDays, DollarSign, Plus, Wifi } from 'lucide-react'
+import { AlertTriangle, CalendarDays, DollarSign, Plus, Wifi } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import StatCard from '../../components/dashboard/StatCard.jsx'
 import EarningsCard from '../../components/dashboard/EarningsCard.jsx'
@@ -71,6 +71,7 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
   const [showEarningsBreakdown, setShowEarningsBreakdown] = useState(false)
   const [expandedClientId, setExpandedClientId] = useState(null)
   const [sortConfig, setSortConfig] = useState({ field: 'name', direction: 'asc' })
+  const [pendingPartialPayment, setPendingPartialPayment] = useState(null)
   const paymentFormRef = useRef(null)
   const paymentMonthsInputRef = useRef(null)
   const paymentAmountInputRef = useRef(null)
@@ -436,6 +437,7 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
 
   const handleClosePaymentForm = useCallback(() => {
     setPaymentForm(createEmptyPaymentForm())
+    setPendingPartialPayment(null)
   }, [])
 
   const activeClient = useMemo(
@@ -534,6 +536,58 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
   const additionalAhead = Math.max(0, plannedMonths - activeDebtSummary.debtMonths)
   const detailAnchorPeriod = selectedPeriod ?? currentPeriod ?? null
 
+  const handleExecutePayment = async ({
+    monthsToRegister,
+    amountToRegister,
+    note,
+    serviceIdToUse,
+    shouldInvoicePending = false,
+    pendingBalance = 0,
+  }) => {
+    const normalizedServiceId =
+      serviceIdToUse ?? paymentForm.serviceId ?? activeClientPrimaryService?.id ?? null
+
+    const pendingInvoiceNote =
+      shouldInvoicePending && pendingBalance > 0
+        ? `Factura pendiente por ${peso(pendingBalance)}.`
+        : ''
+
+    const combinedNote = [note, pendingInvoiceNote]
+      .map((value) => value?.trim())
+      .filter(Boolean)
+      .join(' ')
+
+    try {
+      await recordPayment({
+        clientId: paymentForm.clientId,
+        serviceId: normalizedServiceId,
+        months: monthsToRegister,
+        amount: amountToRegister,
+        method: paymentForm.method,
+        note: combinedNote,
+        periodKey: selectedPeriod,
+      })
+
+      showToast({
+        type: 'success',
+        title: 'Pago registrado',
+        description: `Se registró el pago de ${peso(amountToRegister)} (${formatPeriods(monthsToRegister)} ${
+          isApproximatelyOne(monthsToRegister) ? 'periodo' : 'periodos'
+        }) para ${activeClient?.name ?? 'el cliente'}.`,
+      })
+      setPaymentForm(createEmptyPaymentForm())
+      if (searchTerm.trim().length > 0) {
+        setSearchTerm('')
+      }
+    } catch (error) {
+      showToast({
+        type: 'error',
+        title: 'No se pudo registrar el pago',
+        description: error?.message ?? 'Intenta nuevamente.',
+      })
+    }
+  }
+
   const handleSubmitPayment = async (event) => {
     event.preventDefault()
     const errors = {}
@@ -584,36 +638,45 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
       : monthsValue
     const amountToRegister = isAmountMode ? amountValue : monthsValue * monthlyFee
 
-    try {
-      await recordPayment({
-        clientId: paymentForm.clientId,
-        serviceId: serviceIdToUse,
-        months: monthsToRegister,
-        amount: amountToRegister,
-        method: paymentForm.method,
-        note: paymentForm.note,
-        periodKey: selectedPeriod,
-      })
+    const isPartialPayment =
+      outstandingAmount > 0 && amountToRegister + 0.009 < outstandingAmount
 
-      showToast({
-        type: 'success',
-        title: 'Pago registrado',
-        description: `Se registró el pago de ${peso(amountToRegister)} (${formatPeriods(monthsToRegister)} ${
-          isApproximatelyOne(monthsToRegister) ? 'periodo' : 'periodos'
-        }) para ${activeClient?.name ?? 'el cliente'}.`,
+    if (isPartialPayment && !pendingPartialPayment) {
+      setPendingPartialPayment({
+        monthsToRegister,
+        amountToRegister,
+        remainingBalance,
+        outstandingAmount,
+        note: paymentForm.note,
+        serviceIdToUse,
       })
-      setPaymentForm(createEmptyPaymentForm())
-      if (searchTerm.trim().length > 0) {
-        setSearchTerm('')
-      }
-    } catch (error) {
-      showToast({
-        type: 'error',
-        title: 'No se pudo registrar el pago',
-        description: error?.message ?? 'Intenta nuevamente.',
-      })
+      return
     }
+
+    await handleExecutePayment({
+      monthsToRegister,
+      amountToRegister,
+      note: paymentForm.note,
+      serviceIdToUse,
+      pendingBalance: remainingBalance,
+    })
   }
+
+  const handleConfirmPartialPayment = async (shouldInvoicePending) => {
+    if (!pendingPartialPayment) return
+
+    await handleExecutePayment({
+      monthsToRegister: pendingPartialPayment.monthsToRegister,
+      amountToRegister: pendingPartialPayment.amountToRegister,
+      note: pendingPartialPayment.note,
+      serviceIdToUse: pendingPartialPayment.serviceIdToUse,
+      pendingBalance: pendingPartialPayment.remainingBalance,
+      shouldInvoicePending,
+    })
+    setPendingPartialPayment(null)
+  }
+
+  const handleDismissPartialPayment = () => setPendingPartialPayment(null)
 
   const QuickPaymentForm = ({ className = '', refCallback }) => {
     if (!activeClient) {
@@ -858,6 +921,69 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
 
   return (
     <div className="space-y-8">
+      {pendingPartialPayment && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/50 px-4 py-6">
+          <div className="w-full max-w-xl rounded-lg bg-white shadow-2xl">
+            <div className="flex items-start gap-3 border-b border-slate-200 px-5 py-4">
+              <div className="mt-0.5 rounded-full bg-amber-100 p-2 text-amber-700">
+                <AlertTriangle className="h-5 w-5" aria-hidden />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-slate-900">Confirmar pago parcial</p>
+                <p className="text-sm text-slate-600">
+                  El monto ingresado es menor al adeudo total. ¿Deseas continuar y registrar el saldo pendiente?
+                </p>
+              </div>
+            </div>
+            <div className="space-y-3 px-5 py-4 text-sm text-slate-700">
+              <div className="grid gap-2 rounded-md bg-slate-50 p-3 sm:grid-cols-2">
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-slate-500">Total adeudado</p>
+                  <p className="font-semibold text-slate-900">{peso(pendingPartialPayment.outstandingAmount)}</p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-slate-500">Monto a registrar</p>
+                  <p className="font-semibold text-slate-900">{peso(pendingPartialPayment.amountToRegister)}</p>
+                </div>
+                <div className="sm:col-span-2">
+                  <p className="text-xs uppercase tracking-wide text-slate-500">Saldo pendiente después del pago</p>
+                  <p className="font-semibold text-amber-700">{peso(pendingPartialPayment.remainingBalance)}</p>
+                </div>
+              </div>
+              <p className="text-xs text-slate-500">
+                Puedes generar una factura por el saldo pendiente para reflejarlo en el siguiente periodo.
+              </p>
+            </div>
+            <div className="flex flex-col gap-2 border-t border-slate-200 bg-slate-50 px-5 py-3 sm:flex-row sm:items-center sm:justify-end">
+              <Button
+                type="button"
+                variant="ghost"
+                className="w-full border border-slate-200 text-slate-700 hover:border-slate-300 sm:w-auto"
+                onClick={handleDismissPartialPayment}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                className="w-full sm:w-auto"
+                disabled={isSubmittingPayment}
+                onClick={() => handleConfirmPartialPayment(false)}
+              >
+                {isSubmittingPayment ? 'Guardando…' : 'Sí, solo guardar pago'}
+              </Button>
+              <Button
+                type="button"
+                className="w-full sm:w-auto"
+                disabled={isSubmittingPayment}
+                onClick={() => handleConfirmPartialPayment(true)}
+              >
+                {isSubmittingPayment ? 'Facturando…' : 'Guardar y facturar saldo pendiente'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
       {isDataLoading && (
         <div
           role="status"
