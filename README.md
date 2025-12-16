@@ -63,7 +63,8 @@ Si estás en Windows y el lanzador `.bat` no funciona en tu equipo, puedes usar 
      ```powershell
      powershell -ExecutionPolicy Bypass -File .\Red-Link_QUICKSTART.ps1
      ```
-2. El asistente verificará que tengas `npm` y `python` instalados, preparará el entorno virtual del backend, instalará dependencias si hacen falta y correrá `alembic upgrade head`.
+2. El asistente verificará que tengas `npm` y `python` instalados, preparará el entorno virtual del backend,
+   instalará dependencias si hacen falta y correrá `alembic upgrade head`.
 3. Al finalizar abrirá dos ventanas nuevas de PowerShell: una con el backend (`uvicorn`) y otra con el frontend (`npm run dev`), además de lanzar `http://localhost:5173/` en tu navegador.
 
 Si ya tienes las dependencias instaladas puedes acelerar el proceso usando los parámetros opcionales:

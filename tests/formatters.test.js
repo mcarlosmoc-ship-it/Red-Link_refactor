@@ -115,6 +115,10 @@ describe('parsePeriodKey', () => {
 })
 
 describe('periodToIndex', () => {
+  it('returns index for valid periods', () => {
+    expect(periodToIndex('2024-01')).toBe(2024 * 12)
+  })
+
   it('returns NaN for invalid periods', () => {
     expect(Number.isNaN(periodToIndex('2024-13'))).toBe(true)
   })

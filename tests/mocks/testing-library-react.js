@@ -30,6 +30,22 @@ const findByText = (markup, text) => {
     : null
 }
 
+const findByRole = (markup, role) => {
+  if (!markup || !role) {
+    return null
+  }
+
+  const escapedRole = role.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const pattern = new RegExp(`role="${escapedRole}"`, 'i')
+
+  return pattern.test(markup)
+    ? {
+        role,
+        isConnected: true,
+      }
+    : null
+}
+
 const createQueries = () => ({
   getByTestId: (testId) => {
     const result = findByTestId(currentMarkup, testId)
@@ -39,6 +55,13 @@ const createQueries = () => ({
     return result
   },
   queryByTestId: (testId) => findByTestId(currentMarkup, testId),
+  findByTestId: async (testId) => {
+    const result = findByTestId(currentMarkup, testId)
+    if (!result) {
+      throw new Error(`Unable to find an element by: [data-testid="${testId}"]`)
+    }
+    return result
+  },
   getByText: (text) => {
     const result = findByText(currentMarkup, text)
     if (!result) {
@@ -47,6 +70,28 @@ const createQueries = () => ({
     return result
   },
   queryByText: (text) => findByText(currentMarkup, text),
+  findByText: async (text) => {
+    const result = findByText(currentMarkup, text)
+    if (!result) {
+      throw new Error(`Unable to find an element by text: ${String(text)}`)
+    }
+    return result
+  },
+  getByRole: (role) => {
+    const result = findByRole(currentMarkup, role)
+    if (!result) {
+      throw new Error(`Unable to find an element with the role "${role}"`)
+    }
+    return result
+  },
+  queryByRole: (role) => findByRole(currentMarkup, role),
+  findByRole: async (role) => {
+    const result = findByRole(currentMarkup, role)
+    if (!result) {
+      throw new Error(`Unable to find an element with the role "${role}"`)
+    }
+    return result
+  },
 })
 
 let currentQueries = createQueries()
