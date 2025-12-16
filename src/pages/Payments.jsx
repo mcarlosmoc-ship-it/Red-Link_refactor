@@ -129,6 +129,19 @@ export default function PaymentsPage() {
     )
   }, [selectedClient, paymentForm.serviceId])
 
+  const selectedServiceTypeLabel = useMemo(() => {
+    if (!selectedService) {
+      return null
+    }
+
+    const rawType = selectedService.type || selectedService.plan?.category
+    if (!rawType) {
+      return 'Servicio'
+    }
+
+    return String(rawType).replace(/_/g, ' ')
+  }, [selectedService])
+
   const selectedServiceStatusLabel = useMemo(() => {
     if (!selectedService) {
       return null
@@ -183,6 +196,65 @@ export default function PaymentsPage() {
       null
     )
   }
+
+  const resolveOutstandingAmount = useMemo(
+    () =>
+      (client, service) => {
+        if (!client) {
+          return null
+        }
+
+        const normalizedClientDebt = Number(client.debtAmount)
+        if (Number.isFinite(normalizedClientDebt) && normalizedClientDebt > 0) {
+          return normalizedClientDebt
+        }
+
+        const normalizedServiceDebt = Number(service?.debtAmount)
+        if (Number.isFinite(normalizedServiceDebt) && normalizedServiceDebt > 0) {
+          return normalizedServiceDebt
+        }
+
+        const debtMonths = Number(service?.debtMonths ?? client.debtMonths)
+        const referencePrice = Number(service?.price ?? client.monthlyFee)
+        if (
+          Number.isFinite(debtMonths) &&
+          debtMonths > 0 &&
+          Number.isFinite(referencePrice) &&
+          referencePrice > 0
+        ) {
+          return Number((debtMonths * referencePrice).toFixed(2))
+        }
+
+        return null
+      },
+    [],
+  )
+
+  useEffect(() => {
+    if (!selectedClient || !selectedService) {
+      return
+    }
+
+    setPaymentForm((prev) => {
+      const isSameClient = String(prev.clientId) === String(selectedClient.id)
+      const hasCustomAmount = Number(prev.amount) > 0
+      if (!isSameClient || hasCustomAmount) {
+        return prev
+      }
+
+      const suggestedAmount = resolveOutstandingAmount(selectedClient, selectedService)
+      if (!suggestedAmount) {
+        return prev
+      }
+
+      const currentAmount = Number(prev.amount)
+      if (Number.isFinite(currentAmount) && currentAmount === suggestedAmount) {
+        return prev
+      }
+
+      return { ...prev, amount: String(suggestedAmount) }
+    })
+  }, [selectedClient, selectedService, resolveOutstandingAmount])
 
   const validatePaymentForm = (formData, service = selectedService) => {
     const errors = {}
@@ -446,7 +518,7 @@ export default function PaymentsPage() {
                     <div className="space-y-1">
                       <p className="font-semibold text-slate-700">{selectedService.name}</p>
                       <p className="capitalize text-slate-500">
-                        {selectedService.type.replace(/_/g, ' ')} · Estado: {selectedServiceStatusLabel}
+                        {selectedServiceTypeLabel ?? 'Servicio'} · Estado: {selectedServiceStatusLabel ?? 'Desconocido'}
                       </p>
                       {selectedServicePrice > 0 && (
                         <p className="text-slate-500">
