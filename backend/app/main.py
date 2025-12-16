@@ -3,6 +3,7 @@
 import logging
 import os
 import re
+from contextlib import asynccontextmanager
 from typing import Callable, Iterable
 
 from fastapi import FastAPI
@@ -123,7 +124,17 @@ def _maybe_start_job(env_flag: str, job_name: str, starter: Callable[[], None]) 
     starter()
 
 
-app = FastAPI(title="Red-Link Backoffice API")
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    ensure_database_is_ready()
+    start_background_jobs()
+    try:
+        yield
+    finally:
+        stop_background_jobs()
+
+
+app = FastAPI(title="Red-Link Backoffice API", lifespan=lifespan)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -158,7 +169,6 @@ app.include_router(sales_router, prefix="/sales", tags=["sales"])
 app.include_router(service_plans_router, prefix="/service-plans", tags=["service-plans"])
 
 
-@app.on_event("startup")
 def ensure_database_is_ready() -> None:
     """Apply pending database migrations when the service starts."""
 
@@ -166,7 +176,6 @@ def ensure_database_is_ready() -> None:
     run_database_migrations()
 
 
-@app.on_event("startup")
 def start_background_jobs() -> None:
     """Start background tasks required by the service."""
 
@@ -193,7 +202,6 @@ def read_root() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.on_event("shutdown")
 def stop_background_jobs() -> None:
     """Ensure background tasks are stopped when the application shuts down."""
 
