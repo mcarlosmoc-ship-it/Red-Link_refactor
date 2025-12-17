@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 import StatCard from '../../components/dashboard/StatCard.jsx'
 import EarningsCard from '../../components/dashboard/EarningsCard.jsx'
 import Button from '../../components/ui/Button.jsx'
-import { peso, formatPeriodLabel, diffPeriods } from '../../utils/formatters.js'
+import { peso, formatPeriodLabel, diffPeriods, formatDate, addMonthsToPeriod } from '../../utils/formatters.js'
 import { useDashboardMetrics } from '../../hooks/useDashboardMetrics.js'
 import { useDashboardData } from '../../hooks/useDashboardData.js'
 import { useToast } from '../../hooks/useToast.js'
@@ -21,6 +21,9 @@ import {
   getOutstandingPeriodKeys,
   getPrimaryService,
   isInternetLikeService,
+  getClientPaymentStatus,
+  PAYMENT_STATUS,
+  DUE_SOON_THRESHOLD_MONTHS,
 } from './utils.js'
 
 const periodsFormatter = new Intl.NumberFormat('es-MX', { maximumFractionDigits: 2 })
@@ -58,10 +61,37 @@ const createEmptyPaymentForm = () => ({
   note: '',
 })
 
+const STATUS_FILTERS = [
+  {
+    value: PAYMENT_STATUS.PENDING,
+    label: 'Pendientes',
+    helper: 'Saldo o mensualidad vencida',
+  },
+  {
+    value: PAYMENT_STATUS.DUE_SOON,
+    label: 'Por vencer',
+    helper: `Cubren menos de ${DUE_SOON_THRESHOLD_MONTHS} mes${
+      DUE_SOON_THRESHOLD_MONTHS === 1 ? '' : 'es'
+    }`,
+  },
+  {
+    value: PAYMENT_STATUS.PAID,
+    label: 'Al día',
+    helper: 'Sin adeudo y cubiertos',
+  },
+  { value: 'all', label: 'Todos', helper: 'Incluye a todos los clientes' },
+]
+
+const STATUS_ORDER = {
+  [PAYMENT_STATUS.PENDING]: 0,
+  [PAYMENT_STATUS.DUE_SOON]: 1,
+  [PAYMENT_STATUS.PAID]: 2,
+}
+
 export default function ClientBillingPanel({ clients, status: clientsStatus, onReload }) {
   const initializeStatus = useBackofficeStore((state) => state.status.initialize)
   const { isRefreshing } = useBackofficeRefresh()
-  const [statusFilter, setStatusFilter] = useState('pending')
+  const [statusFilter, setStatusFilter] = useState(PAYMENT_STATUS.PENDING)
   const [searchTerm, setSearchTerm] = useState('')
   const [paymentForm, setPaymentForm] = useState(createEmptyPaymentForm)
   const [paymentErrors, setPaymentErrors] = useState({})
@@ -72,7 +102,7 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
   const [pendingPartialPayment, setPendingPartialPayment] = useState(null)
   const paymentFormRef = useRef(null)
   const paymentAmountInputRef = useRef(null)
-  const lastMetricsFiltersRef = useRef({ statusFilter: 'pending', searchTerm: '' })
+  const lastMetricsFiltersRef = useRef({ statusFilter: PAYMENT_STATUS.PENDING, searchTerm: '' })
 
   const { showToast } = useToast()
 
@@ -110,7 +140,7 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
   const pendingClients = useMemo(
     () =>
       clients.filter(
-        (client) => getClientDebtSummary(client, CLIENT_PRICE).debtMonths > 0.0001,
+        (client) => getClientPaymentStatus(client, CLIENT_PRICE) === PAYMENT_STATUS.PENDING,
       ),
     [clients],
   )
@@ -119,10 +149,23 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
   const filteredClients = useMemo(
     () =>
       clients.filter((client) => {
-        const { debtMonths } = getClientDebtSummary(client, CLIENT_PRICE)
+        const paymentStatus = getClientPaymentStatus(client, CLIENT_PRICE)
 
-        if (statusFilter === 'pending' && debtMonths <= 0.0001) return false
-        if (statusFilter === 'paid' && debtMonths > 0.0001) return false
+        if (
+          statusFilter === PAYMENT_STATUS.PENDING &&
+          paymentStatus !== PAYMENT_STATUS.PENDING
+        ) {
+          return false
+        }
+        if (statusFilter === PAYMENT_STATUS.PAID && paymentStatus !== PAYMENT_STATUS.PAID) {
+          return false
+        }
+        if (
+          statusFilter === PAYMENT_STATUS.DUE_SOON &&
+          paymentStatus !== PAYMENT_STATUS.DUE_SOON
+        ) {
+          return false
+        }
 
         if (!normalizedSearchTerm) return true
 
@@ -138,7 +181,10 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
       if (field === 'name') return client.name ?? ''
       if (field === 'location') return client.location ?? ''
       if (field === 'fee') return getClientMonthlyFee(client, CLIENT_PRICE)
-      if (field === 'status') return getClientDebtSummary(client, CLIENT_PRICE).debtMonths
+      if (field === 'status') {
+        const status = getClientPaymentStatus(client, CLIENT_PRICE)
+        return STATUS_ORDER[status] ?? 99
+      }
       return ''
     },
     [clients],
@@ -280,11 +326,16 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
   }, [statusFilter, showEarningsBreakdown])
 
   const filterDescription = useMemo(() => {
-    if (statusFilter === 'paid') {
+    if (statusFilter === PAYMENT_STATUS.PAID) {
       return `Mostrando clientes al día en ${periodLabel}`
     }
-    if (statusFilter === 'pending') {
+    if (statusFilter === PAYMENT_STATUS.PENDING) {
       return `Mostrando clientes con pagos pendientes en ${periodLabel}`
+    }
+    if (statusFilter === PAYMENT_STATUS.DUE_SOON) {
+      return `Mostrando clientes por vencer (cobertura < ${DUE_SOON_THRESHOLD_MONTHS} mes${
+        DUE_SOON_THRESHOLD_MONTHS === 1 ? '' : 'es'
+      }) en ${periodLabel}`
     }
     return `Mostrando todos los clientes activos en ${periodLabel}`
   }, [statusFilter, periodLabel])
@@ -294,7 +345,7 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
       .map((client) => {
         const { debtMonths, totalDue } = getClientDebtSummary(client, CLIENT_PRICE)
 
-        if (debtMonths <= 0.0001) {
+        if (totalDue <= 0.009) {
           return null
         }
 
@@ -943,10 +994,13 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
                   }`
                 : 'Sin pagos pendientes'
             }
-            onClick={() => setStatusFilter((current) => (current === 'pending' ? 'all' : 'pending'))}
-            aria-pressed={statusFilter === 'pending'}
+            onClick={() =>
+              setStatusFilter((current) =>
+                current === PAYMENT_STATUS.PENDING ? 'all' : PAYMENT_STATUS.PENDING,
+              )}
+            aria-pressed={statusFilter === PAYMENT_STATUS.PENDING}
             className={`${
-              statusFilter === 'pending'
+              statusFilter === PAYMENT_STATUS.PENDING
                 ? 'ring-2 ring-blue-200'
                 : metrics.pendingClients > 0
                   ? 'ring-2 ring-amber-200'
@@ -1048,6 +1102,30 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
             </p>
           </div>
 
+          <div className="flex flex-wrap gap-2" role="group" aria-label="Filtrar por estado de pago">
+            {STATUS_FILTERS.map((filter) => {
+              const isActive = statusFilter === filter.value
+              return (
+                <button
+                  key={filter.value}
+                  type="button"
+                  onClick={() => setStatusFilter(filter.value)}
+                  className={`inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 ${
+                    isActive
+                      ? 'border-blue-200 bg-blue-50 text-blue-700 shadow-sm'
+                      : 'border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:text-blue-700'
+                  }`}
+                  aria-pressed={isActive}
+                >
+                  <span>{filter.label}</span>
+                  <span className="hidden text-[11px] font-normal text-slate-500 sm:inline">
+                    {filter.helper}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+
           {!isCurrentPeriod && (
             <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
               Estás consultando el periodo de {periodLabel}. Para registrar pagos, vuelve al periodo actual
@@ -1065,7 +1143,7 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
                         className="inline-flex items-center gap-1 text-slate-700"
                         onClick={() => handleSort('name')}
                       >
-                        Nombre
+                        Cliente
                         <SortIndicator field="name" />
                       </button>
                     </th>
@@ -1085,9 +1163,15 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
                         className="inline-flex items-center gap-1 text-slate-700"
                         onClick={() => handleSort('fee')}
                       >
-                        Pago mensual
+                        Plan / Mensualidad
                         <SortIndicator field="fee" />
                       </button>
+                    </th>
+                    <th scope="col" className="px-3 py-2 font-medium">
+                      Último pago
+                    </th>
+                    <th scope="col" className="px-3 py-2 font-medium">
+                      Próximo vencimiento
                     </th>
                     <th scope="col" className="px-3 py-2 font-medium">
                       <button
@@ -1095,12 +1179,12 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
                         className="inline-flex items-center gap-1 text-slate-700"
                         onClick={() => handleSort('status')}
                       >
-                        Estado
+                        Estado de pago
                         <SortIndicator field="status" />
                       </button>
                     </th>
                     <th scope="col" className="px-3 py-2 font-medium">
-                      Saldo / Adeudo
+                      Saldo adeudado
                     </th>
                     <th scope="col" className="px-3 py-2 font-medium text-right">
                       Acciones
@@ -1110,7 +1194,7 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
                 <tbody className="divide-y divide-slate-100">
                 {hasDataError && !isDataLoading && (
                   <tr>
-                    <td colSpan={6} className="px-3 py-6 text-sm text-red-700">
+                    <td colSpan={8} className="px-3 py-6 text-sm text-red-700">
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div className="space-y-1">
                           <p className="font-semibold">No pudimos mostrar los clientes.</p>
@@ -1131,7 +1215,7 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
                 )}
                 {!hasDataError && !isDataLoading && sortedClients.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-3 py-6 text-center text-sm text-slate-500">
+                    <td colSpan={8} className="px-3 py-6 text-center text-sm text-slate-500">
                       <div className="space-y-2">
                         <p className="font-semibold text-slate-700">No hay clientes para mostrar.</p>
                         <p>
@@ -1161,7 +1245,29 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
                   const isPrimaryActive = primaryService?.status === 'active'
                   const displayMonthlyFee = getClientMonthlyFee(client, CLIENT_PRICE)
                   const debtSummary = getClientDebtSummary(client, displayMonthlyFee)
-                  const paidMonthsAhead = Number(client.paidMonthsAhead ?? 0)
+                  const paidMonthsAhead = Math.max(Number(client.paidMonthsAhead ?? 0), 0)
+                  const paymentStatus = getClientPaymentStatus(client, displayMonthlyFee)
+                  const lastPayment = Array.isArray(client.recentPayments)
+                    ? client.recentPayments[0] ?? null
+                    : null
+                  const outstandingPeriodKeys = getOutstandingPeriodKeys(
+                    detailAnchorPeriod,
+                    debtSummary.debtMonths,
+                  )
+                  const nextDuePeriodKey = (() => {
+                    if (detailAnchorPeriod) {
+                      if (paymentStatus === PAYMENT_STATUS.PENDING) {
+                        return outstandingPeriodKeys[0] ?? detailAnchorPeriod
+                      }
+                      const monthsAheadCeil = Math.max(0, Math.ceil(paidMonthsAhead))
+                      return addMonthsToPeriod(detailAnchorPeriod, monthsAheadCeil) ?? detailAnchorPeriod
+                    }
+                    return null
+                  })()
+                  const nextDueLabel = nextDuePeriodKey ? formatPeriodLabel(nextDuePeriodKey) : 'Sin periodo'
+                  const hasDebt = paymentStatus === PAYMENT_STATUS.PENDING
+                  const hasCredit = !hasDebt && paidMonthsAhead > 0.0001
+                  const creditAmount = hasCredit ? paidMonthsAhead * displayMonthlyFee : 0
                   const isExpanded = expandedClientId === client.id
                   return (
                     <React.Fragment key={client.id}>
@@ -1189,68 +1295,95 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
                             {client.location || 'Sin localidad'}
                           </button>
                         </td>
-                        <td className="px-3 py-2 text-slate-600">{peso(displayMonthlyFee)}</td>
-                        <td className="px-3 py-2">
-                          {(() => {
-                            const { debtMonths, totalDue } = debtSummary
-                            const hasDebt = debtMonths > 0.0001
-                            const hasCredit = !hasDebt && paidMonthsAhead > 0.0001
-
-                            return (
-                              <div className="flex flex-col gap-1">
-                                <span
-                                  className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${
-                                    hasDebt
-                                      ? 'bg-red-50 text-red-700'
-                                      : 'bg-emerald-50 text-emerald-700'
-                                  }`}
-                                >
-                                  {hasDebt ? '⚠️' : '✅'}
-                                  {hasDebt ? 'Pendiente de pago' : 'Al día'}
-                                </span>
-                                {hasCredit && (
-                                  <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700">
-                                    <span aria-hidden="true">💰</span>
-                                    <span>Saldo a favor</span>
-                                  </span>
-                                )}
-                              </div>
-                            )
-                          })()}
+                        <td className="px-3 py-2 text-slate-700">
+                          <div className="flex flex-col gap-0.5">
+                            <span className="font-semibold">
+                              {primaryService?.name || 'Sin servicio principal'}
+                            </span>
+                            <span className="text-sm text-slate-500">{peso(displayMonthlyFee)} / mes</span>
+                            <span className="text-xs text-slate-500">Estado: {statusLabel || 'Sin servicio'}</span>
+                          </div>
+                        </td>
+                        <td className="px-3 py-2 text-slate-700">
+                          {lastPayment ? (
+                            <div className="flex flex-col text-sm">
+                              <span className="font-semibold text-slate-700">{formatDate(lastPayment.date)}</span>
+                              <span className="text-xs text-slate-500">{peso(lastPayment.amount)}</span>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-slate-500">Sin pagos registrados</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-slate-700">
+                          {hasDebt ? (
+                            <div className="flex flex-col text-sm">
+                              <span className="font-semibold text-red-700">{nextDueLabel}</span>
+                              <span className="text-xs text-red-600">
+                                Adeudo de {formatPeriods(debtSummary.debtMonths)}{' '}
+                                {isApproximatelyOne(debtSummary.debtMonths) ? 'periodo' : 'periodos'}
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="flex flex-col text-sm">
+                              <span className="font-semibold text-slate-700">{nextDueLabel}</span>
+                              <span className="text-xs text-slate-500">
+                                {hasCredit
+                                  ? `Cubierto ${formatPeriods(paidMonthsAhead)} ${
+                                      isApproximatelyOne(paidMonthsAhead) ? 'periodo' : 'periodos'
+                                    }`
+                                  : 'Sin adeudo registrado'}
+                              </span>
+                            </div>
+                          )}
                         </td>
                         <td className="px-3 py-2">
                           {(() => {
-                            const { debtMonths, totalDue } = debtSummary
-                            const hasDebt = debtMonths > 0.0001
-                            const hasCredit = !hasDebt && paidMonthsAhead > 0.0001
-                            const creditAmount = hasCredit ? paidMonthsAhead * displayMonthlyFee : 0
-
-                            if (hasDebt) {
+                            if (paymentStatus === PAYMENT_STATUS.PENDING) {
                               return (
-                                <div className="flex flex-col gap-0.5 text-sm font-semibold text-red-700">
-                                  <span>{peso(totalDue)}</span>
-                                  <span className="text-xs font-normal text-red-600">
-                                    Adeudo de {formatPeriods(debtMonths)}{' '}
-                                    {isApproximatelyOne(debtMonths) ? 'periodo' : 'periodos'}
-                                  </span>
-                                </div>
+                                <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700">
+                                  ⚠️ Pendiente
+                                </span>
                               )
                             }
-
-                            if (hasCredit) {
+                            if (paymentStatus === PAYMENT_STATUS.DUE_SOON) {
                               return (
-                                <div className="flex flex-col gap-0.5 text-sm font-semibold text-emerald-700">
-                                  <span>{peso(creditAmount)}</span>
-                                  <span className="text-xs font-normal text-emerald-600">
-                                    Saldo a favor ({formatPeriods(paidMonthsAhead)}{' '}
-                                    {isApproximatelyOne(paidMonthsAhead) ? 'periodo' : 'periodos'})
-                                  </span>
-                                </div>
+                                <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
+                                  ⏳ Por vencer
+                                </span>
                               )
                             }
-
-                            return <span className="text-xs text-slate-500">Sin adeudo</span>
+                            return (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                                ✅ Al día
+                              </span>
+                            )
                           })()}
+                          {hasCredit && (
+                            <div className="mt-1 text-xs font-medium text-emerald-700">
+                              Saldo a favor ({formatPeriods(paidMonthsAhead)})
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-3 py-2">
+                          {hasDebt ? (
+                            <div className="flex flex-col gap-0.5 text-sm font-semibold text-red-700">
+                              <span>{peso(debtSummary.totalDue)}</span>
+                              <span className="text-xs font-normal text-red-600">
+                                Adeudo de {formatPeriods(debtSummary.debtMonths)}{' '}
+                                {isApproximatelyOne(debtSummary.debtMonths) ? 'periodo' : 'periodos'}
+                              </span>
+                            </div>
+                          ) : hasCredit ? (
+                            <div className="flex flex-col gap-0.5 text-sm font-semibold text-emerald-700">
+                              <span>{peso(creditAmount)}</span>
+                              <span className="text-xs font-normal text-emerald-600">
+                                Saldo a favor ({formatPeriods(paidMonthsAhead)}{' '}
+                                {isApproximatelyOne(paidMonthsAhead) ? 'periodo' : 'periodos'})
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-slate-500">Sin adeudo</span>
+                          )}
                         </td>
                         <td className="px-3 py-2 text-right">
                           <div className="inline-flex flex-col items-end gap-2 sm:flex-row">
@@ -1261,17 +1394,17 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
                               Registrar pago
                             </Link>
                             <Link
-                              to={`/clients?clientId=${client.id}&view=payments#client-services`}
+                              to={`/clients?clientId=${client.id}&view=payments`}
                               className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40"
                             >
-                              Servicios
+                              Ver historial
                             </Link>
                           </div>
                         </td>
                       </tr>
                       {isExpanded && (
                         <tr id={`client-details-${client.id}`}>
-                          <td colSpan={6} className="bg-slate-50 px-3 py-3">
+                          <td colSpan={8} className="bg-slate-50 px-3 py-3">
                             {(() => {
                               const { debtMonths, totalDue, fractionalDebt } = debtSummary
                               const outstandingPeriodKeys = getOutstandingPeriodKeys(
