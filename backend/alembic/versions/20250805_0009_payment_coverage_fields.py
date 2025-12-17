@@ -45,7 +45,8 @@ def upgrade() -> None:
                 "client_services",
                 "abono_monto >= 0",
             )
-        op.alter_column("client_services", "abono_monto", server_default=None)
+        if bind.dialect.name != "sqlite":
+            op.alter_column("client_services", "abono_monto", server_default=None)
 
 
 def downgrade() -> None:
