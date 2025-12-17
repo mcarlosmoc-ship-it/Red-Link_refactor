@@ -26,7 +26,6 @@ def test_create_payment_updates_client_balance(client, db_session, seed_basic_da
         "period_key": billing_period.period_key,
         "paid_on": date(2025, 1, 10).isoformat(),
         "amount": "300.00",
-        "months_paid": "1",
         "method": models.PaymentMethod.EFECTIVO.value,
         "note": "Pago parcial",
     }
@@ -39,21 +38,20 @@ def test_create_payment_updates_client_balance(client, db_session, seed_basic_da
     assert data["period_key"] == billing_period.period_key
     assert data["paid_on"] == payload["paid_on"]
     assert Decimal(str(data["amount"])) == Decimal("300.00")
-    assert Decimal(str(data["months_paid"])) == Decimal("1")
+    assert data["months_paid"] is None
     assert data["method"] == models.PaymentMethod.EFECTIVO.value
     assert data["note"] == "Pago parcial"
     assert data["client"]["id"] == client_model.id
     assert data["client"]["full_name"] == client_model.full_name
 
     db_session.expire_all()
-    updated_client = (
-        db_session.query(models.Client)
-        .filter(models.Client.id == client_model.id)
+    updated_service = (
+        db_session.query(models.ClientService)
+        .filter(models.ClientService.id == client_service.id)
         .one()
     )
-    assert Decimal(updated_client.debt_months) == Decimal("1")
-    assert Decimal(updated_client.paid_months_ahead) == Decimal("0")
-    assert updated_client.service_status == models.ServiceStatus.SUSPENDED
+    assert updated_service.vigente_hasta_periodo is not None
+    assert Decimal(updated_service.abono_monto or 0) == Decimal("0")
 
 
 def test_payment_listing_returns_cors_headers_on_failure(client, monkeypatch):

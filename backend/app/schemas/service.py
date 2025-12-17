@@ -68,6 +68,15 @@ class ClientServiceBase(BaseModel):
     debt_months: Optional[Decimal] = Field(default=Decimal("0"), ge=0)
     debt_notes: Optional[str] = None
     notes: Optional[str] = None
+    vigente_hasta_periodo: Optional[str] = Field(
+        default=None, description="Último periodo cubierto en formato YYYY-MM"
+    )
+    abono_periodo: Optional[str] = Field(
+        default=None, description="Periodo con abono parcial (YYYY-MM)"
+    )
+    abono_monto: Optional[Decimal] = Field(
+        default=Decimal("0"), description="Monto abonado al periodo en curso"
+    )
     service_metadata: Optional[dict[str, Any]] = Field(
         default=None,
         validation_alias=AliasChoices("service_metadata", "metadata"),
@@ -115,6 +124,9 @@ class ClientServiceUpdate(BaseModel):
     debt_months: Optional[Decimal] = Field(default=None, ge=0)
     debt_notes: Optional[str] = None
     notes: Optional[str] = None
+    vigente_hasta_periodo: Optional[str] = None
+    abono_periodo: Optional[str] = None
+    abono_monto: Optional[Decimal] = None
     service_metadata: Optional[dict[str, Any]] = Field(
         default=None,
         validation_alias=AliasChoices("service_metadata", "metadata"),
@@ -146,6 +158,9 @@ class ClientServiceRead(BaseModel):
     debt_months: Optional[Decimal] = None
     debt_notes: Optional[str] = None
     notes: Optional[str] = None
+    vigente_hasta_periodo: Optional[str] = None
+    abono_periodo: Optional[str] = None
+    abono_monto: Optional[Decimal] = None
     service_metadata: Optional[dict[str, Any]] = Field(
         default=None,
         alias="metadata",
