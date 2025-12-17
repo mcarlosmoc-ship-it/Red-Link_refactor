@@ -35,7 +35,12 @@ export default function ServicesAssignments({
   const [editErrors, setEditErrors] = useState({})
 
   useEffect(() => {
-    setServiceState(createInitialServiceState(client?.zoneId))
+    setServiceState((previous) => {
+      const nextState = createInitialServiceState(client?.zoneId)
+      const isSameState = Object.keys(nextState).every((key) => previous[key] === nextState[key])
+
+      return isSameState ? previous : nextState
+    })
   }, [client?.zoneId])
 
   const availablePlans = useMemo(
