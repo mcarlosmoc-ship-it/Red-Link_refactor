@@ -67,8 +67,18 @@ class Client(Base):
         nullable=True,
     )
     monthly_fee = Column(Numeric(10, 2), nullable=True)
-    paid_months_ahead = Column(Numeric(6, 2), nullable=False, default=0)
-    debt_months = Column(Numeric(6, 2), nullable=False, default=0)
+    paid_months_ahead = Column(
+        Numeric(6, 2),
+        nullable=False,
+        default=0,
+        comment="LEGACY: saldo a favor en meses; no usar para nueva lógica de cobertura",
+    )
+    debt_months = Column(
+        Numeric(6, 2),
+        nullable=False,
+        default=0,
+        comment="LEGACY: adeudo expresado en meses; mantenido solo para historial",
+    )
     base_id = synonym("zone_id")
     active_client_plan_id = Column(
         GUID(),

@@ -1,4 +1,15 @@
-"""Business logic for payment operations."""
+"""Business logic for payment operations.
+
+This module uses coverage fields on ``client_services`` as the source of truth
+for billing state:
+
+* ``vigente_hasta_periodo``
+* ``abono_periodo``
+* ``abono_monto``
+
+Legacy month-based fields are preserved for historical data but must not drive
+new payment logic.
+"""
 
 from __future__ import annotations
 
@@ -100,6 +111,13 @@ class PaymentService:
 
     @staticmethod
     def _normalize_months(value: Optional[Decimal | float | str]) -> Optional[Decimal]:
+        """Legacy helper to validate month-based inputs without using them.
+
+        The frontend no longer sends ``months_paid``. This method only keeps
+        backward compatibility for old payloads or records while preventing
+        invalid values from being stored.
+        """
+
         if value is None:
             return None
         cents = Decimal("0.01")
@@ -120,6 +138,8 @@ class PaymentService:
         debt_amount = Decimal(service.debt_amount or 0).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
+        # Legacy month-based balances are retained for historical reporting but
+        # should not be used for new coverage decisions.
         debt_months = Decimal(service.debt_months or 0).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
@@ -221,7 +241,7 @@ class PaymentService:
             previous_snapshot = cls._balance_snapshot(service, client)
 
             coverage_start_key, coverage_end_key = cls._apply_amount_coverage(
-                service, amount, reference_date=date.today()
+                service, amount, reference_date=data.paid_on
             )
 
             payment = models.ServicePayment(
@@ -318,20 +338,6 @@ class PaymentService:
                 duration_ms=(perf_counter() - start) * 1000,
             )
             raise PaymentServiceError("Unable to record payment at this time.") from exc
-
-    @staticmethod
-    def _infer_months_from_amount(
-        amount: Decimal, effective_price: Optional[Decimal]
-    ) -> Optional[Decimal]:
-        if effective_price is None:
-            return None
-        if Decimal(effective_price) <= 0:
-            return None
-        months = amount / Decimal(effective_price)
-        if months <= 0:
-            return None
-        cents = Decimal("0.01")
-        return months.quantize(cents, rounding=ROUND_HALF_UP)
 
     @staticmethod
     def _ensure_no_duplicate_payment(
@@ -549,19 +555,10 @@ class PaymentService:
         if next_billing_period != current_period:
             next_start, _ = cls._period_range_from_key(service, next_billing_period)
         service.next_billing_date = next_start
+        if service.streaming_account:
+            service.streaming_account.fecha_proximo_pago = next_start
 
         return coverage_start_key, coverage_end_key
-
-    @classmethod
-    def _coverage_range(
-        cls, service: models.ClientService, paid_on: date, months_paid: Decimal | None
-    ) -> tuple[Optional[date], Optional[date]]:
-        if months_paid is None or months_paid <= 0:
-            return None, None
-
-        start, _, _ = cls._billing_window(service, paid_on)
-        end = cls._add_months(start, months_paid) - timedelta(days=1)
-        return start, end
 
     @staticmethod
     def _build_capture_summary(
@@ -606,33 +603,6 @@ class PaymentService:
             "credit_months": str(snapshot.credit_months),
             "credit_amount": str(snapshot.credit_amount),
         }
-
-    @classmethod
-    def _update_next_billing(
-        cls,
-        service: models.ClientService,
-        paid_on: date,
-        months_paid: Optional[Decimal],
-        amount: Decimal,
-    ) -> None:
-        has_outstanding_debt = Decimal(service.debt_amount or 0) > 0 or Decimal(
-            service.debt_months or 0
-        ) > 0
-
-        if has_outstanding_debt:
-            return
-
-        months_to_apply = months_paid
-        if months_to_apply is None:
-            months_to_apply = cls._infer_months_from_amount(amount, service.effective_price)
-
-        if months_to_apply is None:
-            return
-
-        next_due_date = cls._add_months(paid_on, months_to_apply)
-        service.next_billing_date = next_due_date
-        if service.streaming_account:
-            service.streaming_account.fecha_proximo_pago = next_due_date
 
     @classmethod
     def current_period_statuses(
@@ -914,6 +884,16 @@ class PaymentService:
             coverage_label = f"Hasta {vigente_hasta}"
 
         receipt_title = "Recibo de pago"
+        monthly_fee_row = (
+            f'<div class="row"><span class="label">Tarifa mensual</span><span class="value">{_currency(monthly_fee)}</span></div>'
+            if monthly_fee is not None
+            else ""
+        )
+        note_row = (
+            f'<div class="row"><span class="label">Nota</span><span class="value">{_esc(payment.note)}</span></div>'
+            if payment.note
+            else ""
+        )
 
         html_content = f"""
 <!DOCTYPE html>
@@ -950,20 +930,20 @@ class PaymentService:
       <div class=\"row\"><span class=\"label\">Periodo</span><span class=\"value\">{_esc(period_key or '—')}</span></div>
     </div>
 
-    <div class=\"section\">
-      <div class=\"row\"><span class=\"label\">Monto</span><span class=\"value highlight\">{_currency(payment.amount)}</span></div>
-      <div class=\"row\"><span class=\"label\">Método</span><span class=\"value\">{_esc(snapshot.get('method', payment.method))}</span></div>
-      <div class=\"row\"><span class=\"label\">Vigente hasta</span><span class=\"value\">{_esc(vigente_hasta or '—')}</span></div>
-      <div class=\"row\"><span class=\"label\">Abono actual</span><span class=\"value\">{_esc(_currency(abono_vigente) if abono_vigente else '—')}</span></div>
-      <div class=\"row\"><span class=\"label\">Cobertura</span><span class=\"value\">{_esc(coverage_label)}</span></div>
-      {f"<div class=\\\"row\\\"><span class=\\\"label\\\">Tarifa mensual</span><span class=\\\"value\\\">{_currency(monthly_fee)}</span></div>" if monthly_fee is not None else ''}
-    </div>
+      <div class=\"section\">
+        <div class=\"row\"><span class=\"label\">Monto</span><span class=\"value highlight\">{_currency(payment.amount)}</span></div>
+        <div class=\"row\"><span class=\"label\">Método</span><span class=\"value\">{_esc(snapshot.get('method', payment.method))}</span></div>
+        <div class=\"row\"><span class=\"label\">Vigente hasta</span><span class=\"value\">{_esc(vigente_hasta or '—')}</span></div>
+        <div class=\"row\"><span class=\"label\">Abono actual</span><span class=\"value\">{_esc(_currency(abono_vigente) if abono_vigente else '—')}</span></div>
+        <div class=\"row\"><span class=\"label\">Cobertura</span><span class=\"value\">{_esc(coverage_label)}</span></div>
+        {monthly_fee_row}
+      </div>
 
-    <div class=\"section\">
-      <div class=\"row\"><span class=\"label\">{_esc(balance_label)}</span><span class=\"value\"></span></div>
-      {f"<div class=\\\"row\\\"><span class=\\\"label\\\">Nota</span><span class=\\\"value\\\">{_esc(payment.note)}</span></div>" if payment.note else ''}
+      <div class=\"section\">
+        <div class=\"row\"><span class=\"label\">{_esc(balance_label)}</span><span class=\"value\"></span></div>
+        {note_row}
+      </div>
     </div>
-  </div>
   <script>
     window.onload = () => {{
       window.print();
