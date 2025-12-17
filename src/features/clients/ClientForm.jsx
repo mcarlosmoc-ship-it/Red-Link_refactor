@@ -21,6 +21,11 @@ const defaultForm = {
   paidMonthsAhead: 0,
 }
 
+const AVAILABLE_ZONES = [
+  { id: 1, label: 'Base 1' },
+  { id: 2, label: 'Base 2' },
+]
+
 export default function ClientForm({ onSubmit, isSubmitting }) {
   const [formState, setFormState] = useState(defaultForm)
   const [error, setError] = useState('')
@@ -128,14 +133,20 @@ export default function ClientForm({ onSubmit, isSubmitting }) {
                 Zona
                 <InfoTooltip text="Etiqueta opcional para agrupar clientes." />
               </label>
-              <input
+              <select
                 id="zoneId"
                 className="mt-2 w-full rounded-lg border border-slate-200 bg-white/90 p-2 text-slate-900 transition focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-100"
                 data-testid="client-zone"
                 value={formState.zoneId}
                 onChange={(event) => handleChange('zoneId', event.target.value)}
-                placeholder="ID de zona/base"
-              />
+              >
+                <option value="">Selecciona una zona</option>
+                {AVAILABLE_ZONES.map((zone) => (
+                  <option key={zone.id} value={zone.id}>
+                    {zone.label}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
