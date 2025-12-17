@@ -4,7 +4,7 @@ import {
   normalizeTextOrNull,
   parseDecimalOrNull,
 } from '../utils/normalizers.js'
-import { diffPeriods, getCurrentPeriodKey } from '../utils/formatters.js'
+import { diffPeriods, getCurrentPeriodKey } from '../../utils/formatters.js'
 
 export const voucherTypePrices = DEFAULT_VOUCHER_PRICES
 
