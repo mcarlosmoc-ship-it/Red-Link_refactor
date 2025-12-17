@@ -137,18 +137,26 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
 
   const { metrics, baseCosts } = useDashboardMetrics({ statusFilter })
 
+  const billableClients = useMemo(
+    () =>
+      Array.isArray(clients)
+        ? clients.filter((client) => Boolean(getPrimaryService(client)))
+        : [],
+    [clients],
+  )
+
   const pendingClients = useMemo(
     () =>
-      clients.filter(
+      billableClients.filter(
         (client) => getClientPaymentStatus(client, CLIENT_PRICE) === PAYMENT_STATUS.PENDING,
       ),
-    [clients],
+    [billableClients],
   )
 
   const normalizedSearchTerm = searchTerm.trim().toLowerCase()
   const filteredClients = useMemo(
     () =>
-      clients.filter((client) => {
+      billableClients.filter((client) => {
         const paymentStatus = getClientPaymentStatus(client, CLIENT_PRICE)
 
         if (
@@ -173,7 +181,7 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
           .filter(Boolean)
           .some((value) => value.toString().toLowerCase().includes(normalizedSearchTerm))
       }),
-    [clients, normalizedSearchTerm, statusFilter],
+    [billableClients, normalizedSearchTerm, statusFilter],
   )
 
   const getSortValue = useCallback(
@@ -187,7 +195,7 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
       }
       return ''
     },
-    [clients],
+    [billableClients],
   )
 
   const sortedClients = useMemo(() => {
@@ -486,8 +494,8 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
   }, [])
 
   const activeClient = useMemo(
-    () => clients.find((client) => client.id === paymentForm.clientId) ?? null,
-    [clients, paymentForm.clientId],
+    () => billableClients.find((client) => client.id === paymentForm.clientId) ?? null,
+    [billableClients, paymentForm.clientId],
   )
   const activeClientPrimaryService = useMemo(
     () => getPrimaryService(activeClient),
