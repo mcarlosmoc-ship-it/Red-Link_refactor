@@ -28,3 +28,15 @@
 ## Construcción del carrito y contexto de cliente
 - El cliente seleccionado se replica en cada línea de servicio (`useEffect` que sincroniza `clientId`), y la búsqueda rápida asocia productos/servicios al carrito según el contexto actual.【F:src/pages/PointOfSale.jsx†L432-L446】【F:src/pages/PointOfSale.jsx†L708-L750】
 - Validaciones de cliente (alertas por suspensión, instalación pendiente o bloqueo de facturación) se calculan a partir de `selectedClient` y `selectedClientServices`, influyendo en mensajes previos al cobro.【F:src/pages/PointOfSale.jsx†L860-L888】
+
+## Preguntas para alinear el registro de pagos con la nueva cobertura
+
+Mensaje sugerido para el programador (solo preguntas, sin adelantar soluciones):
+
+- Del flujo y diseño actuales de registro de pagos (el que ya existe en la UI), ¿hay algo que necesite cambiar obligatoriamente para funcionar correctamente con el modelo de cobertura, o consideras que ya es suficiente como está?
+- Desde backend, ¿qué información mínima necesita hoy el frontend para mostrar correctamente el estado del servicio, sugerir montos y registrar pagos sin ambigüedad?
+- ¿Hay algún punto del flujo actual donde el frontend esté recalculando estados, interpretando montos o usando datos legacy que convenga eliminar o simplificar?
+- Pensando en mantener el sistema simple para el usuario final, ¿ves algún paso del flujo actual que sobre o que pueda confundir ahora que ya no usamos meses?
+- Desde tu perspectiva, ¿cuál sería el siguiente paso lógico a trabajar: ajustes de UI, validaciones o simplemente estabilización y pruebas con datos reales?
+
+Con estas respuestas buscamos cerrar bien el diseño actual antes de pedir cambios.
