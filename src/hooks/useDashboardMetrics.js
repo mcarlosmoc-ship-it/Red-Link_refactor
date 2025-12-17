@@ -1,6 +1,12 @@
 import { useMemo } from 'react'
 import { CLIENT_PRICE, useBackofficeStore } from '../store/useBackofficeStore.js'
-import { PAYMENT_STATUS, getClientPaymentStatus } from '../features/clients/utils.js'
+import {
+  PAYMENT_STATUS,
+  getClientCoverageContext,
+  getClientDebtSummary,
+  getClientMonthlyFee,
+  getClientPaymentStatus,
+} from '../features/clients/utils.js'
 
 const normalizeMetricValue = (value, fallback = 0) => {
   if (typeof value === 'number') {
@@ -11,12 +17,48 @@ const normalizeMetricValue = (value, fallback = 0) => {
 }
 
 export const useDashboardMetrics = ({ statusFilter: overrideStatusFilter } = {}) => {
-  const { metricsSummary, dashboardClients, baseCosts, metricsFilters } = useBackofficeStore((state) => ({
-    metricsSummary: state.metrics,
-    dashboardClients: state.dashboardClients ?? [],
-    baseCosts: state.baseCosts ?? {},
-    metricsFilters: state.metricsFilters ?? { statusFilter: 'all', searchTerm: '' },
-  }))
+  const { metricsSummary, dashboardClients, baseCosts, metricsFilters, clients } =
+    useBackofficeStore((state) => ({
+      metricsSummary: state.metrics,
+      dashboardClients: state.dashboardClients ?? [],
+      baseCosts: state.baseCosts ?? {},
+      metricsFilters: state.metricsFilters ?? { statusFilter: 'all', searchTerm: '' },
+      clients: state.clients ?? [],
+    }))
+
+  const normalizedClients = useMemo(() => {
+    return dashboardClients.map((client) => {
+      const fullClient = clients.find((item) => String(item.id) === String(client.id)) ?? null
+      const clientShape = fullClient ?? {
+        id: client.id,
+        services: [],
+        monthlyFee: normalizeMetricValue(client.monthly_fee, CLIENT_PRICE),
+        paidMonthsAhead: normalizeMetricValue(client.paid_months_ahead),
+        debtMonths: normalizeMetricValue(client.debt_months),
+        service: client.service_status ?? 'Activo',
+        type: client.client_type ?? null,
+        name: client.name,
+        location: client.location,
+      }
+
+      const monthlyFee = getClientMonthlyFee(clientShape, CLIENT_PRICE)
+      const coverage = getClientCoverageContext(clientShape)
+      const debtSummary = getClientDebtSummary(clientShape, monthlyFee)
+      const paymentStatus = getClientPaymentStatus(clientShape, monthlyFee)
+
+      return {
+        id: clientShape.id,
+        name: clientShape.name ?? client.name,
+        location: clientShape.location ?? client.location,
+        monthlyFee,
+        debtMonths: debtSummary.debtMonths ?? 0,
+        paidMonthsAhead: coverage.aheadMonths ?? 0,
+        service: clientShape.service ?? client.service_status ?? 'Activo',
+        type: clientShape.type ?? client.client_type ?? null,
+        paymentStatus,
+      }
+    })
+  }, [clients, dashboardClients])
 
   const metrics = useMemo(() => {
     if (!metricsSummary) {
@@ -42,10 +84,19 @@ export const useDashboardMetrics = ({ statusFilter: overrideStatusFilter } = {})
 
     const internetCosts = normalizeMetricValue(metricsSummary.internet_costs)
 
+    const clientPaymentStatuses = normalizedClients.map(
+      (client) => client.paymentStatus ?? getClientPaymentStatus(client, client.monthlyFee ?? CLIENT_PRICE),
+    )
+    const paidClients = clientPaymentStatuses.filter((status) => status === PAYMENT_STATUS.PAID)
+      .length
+    const pendingClients = clientPaymentStatuses.filter(
+      (status) => status === PAYMENT_STATUS.PENDING,
+    ).length
+
     return {
       totalClients: normalizeMetricValue(metricsSummary.total_clients),
-      paidClients: normalizeMetricValue(metricsSummary.paid_clients),
-      pendingClients: normalizeMetricValue(metricsSummary.pending_clients),
+      paidClients,
+      pendingClients,
       clientIncome: normalizeMetricValue(metricsSummary.client_income),
       totalDebtAmount: normalizeMetricValue(metricsSummary.total_debt_amount),
       resellerIncome: normalizeMetricValue(metricsSummary.reseller_income),
@@ -55,28 +106,13 @@ export const useDashboardMetrics = ({ statusFilter: overrideStatusFilter } = {})
       paymentsForPeriod: normalizeMetricValue(metricsSummary.payments_for_period),
       paymentsToday: normalizeMetricValue(metricsSummary.payments_today),
     }
-  }, [metricsSummary, baseCosts])
-
-  const normalizedClients = useMemo(
-    () =>
-      dashboardClients.map((client) => ({
-        id: client.id,
-        name: client.name,
-        location: client.location,
-        monthlyFee: normalizeMetricValue(client.monthly_fee, CLIENT_PRICE),
-        debtMonths: normalizeMetricValue(client.debt_months),
-        paidMonthsAhead: normalizeMetricValue(client.paid_months_ahead),
-        service: client.service_status ?? 'Activo',
-        type: client.client_type ?? null,
-      })),
-    [dashboardClients],
-  )
+  }, [metricsSummary, baseCosts, normalizedClients])
 
   const activeStatusFilter = overrideStatusFilter ?? metricsFilters?.statusFilter ?? 'all'
 
   const filteredClients = useMemo(() => {
     return normalizedClients.filter((client) => {
-      const status = getClientPaymentStatus(client, client.monthlyFee ?? CLIENT_PRICE)
+      const status = client.paymentStatus ?? getClientPaymentStatus(client, client.monthlyFee ?? CLIENT_PRICE)
       if (activeStatusFilter === PAYMENT_STATUS.PENDING) {
         return status === PAYMENT_STATUS.PENDING
       }

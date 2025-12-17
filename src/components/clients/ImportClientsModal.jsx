@@ -31,8 +31,16 @@ const OPTIONAL_COLUMNS = [
   { key: 'email', label: 'email' },
   { key: 'coordenadas', label: 'coordenadas' },
   { key: 'comentarios', label: 'comentarios' },
-  { key: 'paid_months_ahead', label: 'paid_months_ahead (meses adelantados)' },
-  { key: 'debt_months', label: 'debt_months (meses adeudados)' },
+  {
+    key: 'paid_months_ahead',
+    label: 'paid_months_ahead (LEGACY: meses adelantados)',
+    isLegacy: true,
+  },
+  {
+    key: 'debt_months',
+    label: 'debt_months (LEGACY: meses adeudados)',
+    isLegacy: true,
+  },
 ]
 
 const COLUMN_PRESETS = [
@@ -45,8 +53,8 @@ const COLUMN_PRESETS = [
   {
     key: 'services',
     label: 'Solo servicios',
-    description: 'Enfoque en saldos e IPs',
-    columns: ['paid_months_ahead', 'debt_months', 'coordenadas'],
+    description: 'Servicios sin campos LEGACY',
+    columns: ['coordenadas'],
   },
   {
     key: 'advanced',
@@ -69,7 +77,10 @@ export default function ImportClientsModal({
   const [localError, setLocalError] = useState('')
   const optionalColumns = useMemo(() => OPTIONAL_COLUMNS, [])
   const [selectedColumns, setSelectedColumns] = useState(
-    () => new Set(optionalColumns.map((column) => column.key)),
+    () =>
+      new Set(
+        optionalColumns.filter((column) => !column.isLegacy).map((column) => column.key),
+      ),
   )
   const [isDownloadingTemplate, setIsDownloadingTemplate] = useState(false)
   const [templateError, setTemplateError] = useState('')
@@ -219,6 +230,10 @@ export default function ImportClientsModal({
                     <p className="font-medium text-slate-800">Instrucciones rápidas</p>
                     <ol className="list-decimal space-y-2 pl-5 text-slate-600">
                       <li>
+                        Importar ≠ pagar: la importación solo crea clientes y servicios. Los servicios sin cobertura ni
+                        pagos quedarán en estado <strong>PENDIENTE</strong> hasta registrar un pago.
+                      </li>
+                      <li>
                         Descarga la plantilla personalizada desde el botón (usa `GET /clients/import/template` con sesión
                         activa) y ábrela en Excel o Google Sheets.
                       </li>
@@ -227,12 +242,13 @@ export default function ImportClientsModal({
                         <code>service_2_*</code>. Si necesitas más servicios, duplica la fila con el mismo cliente.
                       </li>
                       <li>
-                        La importación agrupa automáticamente las filas que comparten cliente (por código externo o por
-                        nombre y dirección) y creará todos los servicios listados.
+                        La importación agrupa automáticamente las filas que comparten cliente (por código externo o, de
+                        forma menos confiable, por nombre + dirección). Se recomienda usar siempre <code>external_code</code>
+                        para evitar errores de duplicados.
                       </li>
                       <li>
-                        Las columnas opcionales (contacto, coordenadas, comentarios y meses adelantados/adeudados)
-                        puedes mostrarlas u ocultarlas al generar la plantilla.
+                        Las columnas opcionales (contacto, coordenadas y comentarios) puedes mostrarlas u ocultarlas al
+                        generar la plantilla. Los campos marcados como LEGACY se mantienen solo como referencia histórica.
                       </li>
                       <li>
                         Evita repetir IPs (principal, antena o módem): si la IP ya existe en el sistema o en otra fila del
@@ -298,7 +314,8 @@ export default function ImportClientsModal({
                         ))}
                       </div>
                       <p className="text-xs text-slate-500">
-                        Usa valores decimales positivos para los meses adelantados o adeudados, igual que en Wisphub.
+                        Los campos marcados como LEGACY se mantienen solo para compatibilidad histórica; no los llenes
+                        para nuevas altas.
                       </p>
                     </div>
                   </div>
