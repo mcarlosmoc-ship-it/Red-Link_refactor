@@ -39,18 +39,24 @@ def upgrade() -> None:
                 "abono_monto", sa.Numeric(12, 2), nullable=False, server_default="0"
             ),
         )
-        op.create_check_constraint(
-            "ck_client_services_abono_monto_non_negative",
-            "client_services",
-            "abono_monto >= 0",
-        )
+        if bind.dialect.name != "sqlite":
+            op.create_check_constraint(
+                "ck_client_services_abono_monto_non_negative",
+                "client_services",
+                "abono_monto >= 0",
+            )
         op.alter_column("client_services", "abono_monto", server_default=None)
 
 
 def downgrade() -> None:
-    op.drop_constraint(
-        "ck_client_services_abono_monto_non_negative", "client_services", type_="check"
-    )
+    bind = op.get_bind()
+
+    if bind.dialect.name != "sqlite":
+        op.drop_constraint(
+            "ck_client_services_abono_monto_non_negative",
+            "client_services",
+            type_="check",
+        )
     op.drop_column("client_services", "abono_monto")
     op.drop_column("client_services", "abono_periodo")
     op.drop_column("client_services", "vigente_hasta_periodo")
