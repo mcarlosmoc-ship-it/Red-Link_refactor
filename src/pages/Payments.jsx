@@ -340,6 +340,27 @@ export default function PaymentsPage() {
   const baseCoveragePeriod = getPeriodFromDateString(paymentForm.paidOn) ?? selectedPeriod ?? null
   const coveragePeriodLabel = baseCoveragePeriod ? formatPeriodLabel(baseCoveragePeriod) : null
 
+  const selectedCoverageContext = useMemo(() => {
+    if (!selectedClient || !selectedService) {
+      return null
+    }
+
+    const clientShape = { ...selectedClient, services: [selectedService] }
+    return getClientCoverageContext(clientShape, { periodKey: baseCoveragePeriod ?? undefined })
+  }, [baseCoveragePeriod, selectedClient, selectedService])
+
+  const hasCoverageHistory = Boolean(selectedCoverageContext?.coverageEnd)
+  const hasPartialCoverage = Boolean(
+    selectedCoverageContext?.partialPeriod && Number(selectedCoverageContext.partialAmount ?? 0) > 0,
+  )
+  const isFirstCoveragePayment = Boolean(selectedCoverageContext && !hasCoverageHistory && !hasPartialCoverage)
+  const coverageEndLabel = selectedCoverageContext?.coverageEnd
+    ? formatPeriodLabel(selectedCoverageContext.coverageEnd)
+    : 'Sin cobertura registrada'
+  const partialCoverageLabel = selectedCoverageContext?.partialPeriod
+    ? formatPeriodLabel(selectedCoverageContext.partialPeriod)
+    : null
+
   const applyPaymentSuggestions = useCallback(
     (form) => {
       const suggestedAmount = resolveSuggestedAmount(form)
@@ -728,6 +749,60 @@ export default function PaymentsPage() {
                   )}
                 </div>
               </div>
+
+              {selectedService && (
+                <div
+                  className={`rounded-md border px-3 py-3 text-sm shadow-inner ${
+                    isFirstCoveragePayment
+                      ? 'border-amber-200 bg-amber-50 text-amber-800'
+                      : 'border-slate-200 bg-slate-50 text-slate-700'
+                  }`}
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-semibold">Estado de cobertura del servicio</p>
+                    {isFirstCoveragePayment && (
+                      <span className="rounded-full bg-amber-200/80 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-amber-900">
+                        Primer pago tras importación
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-1 text-xs sm:text-sm">
+                    {isFirstCoveragePayment
+                      ? `Servicio importado sin cobertura previa. El primer pago aplicará a ${
+                          coveragePeriodLabel ?? 'el periodo seleccionado'
+                        } y fijará la vigencia a partir de ese mes.`
+                      : hasPartialCoverage
+                        ? `Hay un abono parcial registrado para ${
+                            partialCoverageLabel ?? 'un periodo anterior'
+                          }. Completa el monto para liberar la mensualidad.`
+                        : `Cobertura registrada hasta ${coverageEndLabel}. Usa el pago para adelantar o cubrir saldos pendientes.`}
+                  </p>
+                  <div className="mt-2 grid gap-2 text-xs sm:grid-cols-3">
+                    <div className="flex items-center justify-between gap-3 rounded border border-white/60 bg-white/80 px-3 py-2 shadow-sm">
+                      <span className="font-medium">Periodo objetivo</span>
+                      <span className="font-semibold text-slate-900">
+                        {coveragePeriodLabel ?? 'Periodo actual'}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3 rounded border border-white/60 bg-white/80 px-3 py-2 shadow-sm">
+                      <span className="font-medium">Tarifa mensual</span>
+                      <span className="font-semibold text-slate-900">
+                        {selectedServicePrice > 0 ? peso(selectedServicePrice) : 'Sin tarifa'}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3 rounded border border-white/60 bg-white/80 px-3 py-2 shadow-sm">
+                      <span className="font-medium">Saldo previo</span>
+                      <span className="font-semibold text-slate-900">
+                        {hasPartialCoverage && selectedCoverageContext?.partialAmount > 0
+                          ? `Abono de ${peso(Number(selectedCoverageContext.partialAmount))}`
+                          : outstandingAmount > 0
+                            ? `${peso(outstandingAmount)} pendiente`
+                            : 'Sin pendiente registrado'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="grid gap-3 md:grid-cols-2">
                 <FormField
