@@ -201,7 +201,6 @@ class PaymentService:
         tags: dict[str, object] = {
             "client_service_id": data.client_service_id,
             "has_period_key": bool(data.period_key),
-            "payment_method": str(data.method.value),
         }
 
         try:
@@ -215,12 +214,15 @@ class PaymentService:
 
             amount = cls._normalize_amount(data.amount)
             months_paid = cls._normalize_months(data.months_paid)
-            if months_paid is None:
-                months_paid = cls._infer_months_from_amount(amount, service.effective_price)
 
             method, breakdown = cls._normalize_method_breakdown(data)
+            tags["payment_method"] = str(method.value)
 
             previous_snapshot = cls._balance_snapshot(service, client)
+
+            coverage_start_key, coverage_end_key = cls._apply_amount_coverage(
+                service, amount, reference_date=date.today()
+            )
 
             payment = models.ServicePayment(
                 client_service_id=service.id,
@@ -235,15 +237,11 @@ class PaymentService:
                 recorded_by=data.recorded_by,
             )
 
-            cls._apply_client_balances(service, client, months_paid or Decimal("0"))
-            cls._apply_service_debt(service, amount, months_paid)
-            cls._update_next_billing(service, payment.paid_on, months_paid, amount)
-
-            coverage = cls._coverage_range(service, payment.paid_on, months_paid)
-
             resulting_snapshot = cls._balance_snapshot(service, client)
             summary = cls._build_capture_summary(
-                previous=previous_snapshot, resulting=resulting_snapshot, coverage=coverage
+                previous=previous_snapshot,
+                resulting=resulting_snapshot,
+                coverage=cls._coverage_dates(service, coverage_start_key, coverage_end_key),
             )
 
             if period_key:
@@ -270,6 +268,9 @@ class PaymentService:
                     else None,
                     "coverage_end": str(summary.coverage_end) if summary.coverage_end else None,
                     "period_key": period_key,
+                    "vigente_hasta_periodo": service.vigente_hasta_periodo,
+                    "abono_periodo": service.abono_periodo,
+                    "abono_monto": str(service.abono_monto or 0),
                     "client_id": str(client.id),
                     "client_name": client.full_name,
                     "service_id": str(service.id),
@@ -424,6 +425,50 @@ class PaymentService:
         last_day = monthrange(year, normalized_month)[1]
         return date(year, normalized_month, min(start.day, last_day))
 
+    @staticmethod
+    def _period_key_to_tuple(period_key: str) -> tuple[int, int]:
+        year_str, month_str = period_key.split("-")
+        return int(year_str), int(month_str)
+
+    @classmethod
+    def _next_period_key(cls, period_key: str) -> str:
+        year, month = cls._period_key_to_tuple(period_key)
+        month += 1
+        if month > 12:
+            year += 1
+            month = 1
+        return f"{year:04d}-{month:02d}"
+
+    @classmethod
+    def _compare_period_keys(cls, first: str, second: str) -> int:
+        first_tuple = cls._period_key_to_tuple(first)
+        second_tuple = cls._period_key_to_tuple(second)
+        return (first_tuple > second_tuple) - (first_tuple < second_tuple)
+
+    @classmethod
+    def _period_range_from_key(
+        cls, service: models.ClientService, period_key: str
+    ) -> tuple[date, date]:
+        year, month = cls._period_key_to_tuple(period_key)
+        billing_day = service.billing_day or 1
+        start = date(year, month, min(billing_day, monthrange(year, month)[1]))
+        next_cycle = cls._add_months(start, 1)
+        return start, next_cycle - timedelta(days=1)
+
+    @classmethod
+    def _coverage_dates(
+        cls,
+        service: models.ClientService,
+        coverage_start_key: str | None,
+        coverage_end_key: str | None,
+    ) -> tuple[Optional[date], Optional[date]]:
+        if not coverage_start_key or not coverage_end_key:
+            return None, None
+
+        start_date, _ = cls._period_range_from_key(service, coverage_start_key)
+        _, end_date = cls._period_range_from_key(service, coverage_end_key)
+        return start_date, end_date
+
     @classmethod
     def _billing_window(
         cls, service: models.ClientService, reference_date: Optional[date] = None
@@ -445,6 +490,67 @@ class PaymentService:
         end = next_cycle - timedelta(days=1)
         period_key = f"{start.year:04d}-{start.month:02d}"
         return start, end, period_key
+
+    @classmethod
+    def _apply_amount_coverage(
+        cls, service: models.ClientService, amount: Decimal, *, reference_date: date
+    ) -> tuple[Optional[str], Optional[str]]:
+        monthly_fee = service.effective_price
+        if monthly_fee is None or Decimal(monthly_fee) <= 0:
+            raise ValueError("El servicio no tiene una tarifa configurada.")
+
+        current_period = cls._billing_window(service, reference_date)[2]
+        last_covered = service.vigente_hasta_periodo
+        partial_period = service.abono_periodo
+        partial_amount = Decimal(service.abono_monto or 0).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+
+        if partial_period:
+            target_period = partial_period
+        elif last_covered and cls._compare_period_keys(last_covered, current_period) >= 0:
+            target_period = cls._next_period_key(last_covered)
+        else:
+            target_period = current_period
+
+        monthly_fee_decimal = Decimal(monthly_fee).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+
+        amount_remaining = cls._normalize_amount(amount)
+        if partial_period and partial_period == target_period:
+            amount_remaining += partial_amount
+
+        coverage_start_key: Optional[str] = None
+        coverage_end_key: Optional[str] = None
+
+        while amount_remaining >= monthly_fee_decimal:
+            amount_remaining -= monthly_fee_decimal
+            coverage_start_key = coverage_start_key or target_period
+            coverage_end_key = target_period
+            service.vigente_hasta_periodo = target_period
+            target_period = cls._next_period_key(target_period)
+
+        if amount_remaining > 0:
+            service.abono_periodo = target_period
+            service.abono_monto = amount_remaining.quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+        else:
+            service.abono_periodo = None
+            service.abono_monto = Decimal("0")
+
+        next_billing_period = (
+            cls._next_period_key(service.vigente_hasta_periodo)
+            if service.vigente_hasta_periodo
+            else current_period
+        )
+        next_start, _, _ = cls._billing_window(service, reference_date)
+        if next_billing_period != current_period:
+            next_start, _ = cls._period_range_from_key(service, next_billing_period)
+        service.next_billing_date = next_start
+
+        return coverage_start_key, coverage_end_key
 
     @classmethod
     def _coverage_range(
@@ -471,6 +577,23 @@ class PaymentService:
             coverage_start=coverage_start,
             coverage_end=coverage_end,
         )
+
+    @classmethod
+    def _service_status_for_period(
+        cls, service: models.ClientService, period_key: str
+    ) -> schemas.PeriodPaymentStatus:
+        last_covered = service.vigente_hasta_periodo
+        partial_period = service.abono_periodo
+        partial_amount = Decimal(service.abono_monto or 0)
+
+        if last_covered and cls._compare_period_keys(last_covered, period_key) > 0:
+            return schemas.PeriodPaymentStatus.ADELANTADO
+        if last_covered == period_key:
+            return schemas.PeriodPaymentStatus.AL_DIA
+        if partial_period == period_key and partial_amount > 0:
+            return schemas.PeriodPaymentStatus.ABONO_PARCIAL
+
+        return schemas.PeriodPaymentStatus.PENDIENTE
 
     @staticmethod
     def _encode_balance_snapshot(snapshot: schemas.PaymentBalanceSnapshot) -> dict:
@@ -535,21 +658,7 @@ class PaymentService:
             period_start, period_end, period_key = cls._billing_window(
                 service, reference_date
             )
-            payment_exists = (
-                db.query(models.ServicePayment)
-                .filter(
-                    models.ServicePayment.client_service_id == service.id,
-                    models.ServicePayment.period_key == period_key,
-                )
-                .first()
-                is not None
-            )
-            if payment_exists:
-                status = schemas.PeriodPaymentStatus.PAID
-            elif (reference_date or date.today()) > period_end:
-                status = schemas.PeriodPaymentStatus.OVERDUE
-            else:
-                status = schemas.PeriodPaymentStatus.PENDING
+            status = cls._service_status_for_period(service, period_key)
 
             statuses.append(
                 schemas.ServicePeriodStatus(
@@ -781,6 +890,12 @@ class PaymentService:
         coverage_start = snapshot.get("coverage_start")
         coverage_end = snapshot.get("coverage_end")
         period_key = snapshot.get("period_key") or payment.period_key
+        vigente_hasta = snapshot.get("vigente_hasta_periodo") or getattr(
+            getattr(payment, "service", None), "vigente_hasta_periodo", None
+        )
+        abono_vigente = snapshot.get("abono_monto") or getattr(
+            getattr(payment, "service", None), "abono_monto", None
+        )
 
         resulting_balance = snapshot.get("resulting_balance") or {}
         pending_amount = Decimal(resulting_balance.get("debt_amount") or 0)
@@ -795,6 +910,8 @@ class PaymentService:
         coverage_label = "Cobertura no especificada"
         if coverage_start and coverage_end:
             coverage_label = f"{coverage_start} a {coverage_end}"
+        elif vigente_hasta:
+            coverage_label = f"Hasta {vigente_hasta}"
 
         receipt_title = "Recibo de pago"
 
@@ -836,7 +953,8 @@ class PaymentService:
     <div class=\"section\">
       <div class=\"row\"><span class=\"label\">Monto</span><span class=\"value highlight\">{_currency(payment.amount)}</span></div>
       <div class=\"row\"><span class=\"label\">Método</span><span class=\"value\">{_esc(snapshot.get('method', payment.method))}</span></div>
-      <div class=\"row\"><span class=\"label\">Meses cubiertos</span><span class=\"value\">{_esc(payment.months_paid or snapshot.get('months_paid') or 'N/D')}</span></div>
+      <div class=\"row\"><span class=\"label\">Vigente hasta</span><span class=\"value\">{_esc(vigente_hasta or '—')}</span></div>
+      <div class=\"row\"><span class=\"label\">Abono actual</span><span class=\"value\">{_esc(_currency(abono_vigente) if abono_vigente else '—')}</span></div>
       <div class=\"row\"><span class=\"label\">Cobertura</span><span class=\"value\">{_esc(coverage_label)}</span></div>
       {f"<div class=\\\"row\\\"><span class=\\\"label\\\">Tarifa mensual</span><span class=\\\"value\\\">{_currency(monthly_fee)}</span></div>" if monthly_fee is not None else ''}
     </div>
