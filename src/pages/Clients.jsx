@@ -120,7 +120,8 @@ export default function ClientsPage() {
     if (nextString !== searchParams.toString()) {
       setSearchParams(nextParams, { replace: true })
     }
-  }, [activeMainTab, activeClientTab, selectedClientId, searchParams, setSearchParams])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeMainTab, activeClientTab, selectedClientId, setSearchParams])
 
   const selectedClient = useMemo(
     () => clients.find((client) => normalizeId(client.id) === normalizeId(selectedClientId)) ?? null,
