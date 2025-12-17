@@ -1256,6 +1256,9 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
                         <SortIndicator field="status" />
                       </button>
                     </th>
+                    <th scope="col" className="px-3 py-2 font-medium">
+                      Saldo / Adeudo
+                    </th>
                     <th scope="col" className="px-3 py-2 font-medium text-right">
                       Acciones
                     </th>
@@ -1264,7 +1267,7 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
                 <tbody className="divide-y divide-slate-100">
                 {hasDataError && !isDataLoading && (
                   <tr>
-                    <td colSpan={5} className="px-3 py-6 text-sm text-red-700">
+                    <td colSpan={6} className="px-3 py-6 text-sm text-red-700">
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div className="space-y-1">
                           <p className="font-semibold">No pudimos mostrar los clientes.</p>
@@ -1285,7 +1288,7 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
                 )}
                 {!hasDataError && !isDataLoading && sortedClients.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="px-3 py-6 text-center text-sm text-slate-500">
+                    <td colSpan={6} className="px-3 py-6 text-center text-sm text-slate-500">
                       <div className="space-y-2">
                         <p className="font-semibold text-slate-700">No hay clientes para mostrar.</p>
                         <p>
@@ -1315,6 +1318,7 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
                   const isPrimaryActive = primaryService?.status === 'active'
                   const displayMonthlyFee = getClientMonthlyFee(client, CLIENT_PRICE)
                   const debtSummary = getClientDebtSummary(client, displayMonthlyFee)
+                  const paidMonthsAhead = Number(client.paidMonthsAhead ?? 0)
                   const isExpanded = expandedClientId === client.id
                   return (
                     <React.Fragment key={client.id}>
@@ -1347,31 +1351,62 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
                           {(() => {
                             const { debtMonths, totalDue } = debtSummary
                             const hasDebt = debtMonths > 0.0001
+                            const hasCredit = !hasDebt && paidMonthsAhead > 0.0001
 
                             return (
                               <div className="flex flex-col gap-1">
                                 <span
                                   className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${
-                                    hasDebt ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'
+                                    hasDebt
+                                      ? 'bg-red-50 text-red-700'
+                                      : 'bg-emerald-50 text-emerald-700'
                                   }`}
                                 >
                                   {hasDebt ? '⚠️' : '✅'}
-                                  {hasDebt
-                                    ? `Debe ${formatPeriods(debtMonths)} ${
-                                        isApproximatelyOne(debtMonths) ? 'periodo' : 'periodos'
-                                      }`
-                                    : 'Al día'}
+                                  {hasDebt ? 'Pendiente de pago' : 'Al día'}
                                 </span>
-                                {hasDebt && (
-                                  <span className="inline-flex items-center gap-1 text-xs font-semibold text-red-600">
-                                    <span aria-hidden="true">🛑</span>
-                                    <span>
-                                      Total adeudado: <span className="font-bold">{peso(totalDue)}</span>
-                                    </span>
+                                {hasCredit && (
+                                  <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700">
+                                    <span aria-hidden="true">💰</span>
+                                    <span>Saldo a favor</span>
                                   </span>
                                 )}
                               </div>
                             )
+                          })()}
+                        </td>
+                        <td className="px-3 py-2">
+                          {(() => {
+                            const { debtMonths, totalDue } = debtSummary
+                            const hasDebt = debtMonths > 0.0001
+                            const hasCredit = !hasDebt && paidMonthsAhead > 0.0001
+                            const creditAmount = hasCredit ? paidMonthsAhead * displayMonthlyFee : 0
+
+                            if (hasDebt) {
+                              return (
+                                <div className="flex flex-col gap-0.5 text-sm font-semibold text-red-700">
+                                  <span>{peso(totalDue)}</span>
+                                  <span className="text-xs font-normal text-red-600">
+                                    Adeudo de {formatPeriods(debtMonths)}{' '}
+                                    {isApproximatelyOne(debtMonths) ? 'periodo' : 'periodos'}
+                                  </span>
+                                </div>
+                              )
+                            }
+
+                            if (hasCredit) {
+                              return (
+                                <div className="flex flex-col gap-0.5 text-sm font-semibold text-emerald-700">
+                                  <span>{peso(creditAmount)}</span>
+                                  <span className="text-xs font-normal text-emerald-600">
+                                    Saldo a favor ({formatPeriods(paidMonthsAhead)}{' '}
+                                    {isApproximatelyOne(paidMonthsAhead) ? 'periodo' : 'periodos'})
+                                  </span>
+                                </div>
+                              )
+                            }
+
+                            return <span className="text-xs text-slate-500">Sin adeudo</span>
                           })()}
                         </td>
                         <td className="px-3 py-2 text-right">
@@ -1393,7 +1428,7 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
                       </tr>
                       {isExpanded && (
                         <tr id={`client-details-${client.id}`}>
-                          <td colSpan={5} className="bg-slate-50 px-3 py-3">
+                          <td colSpan={6} className="bg-slate-50 px-3 py-3">
                             {(() => {
                               const { debtMonths, totalDue, fractionalDebt } = debtSummary
                               const outstandingPeriodKeys = getOutstandingPeriodKeys(
