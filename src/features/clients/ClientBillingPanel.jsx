@@ -53,8 +53,6 @@ const createEmptyPaymentForm = () => ({
   open: false,
   clientId: '',
   serviceId: '',
-  mode: 'months',
-  months: '1',
   amount: '',
   method: 'Efectivo',
   note: '',
@@ -73,7 +71,6 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
   const [sortConfig, setSortConfig] = useState({ field: 'name', direction: 'asc' })
   const [pendingPartialPayment, setPendingPartialPayment] = useState(null)
   const paymentFormRef = useRef(null)
-  const paymentMonthsInputRef = useRef(null)
   const paymentAmountInputRef = useRef(null)
   const lastMetricsFiltersRef = useRef({ statusFilter: 'pending', searchTerm: '' })
 
@@ -236,10 +233,7 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
     }
 
     const focusAndScroll = () => {
-      const targetInput =
-        paymentForm.mode === 'amount'
-          ? paymentAmountInputRef.current
-          : paymentMonthsInputRef.current
+      const targetInput = paymentAmountInputRef.current
 
       if (paymentFormRef.current) {
         paymentFormRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' })
@@ -253,7 +247,7 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
     } else {
       focusAndScroll()
     }
-  }, [paymentForm.open, paymentForm.mode])
+  }, [paymentForm.open])
 
   useEffect(() => {
     const previousFilters = lastMetricsFiltersRef.current
@@ -507,14 +501,13 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
     const { debtMonths, monthlyFee } = getClientDebtSummary(client, CLIENT_PRICE)
     const primaryService = getPrimaryService(client)
     const baseMonths = debtMonths > 0 ? debtMonths : 1
+    const suggestedAmount = monthlyFee > 0 ? baseMonths * monthlyFee : 0
 
     setPaymentForm({
       open: true,
       clientId: client.id,
       serviceId: primaryService?.id ?? '',
-      mode: 'months',
-      months: toInputValue(baseMonths, 4) || '1',
-      amount: toInputValue(baseMonths * monthlyFee, 2),
+      amount: toInputValue(suggestedAmount, 2),
       method: 'Efectivo',
       note: '',
     })
@@ -522,16 +515,8 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
   }
 
   const outstandingAmount = activeDebtSummary.totalDue
-  const plannedAmount =
-    paymentForm.mode === 'amount'
-      ? Number(paymentForm.amount) || 0
-      : (Number(paymentForm.months) || 0) * activeMonthlyFee
-  const plannedMonths =
-    paymentForm.mode === 'amount'
-      ? activeMonthlyFee > 0
-        ? (Number(paymentForm.amount) || 0) / activeMonthlyFee
-        : 0
-      : Number(paymentForm.months) || 0
+  const plannedAmount = Number(paymentForm.amount) || 0
+  const plannedMonths = activeMonthlyFee > 0 ? plannedAmount / activeMonthlyFee : 0
   const remainingBalance = Math.max(0, outstandingAmount - plannedAmount)
   const additionalAhead = Math.max(0, plannedMonths - activeDebtSummary.debtMonths)
   const detailAnchorPeriod = selectedPeriod ?? currentPeriod ?? null
@@ -602,21 +587,10 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
     }
 
     const monthlyFee = Number.isFinite(activeMonthlyFee) ? activeMonthlyFee : CLIENT_PRICE
-    const hasPositiveMonthlyFee = monthlyFee > 0
-
-    const monthsValue = Number(paymentForm.months)
     const amountValue = Number(paymentForm.amount)
-    const isAmountMode = paymentForm.mode === 'amount'
 
-    if (isAmountMode) {
-      if (!Number.isFinite(amountValue) || amountValue <= 0) {
-        errors.amount = 'Ingresa un monto mayor a cero.'
-      }
-      if (!hasPositiveMonthlyFee) {
-        errors.mode = 'Registra el pago por periodos porque el cliente no tiene una tarifa mensual.'
-      }
-    } else if (!Number.isFinite(monthsValue) || monthsValue <= 0) {
-      errors.months = 'Ingresa un número de periodos mayor a cero.'
+    if (!Number.isFinite(amountValue) || amountValue <= 0) {
+      errors.amount = 'Ingresa un monto mayor a cero.'
     }
 
     if (Object.keys(errors).length > 0) {
@@ -632,10 +606,8 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
 
     setPaymentErrors({})
 
-    const monthsToRegister = isAmountMode
-      ? amountValue / monthlyFee
-      : monthsValue
-    const amountToRegister = isAmountMode ? amountValue : monthsValue * monthlyFee
+    const monthsToRegister = monthlyFee > 0 ? amountValue / monthlyFee : 0
+    const amountToRegister = amountValue
 
     const isPartialPayment =
       outstandingAmount > 0 && amountToRegister + 0.009 < outstandingAmount
@@ -713,53 +685,8 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
             {formatServiceStatus(activeClientPrimaryService.status)}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-3 text-xs font-medium text-slate-600">
-          <span className="text-slate-500">Registrar por</span>
-          <label className="inline-flex items-center gap-1">
-            <input
-              type="radio"
-              name="payment-mode"
-              value="months"
-              checked={paymentForm.mode === 'months'}
-              onChange={() => handleModeChange('months')}
-              className="h-3.5 w-3.5"
-            />
-            Periodos
-          </label>
-          <label className="inline-flex items-center gap-1">
-            <input
-              type="radio"
-              name="payment-mode"
-              value="amount"
-              checked={paymentForm.mode === 'amount'}
-              onChange={() => handleModeChange('amount')}
-              className="h-3.5 w-3.5"
-              disabled={Number(activeMonthlyFee) <= 0}
-              title={
-                Number(activeMonthlyFee) <= 0
-                  ? 'Configura una tarifa mensual para habilitar el pago por monto.'
-                  : undefined
-              }
-            />
-            Monto
-          </label>
-        </div>
         <div className="grid gap-3 sm:grid-cols-2">
-          <label className="grid gap-1 text-xs font-medium text-slate-600">
-            Periodos pagados
-            <input
-              ref={paymentMonthsInputRef}
-              min={0.01}
-              step="0.01"
-              value={paymentForm.months}
-              onChange={(event) => handleMonthsInputChange(event.target.value)}
-              className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
-              type="number"
-              required
-              disabled={paymentForm.mode === 'amount'}
-            />
-          </label>
-          <label className="grid gap-1 text-xs font-medium text-slate-600">
+          <label className="grid gap-1 text-xs font-medium text-slate-600 sm:col-span-2">
             Monto a pagar
             <input
               ref={paymentAmountInputRef}
@@ -770,7 +697,6 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
               className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
               type="number"
               required
-              disabled={paymentForm.mode === 'months'}
             />
           </label>
         </div>
@@ -818,102 +744,19 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
     )
   }
 
-  const handleMonthsInputChange = (value) => {
-    setPaymentForm((prev) => {
-      if (value === '') {
-        return { ...prev, months: '', amount: '' }
-      }
-
-      const numericValue = Number(value)
-      if (!Number.isFinite(numericValue)) {
-        return { ...prev, months: value }
-      }
-
-      const normalizedMonths = Math.max(0, numericValue)
-      const derivedAmount = normalizedMonths * activeMonthlyFee
-
-      return {
-        ...prev,
-        months: value,
-        amount: toInputValue(derivedAmount, 2),
-      }
-    })
-    setPaymentErrors((prev) => {
-      if (!prev.months && !prev.amount) return prev
-      const next = { ...prev }
-      delete next.months
-      delete next.amount
-      return next
-    })
-  }
-
   const handleAmountInputChange = (value) => {
     setPaymentForm((prev) => {
-      if (value === '') {
-        return { ...prev, amount: '', months: '' }
-      }
-
       const numericValue = Number(value)
-      if (!Number.isFinite(numericValue)) {
-        return { ...prev, amount: value }
+      if (value === '' || !Number.isFinite(numericValue)) {
+        return { ...prev, amount: '' }
       }
 
-      const normalizedAmount = Math.max(0, numericValue)
-      const derivedMonths =
-        activeMonthlyFee > 0 ? normalizedAmount / activeMonthlyFee : 0
-
-      return {
-        ...prev,
-        amount: value,
-        months: toInputValue(derivedMonths, 4),
-      }
+      return { ...prev, amount: value }
     })
     setPaymentErrors((prev) => {
-      if (!prev.amount && !prev.months) return prev
+      if (!prev.amount) return prev
       const next = { ...prev }
       delete next.amount
-      delete next.months
-      return next
-    })
-  }
-
-  const handleModeChange = (mode) => {
-    setPaymentForm((prev) => {
-      if (prev.mode === mode) return prev
-
-      if (mode === 'amount') {
-        const numericMonths = Number(prev.months)
-        if (!Number.isFinite(numericMonths) || numericMonths <= 0) {
-          return { ...prev, mode }
-        }
-        const derivedAmount = Math.max(0, numericMonths) * activeMonthlyFee
-        return {
-          ...prev,
-          mode,
-          amount: toInputValue(derivedAmount, 2),
-        }
-      }
-
-      if (mode === 'months') {
-        const numericAmount = Number(prev.amount)
-        if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
-          return { ...prev, mode }
-        }
-        const derivedMonths =
-          activeMonthlyFee > 0 ? Math.max(0, numericAmount) / activeMonthlyFee : 0
-        return {
-          ...prev,
-          mode,
-          months: toInputValue(derivedMonths, 4),
-        }
-      }
-
-      return { ...prev, mode }
-    })
-    setPaymentErrors((prev) => {
-      if (!prev.mode) return prev
-      const next = { ...prev }
-      delete next.mode
       return next
     })
   }

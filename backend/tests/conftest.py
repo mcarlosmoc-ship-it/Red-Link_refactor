@@ -73,6 +73,12 @@ def db_session() -> Generator[Session, None, None]:
     transaction = connection.begin()
     session = TestingSessionLocal(bind=connection)
     try:
+        from backend.app.services.payments import PaymentService
+
+        PaymentService.last_payment_recorded = False
+    except Exception:
+        pass
+    try:
         yield session
     finally:
         session.close()

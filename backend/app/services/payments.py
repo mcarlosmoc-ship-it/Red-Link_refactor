@@ -46,6 +46,8 @@ class PaymentRecordResult:
 class PaymentService:
     """Operations for reading and recording service payments."""
 
+    last_payment_recorded: bool = False
+
     @staticmethod
     def list_payments(
         db: Session,
@@ -305,6 +307,14 @@ class PaymentService:
 
             db.commit()
             db.refresh(payment)
+
+            try:
+                db.info["has_service_payment"] = True
+                db.info["last_paid_period"] = period_key
+            except Exception:
+                db.info = {"has_service_payment": True, "last_paid_period": period_key}
+
+            PaymentService.last_payment_recorded = True
 
             return PaymentRecordResult(payment=payment, summary=summary)
         except ValueError as exc:

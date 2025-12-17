@@ -275,6 +275,7 @@ def create_payment(
     """Record a new payment and update client balances."""
     try:
         result = PaymentService.create_payment(db, payment_in)
+        PaymentService.last_payment_recorded = True
         LOGGER.info(
             "Payment created",
             extra={

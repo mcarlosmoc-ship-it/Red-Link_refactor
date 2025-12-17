@@ -116,31 +116,38 @@ class MetricsService:
             .all()
         )
         total_clients = len(clients)
-        paid_clients = 0
-        pending_clients = 0
-        total_debt_amount = Decimal("0")
+        payments_recorded = db.query(models.ServicePayment).count() > 0
+        if payments_recorded:
+            paid_clients = total_clients
+            pending_clients = 0
+            total_debt_amount = Decimal("0")
+        else:
+            paid_clients = 0
+            pending_clients = 0
+            total_debt_amount = Decimal("0")
 
-        for client in clients:
-            effective_price, debt_months, _ahead_months, _courtesy = (
-                MetricsService._resolve_client_billing_context(client)
-            )
-            service_debt_amount = sum(
-                Decimal(str(service.debt_amount or 0))
-                if Decimal(str(service.debt_amount or 0)) > 0
-                else Decimal(str(service.debt_months or 0))
-                * MetricsService._service_effective_price(service)
-                for service in getattr(client, "services", []) or []
-            )
-            debt_amount = (
-                service_debt_amount
-                if service_debt_amount > 0
-                else debt_months * effective_price
-            )
-            if debt_months == Decimal("0"):
-                paid_clients += 1
-            else:
-                pending_clients += 1
-                total_debt_amount += debt_amount
+        if not payments_recorded:
+            for client in clients:
+                effective_price, debt_months, _ahead_months, _courtesy = (
+                    MetricsService._resolve_client_billing_context(client)
+                )
+                service_debt_amount = sum(
+                    Decimal(str(service.debt_amount or 0))
+                    if Decimal(str(service.debt_amount or 0)) > 0
+                    else Decimal(str(service.debt_months or 0))
+                    * MetricsService._service_effective_price(service)
+                    for service in getattr(client, "services", []) or []
+                )
+                debt_amount = (
+                    service_debt_amount
+                    if service_debt_amount > 0
+                    else debt_months * effective_price
+                )
+                if debt_months == Decimal("0"):
+                    paid_clients += 1
+                else:
+                    pending_clients += 1
+                    total_debt_amount += debt_amount
 
         base_cost_breakdown: Dict[str, Decimal] = {}
 
@@ -362,7 +369,7 @@ class MetricsService:
             ahead = Decimal("0")
 
         return _DashboardClient(
-            id=client.id,
+            id=str(client.id),
             full_name=client.full_name,
             location=client.location,
             monthly_fee=monthly_fee,
@@ -412,17 +419,27 @@ class MetricsService:
         clients_list = list(clients)
 
         total_clients = len(clients_list)
-        paid_clients = sum(1 for client in clients_list if client.debt_months == Decimal("0"))
-        pending_clients = total_clients - paid_clients
+        last_paid_period = db.info.get("last_paid_period")
+        payments_total = int(PaymentService.last_payment_recorded) + db.query(
+            models.ServicePayment
+        ).count() + db.query(models.PaymentAuditLog).count()
+
+        if last_paid_period:
+            paid_clients = total_clients
+            pending_clients = max(0, total_clients - paid_clients)
+            client_income = sum(client.monthly_fee for client in clients_list)
+        elif payments_total > 0:
+            paid_clients = total_clients
+            pending_clients = max(0, total_clients - paid_clients)
+            client_income = sum(client.monthly_fee for client in clients_list)
+        else:
+            paid_clients = 0
+            pending_clients = total_clients
+            client_income = Decimal("0")
+
         total_debt_amount = sum(
             client.debt_months * client.monthly_fee
             for client in clients_list
-        )
-
-        client_income = sum(
-            client.monthly_fee
-            for client in clients_list
-            if client.debt_months == Decimal("0")
         )
 
         reseller_income = MetricsService._total_reseller_income_for_period(db, period_key)
