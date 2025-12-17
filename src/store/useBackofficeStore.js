@@ -986,7 +986,7 @@ export const useBackofficeStore = create((set, get) => ({
 
     return get().updateClientServiceStatus(clientId, targetService.id, nextStatus)
   },
-  recordPayment: async ({ clientId, serviceId, amount, months, method, note, periodKey, paidOn }) => {
+  recordPayment: async ({ clientId, serviceId, amount, method, note, periodKey, paidOn }) => {
     const state = get()
     const client = state.clients.find((item) => String(item.id) === String(clientId))
     if (!client) {
@@ -1006,18 +1006,14 @@ export const useBackofficeStore = create((set, get) => ({
 
     const monthlyFee = service?.price ?? client?.monthlyFee ?? CLIENT_PRICE
     const normalizedAmount = normalizeDecimal(amount, 0)
-    const normalizedMonths = normalizeDecimal(months, 0)
-
-    const computedAmount = normalizedAmount > 0 ? normalizedAmount : normalizedMonths * monthlyFee
 
     const payload = {
       client_id: client.id,
       period_key: periodKey ?? state.periods?.selected ?? state.periods?.current,
       paid_on: paidOn ?? today(),
-      amount: computedAmount,
+      amount: normalizedAmount,
       method: method ?? 'Efectivo',
       note: note ?? '',
-      months_paid: normalizedMonths, // Ensure months_paid is added to payload
     }
 
     if (service?.id) {

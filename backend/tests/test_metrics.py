@@ -42,7 +42,6 @@ def test_metrics_overview_returns_totals(client, db_session, seed_basic_data, mo
         "period_key": period_key,
         "paid_on": fixed_date.isoformat(),
         "amount": "600.00",
-        "months_paid": "2",
         "method": models.PaymentMethod.TRANSFERENCIA.value,
     }
     response = client.post("/payments/", json=payment_payload)

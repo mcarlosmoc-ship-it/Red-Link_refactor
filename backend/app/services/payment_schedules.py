@@ -65,14 +65,12 @@ class PaymentScheduleService:
             raise ValueError("Service not found for deferred payment")
 
         normalized_amount = PaymentService._normalize_amount(payload.amount)
-        normalized_months = PaymentService._normalize_months(payload.months)
-
         schedule = models.PaymentSchedule(
             client_service_id=service.id,
             client_id=service.client_id,
             execute_on=payload.execute_on,
             amount=normalized_amount,
-            months=normalized_months,
+            months=None,
             method=payload.method,
             note=payload.note,
             recorded_by=payload.recorded_by,
@@ -99,7 +97,6 @@ class PaymentScheduleService:
             client_service_id=str(schedule.client_service_id),
             paid_on=paid_date,
             amount=Decimal(schedule.amount),
-            months_paid=schedule.months,
             method=schedule.method,
             note=schedule.note,
             recorded_by=schedule.recorded_by if hasattr(schedule, "recorded_by") else None,

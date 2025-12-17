@@ -42,7 +42,7 @@ class ServicePaymentBase(BaseModel):
     months_paid: Optional[Decimal] = Field(
         default=None,
         gt=0,
-        description="Number of months covered when applicable",
+        description="[Legacy] Meses cubiertos; solo para compatibilidad",
     )
     note: Optional[str] = Field(default=None, description="Optional note for the payment")
     recorded_by: Optional[str] = Field(
@@ -111,11 +111,12 @@ class ServicePaymentListResponse(PaginatedResponse[ServicePaymentRead]):
 
 
 class PeriodPaymentStatus(str, Enum):
-    """Current payment state for a billing period."""
+    """Current payment state for a billing period using coverage logic."""
 
-    PENDING = "pendiente"
-    PAID = "pagado"
-    OVERDUE = "vencido"
+    ADELANTADO = "adelantado"
+    AL_DIA = "al_dia"
+    ABONO_PARCIAL = "abono_parcial"
+    PENDIENTE = "pendiente"
 
 
 class ServicePeriodStatus(BaseModel):
@@ -178,7 +179,7 @@ class PaymentScheduleBase(BaseModel):
     months: Optional[Decimal] = Field(
         default=None,
         gt=0,
-        description="Meses que cubrirá el pago (se infiere si se omite)",
+        description="[Legacy] Solo para compatibilidad; los cobros se basan en monto",
     )
     method: PaymentMethod = Field(..., description="Método previsto para el cobro")
     note: Optional[str] = Field(default=None, description="Referencia para el cobro diferido")

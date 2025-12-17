@@ -68,6 +68,10 @@ class ClientService(Base):
             "debt_months >= 0",
             name="ck_client_services_debt_months_non_negative",
         ),
+        CheckConstraint(
+            "abono_monto >= 0",
+            name="ck_client_services_abono_monto_non_negative",
+        ),
     )
 
     id = Column("client_service_id", GUID(), primary_key=True, default=uuid.uuid4)
@@ -107,12 +111,20 @@ class ClientService(Base):
     antenna_model = Column(String, nullable=True)
     modem_model = Column(String, nullable=True)
     debt_amount = Column(Numeric(12, 2), nullable=False, default=0)
-    debt_months = Column(Numeric(6, 2), nullable=False, default=0)
+    debt_months = Column(
+        Numeric(6, 2),
+        nullable=False,
+        default=0,
+        comment="LEGACY: adeudo en meses; mantener para historial, no usar en nuevas reglas",
+    )
     debt_notes = Column(Text, nullable=True)
     notes = Column(Text, nullable=True)
     service_metadata = Column(
         "metadata", JSON().with_variant(SQLiteJSON(), "sqlite"), nullable=True
     )
+    vigente_hasta_periodo = Column(Text, nullable=True)
+    abono_periodo = Column(Text, nullable=True)
+    abono_monto = Column(Numeric(12, 2), nullable=False, default=0)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(
         DateTime(timezone=True),
@@ -193,7 +205,11 @@ class ServicePayment(Base):
     )
     paid_on = Column(Date, nullable=False)
     amount = Column(Numeric(12, 2), nullable=False)
-    months_paid = Column(Numeric(6, 2), nullable=True)
+    months_paid = Column(
+        Numeric(6, 2),
+        nullable=True,
+        comment="LEGACY: meses capturados; se conserva solo para compatibilidad",
+    )
     method = Column(PAYMENT_METHOD_ENUM, nullable=False)
     method_breakdown = Column(
         JSON().with_variant(SQLiteJSON(), "sqlite"), nullable=True

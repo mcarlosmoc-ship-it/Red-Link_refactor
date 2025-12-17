@@ -16,7 +16,6 @@ def test_payment_consistency_endpoint_reports_clean_state(
         "period_key": period.period_key,
         "paid_on": period.starts_on.isoformat(),
         "amount": "300.00",
-        "months_paid": "1",
         "method": models.PaymentMethod.EFECTIVO.value,
     }
 
@@ -56,7 +55,6 @@ def test_payment_consistency_endpoint_flags_anomalies(client, db_session, seed_b
         client_id=seed_basic_data["client"].id,
         paid_on=seed_basic_data["period"].starts_on,
         amount=Decimal("100"),
-        months_paid=Decimal("1"),
         method=models.PaymentMethod.EFECTIVO,
     )
 
@@ -66,7 +64,6 @@ def test_payment_consistency_endpoint_flags_anomalies(client, db_session, seed_b
         client_id=str(uuid4()),
         paid_on=seed_basic_data["period"].starts_on,
         amount=Decimal("50"),
-        months_paid=Decimal("1"),
         method=models.PaymentMethod.TRANSFERENCIA,
     )
 
