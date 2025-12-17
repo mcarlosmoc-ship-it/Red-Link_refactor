@@ -17,6 +17,12 @@ const mockImport = vi.fn()
 let lastClientsListHandlers = {}
 let lastImportModalProps = {}
 
+const createMockCsvFile = (content = 'id,name') => ({
+  name: 'clientes.csv',
+  type: 'text/csv',
+  text: async () => content,
+})
+
 vi.mock('../src/store/useBackofficeStore.js', () => ({
   CLIENT_PRICE: 300,
   useBackofficeStore: (selector) => selector({ status: { initialize: { isLoading: false } } }),
@@ -206,7 +212,7 @@ describe('ClientsPage import flow', () => {
   })
 
   it('envía el archivo seleccionado y muestra el resumen de éxito', async () => {
-    const file = new File(['id,name'], 'clientes.csv', { type: 'text/csv' })
+    const file = createMockCsvFile()
     const summary = { total_rows: 2, created_count: 2, failed_count: 0, service_created_count: 2 }
     mockImport.mockResolvedValueOnce(summary)
     renderPage()
@@ -222,7 +228,7 @@ describe('ClientsPage import flow', () => {
   })
 
   it('muestra el toast de error cuando la importación falla', async () => {
-    const file = new File(['id,name'], 'clientes.csv', { type: 'text/csv' })
+    const file = createMockCsvFile()
     mockImport.mockRejectedValueOnce(new Error('falló la importación'))
     renderPage()
 
