@@ -186,3 +186,31 @@ export const getClientDebtSummary = (client, fallbackMonthlyFee = CLIENT_PRICE) 
     totalDue,
   }
 }
+
+export const PAYMENT_STATUS = {
+  PENDING: 'pending',
+  DUE_SOON: 'due_soon',
+  PAID: 'paid',
+}
+
+export const DUE_SOON_THRESHOLD_MONTHS = 1
+
+export const getClientPaymentStatus = (client, fallbackMonthlyFee = CLIENT_PRICE) => {
+  const { debtMonths, totalDue, monthlyFee } = getClientDebtSummary(client, fallbackMonthlyFee)
+  const paidMonthsAhead = Math.max(Number(client?.paidMonthsAhead ?? 0), 0)
+  const effectiveMonthlyFee = monthlyFee > 0 ? monthlyFee : fallbackMonthlyFee
+
+  if (effectiveMonthlyFee <= 0) {
+    return PAYMENT_STATUS.PAID
+  }
+
+  if (totalDue > 0.009 || debtMonths > 0.0001) {
+    return PAYMENT_STATUS.PENDING
+  }
+
+  if (paidMonthsAhead + 0.0001 < DUE_SOON_THRESHOLD_MONTHS) {
+    return PAYMENT_STATUS.DUE_SOON
+  }
+
+  return PAYMENT_STATUS.PAID
+}

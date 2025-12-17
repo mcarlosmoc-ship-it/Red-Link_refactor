@@ -31,6 +31,8 @@ class _DashboardClient:
 class MetricsService:
     """Provides aggregated metrics combining multiple domain entities."""
 
+    DUE_SOON_THRESHOLD = Decimal("1")
+
     @staticmethod
     def _service_effective_price(service: models.ClientService) -> Decimal:
         value = getattr(service, "effective_price", None)
@@ -90,19 +92,61 @@ class MetricsService:
                 effective_price = Decimal("0")
                 courtesy = True
 
-        debt_months = Decimal(str(client.debt_months or 0))
+        debt_months = MetricsService._normalize_months(
+            Decimal(str(client.debt_months or 0))
+        )
         service_debt_months = sum(
             Decimal(str(service.debt_months or 0)) for service in active_services
         )
         if service_debt_months > Decimal("0"):
-            debt_months = service_debt_months
-        ahead_months = Decimal(str(client.paid_months_ahead or 0))
+            debt_months = MetricsService._normalize_months(service_debt_months)
+        ahead_months = MetricsService._normalize_months(
+            Decimal(str(client.paid_months_ahead or 0))
+        )
 
-        if courtesy:
+        if courtesy or effective_price == Decimal("0"):
             debt_months = Decimal("0")
             ahead_months = Decimal("0")
 
         return effective_price, debt_months, ahead_months, courtesy
+
+    @staticmethod
+    def _calculate_client_debt_amount(
+        client: models.Client, debt_months: Decimal, effective_price: Decimal
+    ) -> Decimal:
+        service_debt_amount = sum(
+            Decimal(str(service.debt_amount or 0))
+            if Decimal(str(service.debt_amount or 0)) > 0
+            else Decimal(str(service.debt_months or 0))
+            * MetricsService._service_effective_price(service)
+            for service in getattr(client, "services", []) or []
+        )
+
+        if service_debt_amount > 0:
+            return service_debt_amount
+
+        return debt_months * max(effective_price, Decimal("0"))
+
+    @staticmethod
+    def _is_due_soon(ahead_months: Decimal, monthly_fee: Decimal) -> bool:
+        if monthly_fee <= Decimal("0"):
+            return False
+        return ahead_months < MetricsService.DUE_SOON_THRESHOLD
+
+    @staticmethod
+    def _resolve_payment_state(
+        debt_months: Decimal, ahead_months: Decimal, monthly_fee: Decimal
+    ) -> schemas.StatusFilter:
+        normalized_debt = MetricsService._normalize_months(debt_months)
+        normalized_ahead = MetricsService._normalize_months(ahead_months)
+
+        if monthly_fee <= Decimal("0"):
+            return schemas.StatusFilter.PAID
+        if normalized_debt > Decimal("0"):
+            return schemas.StatusFilter.PENDING
+        if MetricsService._is_due_soon(normalized_ahead, monthly_fee):
+            return schemas.StatusFilter.DUE_SOON
+        return schemas.StatusFilter.PAID
 
     @staticmethod
     def overview(db: Session, *, period_key: str | None = None) -> Dict[str, Decimal]:
@@ -116,38 +160,32 @@ class MetricsService:
             .all()
         )
         total_clients = len(clients)
-        payments_recorded = db.query(models.ServicePayment).count() > 0
-        if payments_recorded:
-            paid_clients = total_clients
-            pending_clients = 0
-            total_debt_amount = Decimal("0")
-        else:
-            paid_clients = 0
-            pending_clients = 0
-            total_debt_amount = Decimal("0")
+        paid_clients = 0
+        pending_clients = 0
+        total_debt_amount = Decimal("0")
 
-        if not payments_recorded:
-            for client in clients:
-                effective_price, debt_months, _ahead_months, _courtesy = (
-                    MetricsService._resolve_client_billing_context(client)
-                )
-                service_debt_amount = sum(
-                    Decimal(str(service.debt_amount or 0))
-                    if Decimal(str(service.debt_amount or 0)) > 0
-                    else Decimal(str(service.debt_months or 0))
-                    * MetricsService._service_effective_price(service)
-                    for service in getattr(client, "services", []) or []
-                )
-                debt_amount = (
-                    service_debt_amount
-                    if service_debt_amount > 0
-                    else debt_months * effective_price
-                )
-                if debt_months == Decimal("0"):
-                    paid_clients += 1
-                else:
-                    pending_clients += 1
-                    total_debt_amount += debt_amount
+        for client in clients:
+            effective_price, debt_months, ahead_months, _courtesy = (
+                MetricsService._resolve_client_billing_context(client)
+            )
+            debt_amount = MetricsService._calculate_client_debt_amount(
+                client, debt_months, effective_price
+            )
+            is_covered = any(
+                MetricsService._is_service_covered_for_period(service, period_key)
+                for service in getattr(client, "services", []) or []
+            )
+            effective_debt_amount = Decimal("0") if is_covered else debt_amount
+            effective_debt_months = Decimal("0") if is_covered else debt_months
+            payment_state = MetricsService._resolve_payment_state(
+                effective_debt_months, ahead_months, effective_price
+            )
+
+            if payment_state == schemas.StatusFilter.PENDING:
+                pending_clients += 1
+                total_debt_amount += effective_debt_amount
+            else:
+                paid_clients += 1
 
         base_cost_breakdown: Dict[str, Decimal] = {}
 
@@ -207,22 +245,18 @@ class MetricsService:
             location = client.location or "Desconocido"
             location_metrics = breakdown[location]
             location_metrics["total_clients"] += 1
-            effective_price, debt_months, _ahead_months, _courtesy = (
+            effective_price, debt_months, ahead_months, _courtesy = (
                 MetricsService._resolve_client_billing_context(client)
             )
-            service_debt_amount = sum(
-                Decimal(str(service.debt_amount or 0))
-                if Decimal(str(service.debt_amount or 0)) > 0
-                else Decimal(str(service.debt_months or 0))
-                * MetricsService._service_effective_price(service)
-                for service in getattr(client, "services", []) or []
+            debt_amount = MetricsService._calculate_client_debt_amount(
+                client, debt_months, effective_price
             )
-            debt_amount = (
-                service_debt_amount
-                if service_debt_amount > 0
-                else debt_months * effective_price
-            )
-            if debt_months > Decimal("0"):
+            if (
+                MetricsService._resolve_payment_state(
+                    debt_months, ahead_months, effective_price
+                )
+                == schemas.StatusFilter.PENDING
+            ):
                 location_metrics["pending_clients"] += 1
             location_metrics["debt_amount"] += debt_amount
 
@@ -291,7 +325,10 @@ class MetricsService:
 
         clients, _total = ClientService.list_clients(db, limit=10_000)
         projected_clients = [
-            MetricsService._project_client_for_offset(client, offset) for client in clients
+            MetricsService._project_client_for_offset(
+                client, offset, target_period
+            )
+            for client in clients
         ]
 
         filtered_clients = MetricsService._filter_clients(projected_clients, status_filter, search)
@@ -321,6 +358,24 @@ class MetricsService:
         return (target_year - current_year) * 12 + (target_month - current_month)
 
     @staticmethod
+    def _is_service_covered_for_period(
+        service: models.ClientService, period_key: str | None
+    ) -> bool:
+        if not period_key:
+            return False
+
+        coverage_end = getattr(service, "vigente_hasta_periodo", None)
+        partial_period = getattr(service, "abono_periodo", None)
+
+        if coverage_end and MetricsService._diff_periods(period_key, coverage_end) <= 0:
+            return True
+
+        if partial_period and MetricsService._diff_periods(period_key, partial_period) <= 0:
+            return True
+
+        return False
+
+    @staticmethod
     def _split_period(period: str) -> Tuple[int, int]:
         try:
             year_str, month_str = period.split("-", maxsplit=1)
@@ -330,10 +385,18 @@ class MetricsService:
             return today.year, today.month
 
     @staticmethod
-    def _project_client_for_offset(client: models.Client, offset: int) -> _DashboardClient:
+    def _project_client_for_offset(
+        client: models.Client, offset: int, target_period: str | None
+    ) -> _DashboardClient:
         effective_price, debt, ahead, courtesy = MetricsService._resolve_client_billing_context(
             client
         )
+
+        if target_period and any(
+            MetricsService._is_service_covered_for_period(service, target_period)
+            for service in getattr(client, "services", []) or []
+        ):
+            debt = Decimal("0")
 
         if offset > 0:
             consumed_ahead = min(ahead, Decimal(offset))
@@ -393,10 +456,15 @@ class MetricsService:
         normalized_search = search.lower().strip() if search else ""
 
         def matches_status(client: _DashboardClient) -> bool:
+            state = MetricsService._resolve_payment_state(
+                client.debt_months, client.paid_months_ahead, client.monthly_fee
+            )
             if status_filter == schemas.StatusFilter.PAID:
-                return client.debt_months == Decimal("0")
+                return state == schemas.StatusFilter.PAID
             if status_filter == schemas.StatusFilter.PENDING:
-                return client.debt_months > Decimal("0")
+                return state == schemas.StatusFilter.PENDING
+            if status_filter == schemas.StatusFilter.DUE_SOON:
+                return state == schemas.StatusFilter.DUE_SOON
             return True
 
         def matches_search(client: _DashboardClient) -> bool:
@@ -419,27 +487,21 @@ class MetricsService:
         clients_list = list(clients)
 
         total_clients = len(clients_list)
-        last_paid_period = db.info.get("last_paid_period")
-        payments_total = int(PaymentService.last_payment_recorded) + db.query(
-            models.ServicePayment
-        ).count() + db.query(models.PaymentAuditLog).count()
-
-        if last_paid_period:
-            paid_clients = total_clients
-            pending_clients = max(0, total_clients - paid_clients)
-            client_income = sum(client.monthly_fee for client in clients_list)
-        elif payments_total > 0:
-            paid_clients = total_clients
-            pending_clients = max(0, total_clients - paid_clients)
-            client_income = sum(client.monthly_fee for client in clients_list)
-        else:
-            paid_clients = 0
-            pending_clients = total_clients
-            client_income = Decimal("0")
+        pending_clients = sum(
+            1
+            for client in clients_list
+            if MetricsService._resolve_payment_state(
+                client.debt_months, client.paid_months_ahead, client.monthly_fee
+            )
+            == schemas.StatusFilter.PENDING
+        )
+        paid_clients = max(0, total_clients - pending_clients)
+        client_income = sum(client.monthly_fee for client in clients_list)
 
         total_debt_amount = sum(
             client.debt_months * client.monthly_fee
             for client in clients_list
+            if client.debt_months > Decimal("0")
         )
 
         reseller_income = MetricsService._total_reseller_income_for_period(db, period_key)

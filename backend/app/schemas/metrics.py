@@ -6,6 +6,7 @@ from typing import Dict, List, Mapping
 
 from enum import Enum
 
+from decimal import Decimal
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -43,6 +44,7 @@ class StatusFilter(str, Enum):
     ALL = "all"
     PAID = "paid"
     PENDING = "pending"
+    DUE_SOON = "due_soon"
 
 
 class DashboardClient(BaseModel):
