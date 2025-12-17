@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { CLIENT_PRICE, useBackofficeStore } from '../store/useBackofficeStore.js'
+import { PAYMENT_STATUS, getClientPaymentStatus } from '../features/clients/utils.js'
 
 const normalizeMetricValue = (value, fallback = 0) => {
   if (typeof value === 'number') {
@@ -74,15 +75,19 @@ export const useDashboardMetrics = ({ statusFilter: overrideStatusFilter } = {})
   const activeStatusFilter = overrideStatusFilter ?? metricsFilters?.statusFilter ?? 'all'
 
   const filteredClients = useMemo(() => {
-    if (activeStatusFilter === 'pending') {
-      return normalizedClients.filter((client) => Number(client.debtMonths ?? 0) > 0.0001)
-    }
-
-    if (activeStatusFilter === 'paid') {
-      return normalizedClients.filter((client) => Number(client.debtMonths ?? 0) <= 0.0001)
-    }
-
-    return normalizedClients
+    return normalizedClients.filter((client) => {
+      const status = getClientPaymentStatus(client, client.monthlyFee ?? CLIENT_PRICE)
+      if (activeStatusFilter === PAYMENT_STATUS.PENDING) {
+        return status === PAYMENT_STATUS.PENDING
+      }
+      if (activeStatusFilter === PAYMENT_STATUS.PAID) {
+        return status === PAYMENT_STATUS.PAID
+      }
+      if (activeStatusFilter === PAYMENT_STATUS.DUE_SOON) {
+        return status === PAYMENT_STATUS.DUE_SOON
+      }
+      return true
+    })
   }, [normalizedClients, activeStatusFilter])
 
   return { metrics, filteredClients, projectedClients: normalizedClients, baseCosts }

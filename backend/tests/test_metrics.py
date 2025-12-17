@@ -115,6 +115,17 @@ def test_dashboard_metrics_endpoint_returns_filtered_clients(client, seed_basic_
     assert search_response.status_code == 200
     assert search_response.json()["clients"] == []
 
+    due_soon_response = client.get(
+        "/metrics/dashboard",
+        params={
+            "period_key": period,
+            "current_period": period,
+            "status_filter": "due_soon",
+        },
+    )
+    assert due_soon_response.status_code == 200
+    assert "clients" in due_soon_response.json()
+
 
 def test_update_base_costs_endpoint_persists_values(client, db_session, seed_basic_data):
     period_key = seed_basic_data["period"].period_key
