@@ -23,10 +23,6 @@ El panel de administración está protegido mediante autenticación tipo OAuth2
 password. Para que el backend arranque correctamente debes definir las
 siguientes variables de entorno antes de lanzar Uvicorn (o ejecutar pruebas):
 
-> Consejo: copia `backend/.env.example` a `backend/.env` y reemplaza los valores
-> con tus credenciales. El script `start_backend.bat` carga automáticamente ese
-> archivo para evitar credenciales incrustadas en el bat.
-
 | Variable | Descripción |
 |----------|-------------|
 | `CLIENT_PASSWORD_KEY` | Clave base64 de al menos 32 bytes que se usa para cifrar/descifrar contraseñas de clientes. |
