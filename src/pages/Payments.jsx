@@ -19,6 +19,11 @@ import { useBackofficeRefresh } from '../contexts/BackofficeRefreshContext.jsx'
 import { apiClient, buildApiUrl } from '../services/apiClient.js'
 import PaymentsSkeleton from './PaymentsSkeleton.jsx'
 import FormField from '../components/ui/FormField.jsx'
+import {
+  getClientCoverageContext,
+  getClientMonthlyFee,
+  getPrimaryService,
+} from '../features/clients/utils.js'
 
 const METHODS = ['Todos', 'Efectivo', 'Transferencia', 'Tarjeta', 'Revendedor']
 const METHOD_OPTIONS = METHODS.filter((method) => method !== 'Todos')
@@ -90,20 +95,26 @@ export default function PaymentsPage() {
   const isLoadingClients = Boolean(clientsStatus?.isLoading && clients.length === 0)
   const shouldShowSkeleton = Boolean(initializeStatus?.isLoading) || isRefreshing
 
+  const billableClients = useMemo(
+    () => clients.filter((client) => (client.services ?? []).some((service) => service.status !== 'cancelled')),
+    [clients],
+  )
+
   const clientOptions = useMemo(
     () =>
-      [...clients]
+      [...billableClients]
         .sort((a, b) => a.name.localeCompare(b.name))
         .map((client) => ({
           value: client.id,
           label: `${client.name} · Base ${client.base} · ${client.location}`,
         })),
-    [clients],
+    [billableClients],
   )
 
   const selectedClient = useMemo(
-    () => clients.find((client) => String(client.id) === String(paymentForm.clientId)) ?? null,
-    [clients, paymentForm.clientId],
+    () =>
+      billableClients.find((client) => String(client.id) === String(paymentForm.clientId)) ?? null,
+    [billableClients, paymentForm.clientId],
   )
 
   const serviceOptions = useMemo(() => {
@@ -120,14 +131,14 @@ export default function PaymentsPage() {
     const clientIdFromParams = searchParams.get('clientId')
     if (!clientIdFromParams || paymentForm.clientId) return
 
-    const matchingClient = clients.find(
+    const matchingClient = billableClients.find(
       (client) => String(client.id) === String(clientIdFromParams),
     )
 
     if (matchingClient) {
       setPaymentForm((prev) => ({ ...prev, clientId: String(matchingClient.id) }))
     }
-  }, [clients, paymentForm.clientId, searchParams])
+  }, [billableClients, paymentForm.clientId, searchParams])
 
   useEffect(() => {
     if (!selectedClient?.services?.length) {
@@ -198,7 +209,7 @@ export default function PaymentsPage() {
   }, [selectedService])
 
   const resolveSelectedClientFromForm = (formData) =>
-    clients.find((client) => String(client.id) === String(formData.clientId)) ?? null
+    billableClients.find((client) => String(client.id) === String(formData.clientId)) ?? null
 
   const resolveSelectedServiceFromForm = (formData) => {
     const client = resolveSelectedClientFromForm(formData)
@@ -210,58 +221,40 @@ export default function PaymentsPage() {
     )
   }
 
-  const resolveOutstandingAmount = useMemo(
+  const resolveCoverageAmounts = useMemo(
     () =>
       (client, service) => {
         if (!client) {
-          return null
+          return { outstanding: 0, ahead: 0, monthlyFee: 0 }
         }
 
-        const normalizedClientDebt = Number(client.debtAmount)
-        if (Number.isFinite(normalizedClientDebt) && normalizedClientDebt > 0) {
-          return normalizedClientDebt
+        const effectiveService =
+          service ??
+          getPrimaryService(client) ??
+          (client.services && client.services.length > 0 ? client.services[0] : null)
+
+        const clientShape = effectiveService
+          ? { ...client, services: [effectiveService] }
+          : client
+
+        const monthlyFee = getClientMonthlyFee(clientShape, 0)
+        const coverage = getClientCoverageContext(clientShape)
+        const debtFromMonths = coverage.debtMonths > 0 && monthlyFee > 0
+          ? coverage.debtMonths * monthlyFee
+          : 0
+        const partialOutstanding = coverage.hasPartial
+          ? Math.max(monthlyFee - Number(coverage.partialAmount ?? 0), 0)
+          : 0
+
+        const ahead = coverage.aheadMonths > 0 && monthlyFee > 0
+          ? coverage.aheadMonths * monthlyFee
+          : 0
+
+        return {
+          outstanding: Number((debtFromMonths + partialOutstanding).toFixed(2)),
+          ahead: Number(ahead.toFixed(2)),
+          monthlyFee,
         }
-
-        const normalizedServiceDebt = Number(service?.debtAmount)
-        if (Number.isFinite(normalizedServiceDebt) && normalizedServiceDebt > 0) {
-          return normalizedServiceDebt
-        }
-
-        const debtMonths = Number(service?.debtMonths ?? client.debtMonths)
-        const referencePrice = Number(service?.price ?? client.monthlyFee)
-        if (
-          Number.isFinite(debtMonths) &&
-          debtMonths > 0 &&
-          Number.isFinite(referencePrice) &&
-          referencePrice > 0
-        ) {
-          return Number((debtMonths * referencePrice).toFixed(2))
-        }
-
-        return null
-      },
-    [],
-  )
-
-  const resolveAheadAmount = useMemo(
-    () =>
-      (client, service) => {
-        if (!client && !service) {
-          return 0
-        }
-
-        const aheadMonths = Number(service?.paidMonthsAhead ?? client?.paidMonthsAhead)
-        const referencePrice = Number(service?.price ?? client?.monthlyFee)
-
-        if (!Number.isFinite(aheadMonths) || aheadMonths <= 0) {
-          return 0
-        }
-
-        if (!Number.isFinite(referencePrice) || referencePrice <= 0) {
-          return 0
-        }
-
-        return Number((aheadMonths * referencePrice).toFixed(2))
       },
     [],
   )
@@ -275,23 +268,16 @@ export default function PaymentsPage() {
         return null
       }
 
-      const referencePrice = Number(service?.price ?? client?.monthlyFee)
-      const outstandingAmount = Number(resolveOutstandingAmount(client, service) ?? 0)
-      const aheadAmount = Number(resolveAheadAmount(client, service) ?? 0)
+      const { outstanding, ahead, monthlyFee } = resolveCoverageAmounts(client, service)
 
-      if (!Number.isFinite(referencePrice) || referencePrice <= 0) {
-        return outstandingAmount > 0 ? outstandingAmount - aheadAmount : null
+      if (!Number.isFinite(monthlyFee) || monthlyFee <= 0) {
+        return outstanding > 0 ? outstanding - ahead : null
       }
 
-      const suggested = referencePrice + outstandingAmount - aheadAmount
+      const suggested = monthlyFee + outstanding - ahead
       return suggested > 0 ? Number(suggested.toFixed(2)) : 0
     },
-    [
-      resolveSelectedClientFromForm,
-      resolveSelectedServiceFromForm,
-      resolveOutstandingAmount,
-      resolveAheadAmount,
-    ],
+    [resolveSelectedClientFromForm, resolveSelectedServiceFromForm, resolveCoverageAmounts],
   )
 
   const amountValue = Number(paymentForm.amount)
@@ -302,16 +288,16 @@ export default function PaymentsPage() {
       return 0
     }
 
-    return Number(resolveOutstandingAmount(selectedClient, selectedService) ?? 0)
-  }, [resolveOutstandingAmount, selectedClient, selectedService])
+    return Number(resolveCoverageAmounts(selectedClient, selectedService).outstanding ?? 0)
+  }, [resolveCoverageAmounts, selectedClient, selectedService])
 
   const aheadAmount = useMemo(() => {
     if (!selectedClient || !selectedService) {
       return 0
     }
 
-    return Number(resolveAheadAmount(selectedClient, selectedService) ?? 0)
-  }, [resolveAheadAmount, selectedClient, selectedService])
+    return Number(resolveCoverageAmounts(selectedClient, selectedService).ahead ?? 0)
+  }, [resolveCoverageAmounts, selectedClient, selectedService])
 
   const suggestedCharge = useMemo(
     () => resolveSuggestedAmount(paymentForm),

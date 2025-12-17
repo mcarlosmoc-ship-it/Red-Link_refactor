@@ -4,6 +4,12 @@ import { renderToStaticMarkup } from 'react-dom/server'
 
 let mockState
 let useDashboardMetrics
+const periodFromOffset = (offset) => {
+  const base = new Date()
+  const adjusted = new Date(base.getFullYear(), base.getMonth() + offset, 1)
+  const month = String(adjusted.getMonth() + 1).padStart(2, '0')
+  return `${adjusted.getFullYear()}-${month}`
+}
 
 vi.mock('../src/store/useBackofficeStore.js', () => ({
   CLIENT_PRICE: 300,
@@ -63,6 +69,36 @@ beforeEach(() => {
         client_type: 'token',
       },
     ],
+    clients: [
+      {
+        id: 'c-1',
+        name: 'Alice',
+        location: 'Centro',
+        monthlyFee: 150,
+        services: [
+          {
+            id: 's-1',
+            status: 'active',
+            price: 150,
+            coverageEndPeriod: periodFromOffset(-2),
+          },
+        ],
+      },
+      {
+        id: 'c-2',
+        name: 'Bob',
+        location: 'Norte',
+        monthlyFee: 200,
+        services: [
+          {
+            id: 's-2',
+            status: 'active',
+            price: 200,
+            coverageEndPeriod: periodFromOffset(12),
+          },
+        ],
+      },
+    ],
     baseCosts: { base1: 100, base2: 50 },
     metricsFilters: { statusFilter: 'all', searchTerm: '' },
   }
@@ -73,7 +109,7 @@ it('returns backend-provided metrics and normalized clients', () => {
 
   expect(result.metrics).toMatchObject({
     totalClients: 3,
-    pendingClients: 2,
+    pendingClients: 1,
     paidClients: 1,
     netEarnings: 330.5,
   })

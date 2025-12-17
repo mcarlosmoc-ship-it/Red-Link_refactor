@@ -1,4 +1,9 @@
-import { addMonthsToPeriod, parsePeriodKey } from '../../utils/formatters.js'
+import {
+  addMonthsToPeriod,
+  diffPeriods,
+  getCurrentPeriodKey,
+  parsePeriodKey,
+} from '../../utils/formatters.js'
 import { CLIENT_PRICE } from '../../store/constants.js'
 
 export const normalizeId = (value) => {
@@ -161,6 +166,50 @@ export const getClientMonthlyFee = (client, fallback = CLIENT_PRICE) => {
   return Number.isFinite(numericMonthlyFee) ? numericMonthlyFee : fallback
 }
 
+export const getClientCoverageContext = (client, { periodKey } = {}) => {
+  const effectivePeriod = periodKey ?? getCurrentPeriodKey()
+  const primaryService = getPrimaryService(client)
+
+  if (!primaryService) {
+    return {
+      coverageEnd: null,
+      partialPeriod: null,
+      aheadMonths: 0,
+      debtMonths: 0,
+      hasPartial: false,
+      partialAmount: 0,
+      isCovered: false,
+    }
+  }
+
+  const coverageEnd =
+    primaryService.coverageEndPeriod ?? primaryService.vigente_hasta_periodo ?? null
+  const partialPeriod =
+    primaryService.partialCoveragePeriod ?? primaryService.abono_periodo ?? null
+  const partialAmount = Number(
+    primaryService.partialCoverageAmount ?? primaryService.abono_monto ?? 0,
+  )
+
+  const coverageDelta = Number(diffPeriods(effectivePeriod, coverageEnd))
+  const aheadMonths = Number.isFinite(coverageDelta) && coverageDelta > 0 ? coverageDelta : 0
+  const debtMonths = Number.isFinite(coverageDelta) && coverageDelta < 0 ? Math.abs(coverageDelta) : 0
+  const isCovered = Number.isFinite(coverageDelta) ? coverageDelta >= 0 : false
+
+  const partialDelta = Number(diffPeriods(effectivePeriod, partialPeriod))
+  const hasPartial =
+    Number.isFinite(partialDelta) && partialDelta >= 0 && Number.isFinite(partialAmount) && partialAmount > 0
+
+  return {
+    coverageEnd,
+    partialPeriod: hasPartial ? partialPeriod : null,
+    aheadMonths,
+    debtMonths,
+    hasPartial,
+    partialAmount: hasPartial ? partialAmount : 0,
+    isCovered,
+  }
+}
+
 export const getClientDebtSummary = (client, fallbackMonthlyFee = CLIENT_PRICE) => {
   if (!client) {
     return {
@@ -173,8 +222,9 @@ export const getClientDebtSummary = (client, fallbackMonthlyFee = CLIENT_PRICE) 
   }
 
   const monthlyFee = getClientMonthlyFee(client, fallbackMonthlyFee)
-  const debtMonths = Math.max(Number(client.debtMonths ?? 0), 0)
-  const debtAmount = Math.max(Number(client.debtAmount ?? 0), 0)
+  const coverage = getClientCoverageContext(client)
+  const debtMonths = Math.max(Number(coverage.debtMonths ?? 0), 0)
+  const debtAmount = coverage.hasPartial ? Math.max(monthlyFee - Number(coverage.partialAmount ?? 0), 0) : 0
   const fractionalDebt = getFractionalDebt(debtMonths)
   const totalDue = debtMonths * monthlyFee + debtAmount
 
@@ -196,21 +246,26 @@ export const PAYMENT_STATUS = {
 export const DUE_SOON_THRESHOLD_MONTHS = 1
 
 export const getClientPaymentStatus = (client, fallbackMonthlyFee = CLIENT_PRICE) => {
-  const { debtMonths, totalDue, monthlyFee } = getClientDebtSummary(client, fallbackMonthlyFee)
-  const paidMonthsAhead = Math.max(Number(client?.paidMonthsAhead ?? 0), 0)
-  const effectiveMonthlyFee = monthlyFee > 0 ? monthlyFee : fallbackMonthlyFee
+  const debtSummary = getClientDebtSummary(client, fallbackMonthlyFee)
+  const coverage = getClientCoverageContext(client)
 
-  if (effectiveMonthlyFee <= 0) {
+  if (debtSummary.monthlyFee <= 0) {
     return PAYMENT_STATUS.PAID
   }
 
-  if (totalDue > 0.009 || debtMonths > 0.0001) {
-    return PAYMENT_STATUS.PENDING
+  if (coverage.isCovered) {
+    return coverage.aheadMonths < DUE_SOON_THRESHOLD_MONTHS
+      ? PAYMENT_STATUS.DUE_SOON
+      : PAYMENT_STATUS.PAID
   }
 
-  if (paidMonthsAhead + 0.0001 < DUE_SOON_THRESHOLD_MONTHS) {
+  if (coverage.hasPartial && debtSummary.debtAmount <= debtSummary.monthlyFee) {
     return PAYMENT_STATUS.DUE_SOON
   }
 
-  return PAYMENT_STATUS.PAID
+  if (debtSummary.debtMonths > 0 || debtSummary.debtAmount > 0) {
+    return PAYMENT_STATUS.PENDING
+  }
+
+  return PAYMENT_STATUS.PENDING
 }

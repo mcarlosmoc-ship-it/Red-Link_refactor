@@ -4,6 +4,7 @@ import {
   normalizeTextOrNull,
   parseDecimalOrNull,
 } from '../utils/normalizers.js'
+import { diffPeriods, getCurrentPeriodKey } from '../utils/formatters.js'
 
 export const voucherTypePrices = DEFAULT_VOUCHER_PRICES
 
@@ -15,6 +16,33 @@ export const voucherTypeKeyById = Object.fromEntries(
 
 const isInternetLikeService = (serviceType) =>
   serviceType === 'internet' || serviceType === 'hotspot'
+
+const resolveCoverageContext = (service, periodKey = getCurrentPeriodKey()) => {
+  const coverageEnd = service?.coverageEndPeriod
+  const partialPeriod = service?.partialCoveragePeriod
+  const partialAmount = normalizeDecimal(service?.partialCoverageAmount ?? 0, 0)
+
+  const coverageDelta = Number.isFinite(diffPeriods(periodKey, coverageEnd))
+    ? diffPeriods(periodKey, coverageEnd)
+    : Number.NaN
+
+  const aheadMonths = Number.isFinite(coverageDelta) && coverageDelta > 0 ? coverageDelta : 0
+  const debtMonths = Number.isFinite(coverageDelta) && coverageDelta < 0 ? Math.abs(coverageDelta) : 0
+
+  const partialIsCurrent =
+    partialPeriod && Number.isFinite(diffPeriods(periodKey, partialPeriod))
+      ? diffPeriods(periodKey, partialPeriod) >= 0
+      : false
+
+  return {
+    aheadMonths,
+    debtMonths,
+    hasPartial: partialIsCurrent && partialAmount > 0,
+    partialAmount: partialIsCurrent ? partialAmount : 0,
+    coverageEnd,
+    partialPeriod: partialIsCurrent ? partialPeriod : null,
+  }
+}
 
 export const mapClientService = (service) => ({
   id: service.id,
@@ -47,6 +75,9 @@ export const mapClientService = (service) => ({
   debtAmount: normalizeDecimal(service.debt_amount ?? service.debtAmount),
   debtMonths: normalizeDecimal(service.debt_months ?? service.debtMonths),
   debtNotes: service.debt_notes ?? service.debtNotes ?? '',
+  coverageEndPeriod: service.vigente_hasta_periodo ?? null,
+  partialCoveragePeriod: service.abono_periodo ?? null,
+  partialCoverageAmount: normalizeDecimal(service.abono_monto),
   notes: service.notes ?? '',
   metadata: service.metadata ?? {},
   createdAt: service.created_at ?? null,
@@ -101,14 +132,15 @@ export const mapClient = (client) => {
     (service) => normalizeDecimal(service.effectivePrice ?? service.price, 0) <= 0,
   )
   const referenceService = paidService ?? courtesyService ?? internetService ?? services[0] ?? null
+  const currentPeriodKey = getCurrentPeriodKey()
+  const coverageContext = resolveCoverageContext(referenceService, currentPeriodKey)
 
   const referencePrice = referenceService
     ? parseDecimalOrNull(referenceService.effectivePrice ?? referenceService.price)
     : null
   const isCourtesy = referencePrice !== null && referencePrice <= 0
   const normalizedMonthlyFee = referencePrice !== null ? (isCourtesy ? 0 : referencePrice) : null
-  const normalizedDebtMonths = isCourtesy ? 0 : normalizeDecimal(client.debt_months)
-  const normalizedAheadMonths = isCourtesy ? 0 : normalizeDecimal(client.paid_months_ahead)
+  const normalizedAheadMonths = isCourtesy ? 0 : coverageContext.aheadMonths
   const totalServiceDebtMonths = services.reduce(
     (acc, service) => acc + (normalizeDecimal(service.debtMonths ?? 0, 0) ?? 0),
     0,
@@ -137,7 +169,13 @@ export const mapClient = (client) => {
   })()
 
   const serviceStatus = normalizedServiceStatus ?? (activeServices.length > 0 ? 'Activo' : 'Suspendido')
-  const debtMonths = totalServiceDebtMonths > 0 ? totalServiceDebtMonths : normalizedDebtMonths
+  const debtMonths = isCourtesy
+    ? 0
+    : coverageContext.debtMonths > 0
+      ? coverageContext.debtMonths
+      : totalServiceDebtMonths > 0
+        ? totalServiceDebtMonths
+        : 0
 
   const recentPayments = Array.isArray(client.recent_payments)
     ? client.recent_payments.map(mapRecentPayment)
@@ -185,6 +223,9 @@ export const mapClient = (client) => {
     paidMonthsAhead: normalizedAheadMonths,
     debtMonths,
     debtAmount: totalServiceDebtAmount > 0 ? totalServiceDebtAmount : null,
+    coverageEndPeriod: coverageContext.coverageEnd,
+    partialCoveragePeriod: coverageContext.partialPeriod,
+    partialCoverageAmount: coverageContext.partialAmount,
     service: serviceStatus,
     services,
     recentPayments,
