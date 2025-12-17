@@ -26,7 +26,6 @@ def test_create_payment_updates_client_balance(client, db_session, seed_basic_da
         "period_key": billing_period.period_key,
         "paid_on": date(2025, 1, 10).isoformat(),
         "amount": "300.00",
-        "months_paid": "1",
         "method": models.PaymentMethod.EFECTIVO.value,
         "note": "Pago parcial",
     }
@@ -39,21 +38,20 @@ def test_create_payment_updates_client_balance(client, db_session, seed_basic_da
     assert data["period_key"] == billing_period.period_key
     assert data["paid_on"] == payload["paid_on"]
     assert Decimal(str(data["amount"])) == Decimal("300.00")
-    assert Decimal(str(data["months_paid"])) == Decimal("1")
+    assert data["months_paid"] is None
     assert data["method"] == models.PaymentMethod.EFECTIVO.value
     assert data["note"] == "Pago parcial"
     assert data["client"]["id"] == client_model.id
     assert data["client"]["full_name"] == client_model.full_name
 
     db_session.expire_all()
-    updated_client = (
-        db_session.query(models.Client)
-        .filter(models.Client.id == client_model.id)
+    updated_service = (
+        db_session.query(models.ClientService)
+        .filter(models.ClientService.id == client_service.id)
         .one()
     )
-    assert Decimal(updated_client.debt_months) == Decimal("1")
-    assert Decimal(updated_client.paid_months_ahead) == Decimal("0")
-    assert updated_client.service_status == models.ServiceStatus.SUSPENDED
+    assert updated_service.vigente_hasta_periodo is not None
+    assert Decimal(updated_service.abono_monto or 0) == Decimal("0")
 
 
 def test_payment_listing_returns_cors_headers_on_failure(client, monkeypatch):
@@ -174,7 +172,6 @@ def test_delete_payment_restores_client_and_snapshots(client, db_session, seed_b
         "period_key": billing_period.period_key,
         "paid_on": date(2025, 1, 12).isoformat(),
         "amount": "300.00",
-        "months_paid": "1",
         "method": models.PaymentMethod.EFECTIVO.value,
         "note": "Pago temporal",
     }
@@ -230,7 +227,6 @@ def test_payment_clears_debt_and_sets_service_active(client, db_session, seed_ba
         "period_key": billing_period.period_key,
         "paid_on": date(2025, 1, 15).isoformat(),
         "amount": "900.00",
-        "months_paid": "3",
         "method": models.PaymentMethod.TRANSFERENCIA.value,
         "note": "Pago completo y adelantado",
     }
@@ -243,21 +239,22 @@ def test_payment_clears_debt_and_sets_service_active(client, db_session, seed_ba
     assert data["period_key"] == billing_period.period_key
     assert data["paid_on"] == payload["paid_on"]
     assert Decimal(str(data["amount"])) == Decimal("900.00")
-    assert Decimal(str(data["months_paid"])) == Decimal("3")
+    assert data["months_paid"] is None
     assert data["method"] == models.PaymentMethod.TRANSFERENCIA.value
     assert data["note"] == "Pago completo y adelantado"
     assert data["client"]["id"] == client_model.id
     assert data["client"]["full_name"] == client_model.full_name
 
     db_session.expire_all()
-    updated_client = (
-        db_session.query(models.Client)
-        .filter(models.Client.id == client_model.id)
+    updated_service = (
+        db_session.query(models.ClientService)
+        .filter(models.ClientService.id == client_service.id)
         .one()
     )
-    assert Decimal(updated_client.debt_months) == Decimal("0")
-    assert Decimal(updated_client.paid_months_ahead) == Decimal("1")
-    assert updated_client.service_status == models.ServiceStatus.ACTIVE
+    assert updated_service.vigente_hasta_periodo == "2025-03"
+    assert updated_service.abono_periodo is None
+    assert Decimal(updated_service.abono_monto or 0) == Decimal("0")
+    assert updated_service.next_billing_date == date(2025, 4, 10)
 
 
 def test_payment_validation_requires_existing_service(client, seed_basic_data):
@@ -267,7 +264,6 @@ def test_payment_validation_requires_existing_service(client, seed_basic_data):
         "period_key": "2025-01",
         "paid_on": date(2025, 1, 10).isoformat(),
         "amount": "100.00",
-        "months_paid": "1",
         "method": models.PaymentMethod.EFECTIVO.value,
     }
 
@@ -286,7 +282,6 @@ def test_payment_rejects_zero_amount(client, seed_basic_data):
         "period_key": billing_period.period_key,
         "paid_on": date(2025, 1, 10).isoformat(),
         "amount": "0.00",
-        "months_paid": "1",
         "method": models.PaymentMethod.EFECTIVO.value,
     }
 
@@ -308,7 +303,6 @@ def test_payment_rejects_negative_amount(client, seed_basic_data):
         "period_key": billing_period.period_key,
         "paid_on": date(2025, 1, 10).isoformat(),
         "amount": "-10.00",
-        "months_paid": "1",
         "method": models.PaymentMethod.EFECTIVO.value,
     }
 
@@ -329,7 +323,6 @@ def test_payment_creates_missing_period(client, db_session, seed_basic_data):
         "period_key": "2025-02",
         "paid_on": date(2025, 2, 10).isoformat(),
         "amount": "300.00",
-        "months_paid": "1",
         "method": models.PaymentMethod.EFECTIVO.value,
     }
 
@@ -398,7 +391,6 @@ def test_payment_reuses_period_with_mismatched_key(client, db_session):
         "period_key": "2025-01",
         "paid_on": date(2025, 1, 12).isoformat(),
         "amount": "300.00",
-        "months_paid": "1",
         "method": models.PaymentMethod.EFECTIVO.value,
     }
 
@@ -427,7 +419,6 @@ def test_payment_returns_400_when_commit_fails(
         "period_key": billing_period.period_key,
         "paid_on": date(2025, 1, 20).isoformat(),
         "amount": "300.00",
-        "months_paid": "1",
         "method": models.PaymentMethod.EFECTIVO.value,
     }
 
@@ -485,7 +476,7 @@ def test_streaming_payment_updates_next_billing(client, db_session):
 
     assert response.status_code == 201, response.text
     data = response.json()
-    assert Decimal(str(data["months_paid"])) == Decimal("3.00")
+    assert data["months_paid"] is None
 
     db_session.expire_all()
     refreshed_account = (
@@ -499,6 +490,8 @@ def test_streaming_payment_updates_next_billing(client, db_session):
         .one()
     )
 
+    assert refreshed_service.vigente_hasta_periodo == "2025-04"
+    assert refreshed_service.abono_monto == 0
     assert refreshed_account.fecha_proximo_pago == date(2025, 5, 1)
     assert refreshed_service.next_billing_date == date(2025, 5, 1)
 
@@ -591,7 +584,6 @@ def test_preloaded_sqlite_database_allows_creating_payments(tmp_path, monkeypatc
                 "period_key": period_key,
                 "paid_on": date(2025, 1, 10).isoformat(),
                 "amount": "150.00",
-                "months_paid": "1",
                 "method": models.PaymentMethod.EFECTIVO.value,
             }
 
