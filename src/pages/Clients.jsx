@@ -69,28 +69,30 @@ export default function ClientsPage() {
   const [importSummary, setImportSummary] = useState(null)
   const [isImporting, setIsImporting] = useState(false)
   const serviceFormRef = useRef(null)
+  const lastSyncedQueryRef = useRef(null)
 
   useEffect(() => {
-    if (location.hash === '#services' || location.hash === '#monthly-services') {
-      setActiveMainTab('services')
-    }
-  }, [location.hash])
+    const currentSignature = `${location.hash ?? ''}|${searchParams.toString()}`
+    if (lastSyncedQueryRef.current === currentSignature) return
+    lastSyncedQueryRef.current = currentSignature
 
-  useEffect(() => {
     const viewParam = searchParams.get('view')
     const clientIdParam = normalizeId(searchParams.get('clientId'))
-    const normalizedSelectedId = normalizeId(selectedClientId)
+    const isServicesView =
+      viewParam === 'services' ||
+      (activeMainTab === 'services' &&
+        (location.hash === '#services' || location.hash === '#monthly-services'))
 
-    if (clientIdParam && clientIdParam !== normalizedSelectedId) {
+    if (clientIdParam && clientIdParam !== selectedClientId) {
       setSelectedClientId(clientIdParam)
     }
 
-    const nextMainTab = viewParam === 'services' ? 'services' : 'clients'
-    if (nextMainTab !== activeMainTab) {
-      setActiveMainTab(nextMainTab)
-    }
+    setActiveMainTab((prev) => {
+      const desired = isServicesView ? 'services' : 'clients'
+      return prev === desired ? prev : desired
+    })
 
-    if (nextMainTab === 'clients') {
+    if (!isServicesView) {
       const nextClientTab =
         viewParam === 'payments'
           ? 'payments'
@@ -98,11 +100,9 @@ export default function ClientsPage() {
             ? 'create'
             : 'list'
 
-      if (nextClientTab !== activeClientTab) {
-        setActiveClientTab(nextClientTab)
-      }
+      setActiveClientTab((prev) => (prev === nextClientTab ? prev : nextClientTab))
     }
-  }, [activeClientTab, activeMainTab, searchParams, selectedClientId])
+  }, [activeClientTab, activeMainTab, location.hash, searchParams, selectedClientId])
 
   useEffect(() => {
     const nextParams = new globalThis.URLSearchParams(searchParams)
@@ -123,11 +123,15 @@ export default function ClientsPage() {
     }
 
     const nextString = nextParams.toString()
+    const nextSignature = `${location.hash ?? ''}|${nextString}`
     if (nextString !== searchParams.toString()) {
+      lastSyncedQueryRef.current = nextSignature
       setSearchParams(nextParams, { replace: true })
+    } else {
+      lastSyncedQueryRef.current = nextSignature
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeMainTab, activeClientTab, selectedClientId, setSearchParams])
+  }, [activeMainTab, activeClientTab, location.hash, searchParams, selectedClientId, setSearchParams])
 
   const selectedClient = useMemo(
     () => clients.find((client) => normalizeId(client.id) === normalizeId(selectedClientId)) ?? null,
