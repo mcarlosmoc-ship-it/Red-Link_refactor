@@ -103,6 +103,12 @@ class ClientContractService:
     """Operations to manage `ClientService` resources."""
 
     @staticmethod
+    def _release_service_reservations(db: Session, service: models.ClientService) -> None:
+        reservations = list(service.ip_reservations or [])
+        for reservation in reservations:
+            IpPoolService.release_reservation(db, reservation)
+
+    @staticmethod
     def list_services(
         db: Session,
         *,
@@ -116,6 +122,7 @@ class ClientContractService:
             selectinload(models.ClientService.client),
             selectinload(models.ClientService.payments),
             selectinload(models.ClientService.service_plan),
+            selectinload(models.ClientService.ip_reservations),
         )
 
         if client_id:
@@ -144,6 +151,7 @@ class ClientContractService:
                 selectinload(models.ClientService.client),
                 selectinload(models.ClientService.payments),
                 selectinload(models.ClientService.service_plan),
+                selectinload(models.ClientService.ip_reservations),
             )
             .filter(models.ClientService.id == service_id)
             .first()
@@ -616,6 +624,12 @@ class ClientContractService:
                 db, reservation, service, client_id=service.client_id
             )
 
+        if (
+            previous_status != models.ClientServiceStatus.CANCELLED
+            and service.status == models.ClientServiceStatus.CANCELLED
+        ):
+            cls._release_service_reservations(db, service)
+
         if previous_plan_id != service.service_plan_id:
             ObservabilityService.record_event(
                 db,
@@ -679,6 +693,7 @@ class ClientContractService:
 
     @staticmethod
     def delete_service(db: Session, service: models.ClientService) -> None:
+        ClientContractService._release_service_reservations(db, service)
         db.delete(service)
         db.commit()
 

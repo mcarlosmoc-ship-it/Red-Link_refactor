@@ -183,8 +183,10 @@ class IpPoolService:
         reservation.inventory_item_id = inventory_item_id or reservation.inventory_item_id
         reservation.assigned_at = datetime.now(timezone.utc)
         reservation.released_at = None
+        service.ip_address = reservation.ip_address
         try:
             db.add(reservation)
+            db.add(service)
             IpPoolService._record_history(
                 db,
                 reservation,
@@ -196,6 +198,7 @@ class IpPoolService:
             db.rollback()
             raise IpPoolServiceError("No se pudo asignar la IP.") from exc
         db.refresh(reservation)
+        db.refresh(service)
         return reservation
 
     @staticmethod
@@ -208,8 +211,12 @@ class IpPoolService:
         reservation.client_id = None
         reservation.inventory_item_id = None
         reservation.released_at = datetime.now(timezone.utc)
+        if reservation.service is not None:
+            reservation.service.ip_address = None
         try:
             db.add(reservation)
+            if reservation.service is not None:
+                db.add(reservation.service)
             IpPoolService._record_history(
                 db,
                 reservation,
