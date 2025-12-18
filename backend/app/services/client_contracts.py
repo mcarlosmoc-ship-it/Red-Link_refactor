@@ -103,10 +103,12 @@ class ClientContractService:
     """Operations to manage `ClientService` resources."""
 
     @staticmethod
-    def _release_service_reservations(db: Session, service: models.ClientService) -> None:
+    def _release_service_reservations(
+        db: Session, service: models.ClientService, *, note: Optional[str] = None
+    ) -> None:
         reservations = list(service.ip_reservations or [])
         for reservation in reservations:
-            IpPoolService.release_reservation(db, reservation)
+            IpPoolService.release_reservation(db, reservation, note=note)
 
     @staticmethod
     def list_services(
@@ -181,8 +183,15 @@ class ClientContractService:
         *,
         client: Optional[models.Client] = None,
         existing: Optional[models.ClientService] = None,
-    ) -> tuple[dict, models.ServicePlan, Decimal, Optional[models.BaseIpReservation]]:
+    ) -> tuple[
+        dict,
+        models.ServicePlan,
+        Decimal,
+        Optional[models.BaseIpReservation],
+        Optional[str],
+    ]:
         payload = data.model_dump(exclude_unset=True, by_alias=True)
+        inventory_item_id = payload.pop("inventory_item_id", None)
         start_date = payload.pop("start_date", None)
         apply_prorate = bool(payload.pop("apply_prorate", True))
         if existing is not None:
@@ -249,9 +258,12 @@ class ClientContractService:
                 except IpPoolServiceError as exc:
                     raise ClientContractError(str(exc)) from exc
             elif not existing_reservations:
-                raise ClientContractError(
-                    "Este servicio requiere asociar una IP reservada desde el pool."
-                )
+                try:
+                    selected_reservation = IpPoolService.acquire_reservation_for_service(
+                        db, base_id=payload["zone_id"]
+                    )
+                except IpPoolServiceError as exc:
+                    raise ClientContractError(str(exc)) from exc
 
         if requirements["requires_equipment"]:
             antenna_model = payload.get("antenna_model")
@@ -326,7 +338,7 @@ class ClientContractService:
             payload["billing_day"] = None
             payload.pop("next_billing_date", None)
             payload["next_billing_date"] = None
-            return payload, plan, effective_price, selected_reservation
+            return payload, plan, effective_price, selected_reservation, inventory_item_id
 
         if start_date and apply_prorate and payload.get("billing_day"):
             billing_day = int(payload["billing_day"])
@@ -353,7 +365,7 @@ class ClientContractService:
                 ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
                 payload["next_billing_date"] = next_billing
 
-        return payload, plan, effective_price, selected_reservation
+        return payload, plan, effective_price, selected_reservation, inventory_item_id
 
     @staticmethod
     def _validate_capacity(
@@ -385,9 +397,13 @@ class ClientContractService:
         cls, db: Session, data: schemas.ClientServiceCreate
     ) -> models.ClientService:
         client = cls._resolve_client(db, data.client_id)
-        payload, plan, effective_price, reservation = cls._normalize_payload(
-            db, data, client=client
-        )
+        (
+            payload,
+            plan,
+            effective_price,
+            reservation,
+            inventory_item_id,
+        ) = cls._normalize_payload(db, data, client=client)
         payload["client_id"] = client.id
 
         if (
@@ -413,7 +429,13 @@ class ClientContractService:
         db.refresh(service)
         if reservation:
             try:
-                IpPoolService.assign_reservation(db, reservation, service, client_id=client.id)
+                IpPoolService.assign_reservation(
+                    db,
+                    reservation,
+                    service,
+                    client_id=client.id,
+                    inventory_item_id=inventory_item_id,
+                )
             except IpPoolServiceError as exc:
                 raise ClientContractError(str(exc)) from exc
         return service
@@ -513,7 +535,7 @@ class ClientContractService:
         )
 
         pending_assignments: list[
-            tuple[models.BaseIpReservation, models.ClientService, str]
+            tuple[models.BaseIpReservation, models.ClientService, str, Optional[str]]
         ] = []
         try:
             for client_id in unique_client_ids:
@@ -528,6 +550,7 @@ class ClientContractService:
                     normalized_plan,
                     effective_price,
                     reservation,
+                    inventory_item_id,
                 ) = cls._normalize_payload(db, create_payload, client=client)
                 status = payload.get("status", models.ClientServiceStatus.ACTIVE)
 
@@ -559,14 +582,20 @@ class ClientContractService:
                 service = models.ClientService(**payload)
                 db.add(service)
                 if reservation:
-                    pending_assignments.append((reservation, service, client.id))
+                    pending_assignments.append(
+                        (reservation, service, client.id, inventory_item_id)
+                    )
                 created.append(service)
             db.commit()
             for service in created:
                 db.refresh(service)
-            for reservation, service, client_id in pending_assignments:
+            for reservation, service, client_id, inventory_item_id in pending_assignments:
                 IpPoolService.assign_reservation(
-                    db, reservation, service, client_id=client_id
+                    db,
+                    reservation,
+                    service,
+                    client_id=client_id,
+                    inventory_item_id=inventory_item_id,
                 )
         except IntegrityError as exc:
             db.rollback()
@@ -589,9 +618,18 @@ class ClientContractService:
     ) -> models.ClientService:
         previous_plan_id = service.service_plan_id
         previous_status = service.status
-        update_data, plan, effective_price, reservation = cls._normalize_payload(
-            db, data, client=service.client, existing=service
-        )
+        update_data = data.model_dump(exclude_unset=True, by_alias=True)
+        inventory_item_id = update_data.pop("inventory_item_id", None)
+        (
+            update_data,
+            plan,
+            effective_price,
+            reservation,
+            normalized_inventory_item,
+        ) = cls._normalize_payload(db, data, client=service.client, existing=service)
+
+        if normalized_inventory_item is not None:
+            inventory_item_id = normalized_inventory_item
 
         status = update_data.get("status", service.status)
         cls._validate_capacity(db, plan, status, exclude_service_id=str(service.id))
@@ -621,14 +659,29 @@ class ClientContractService:
                 if existing_reservation.id != reservation.id:
                     IpPoolService.release_reservation(db, existing_reservation)
             IpPoolService.assign_reservation(
-                db, reservation, service, client_id=service.client_id
+                db,
+                reservation,
+                service,
+                client_id=service.client_id,
+                inventory_item_id=inventory_item_id,
+            )
+        elif inventory_item_id and service.ip_reservations:
+            primary_reservation = service.ip_reservations[0]
+            IpPoolService.assign_reservation(
+                db,
+                primary_reservation,
+                service,
+                client_id=service.client_id,
+                inventory_item_id=inventory_item_id,
             )
 
         if (
             previous_status != models.ClientServiceStatus.CANCELLED
             and service.status == models.ClientServiceStatus.CANCELLED
         ):
-            cls._release_service_reservations(db, service)
+            cls._release_service_reservations(
+                db, service, note="Liberada por cancelación del servicio"
+            )
 
         if previous_plan_id != service.service_plan_id:
             ObservabilityService.record_event(
@@ -764,7 +817,7 @@ class ClientContractService:
             debt_months=service.debt_months,
         )
 
-        normalized, _, effective_price, _ = cls._normalize_payload(
+        normalized, _, effective_price, _, _ = cls._normalize_payload(
             db, payload, client=service.client, existing=service
         )
 

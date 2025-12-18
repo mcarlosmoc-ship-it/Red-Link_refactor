@@ -49,6 +49,9 @@ class ClientServiceBase(BaseModel):
     ip_reservation_id: Optional[str] = Field(
         default=None, description="Reserva de IP asignada al servicio"
     )
+    inventory_item_id: Optional[str] = Field(
+        default=None, description="Equipo asociado a la IP principal"
+    )
     ip_address: Optional[str] = None
     antenna_ip: Optional[str] = None
     modem_ip: Optional[str] = None
@@ -124,6 +127,9 @@ class ClientServiceUpdate(BaseModel):
     ip_address: Optional[str] = None
     ip_reservation_id: Optional[str] = Field(
         default=None, description="Reserva de IP asignada al servicio"
+    )
+    inventory_item_id: Optional[str] = Field(
+        default=None, description="Equipo asociado a la IP principal"
     )
     custom_price: Optional[Decimal] = Field(default=None, ge=0)
     debt_amount: Optional[Decimal] = Field(default=None, ge=0)

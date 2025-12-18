@@ -94,6 +94,11 @@ def list_reservations(
     )
 
 
+@router.get("/reservations/usage", response_model=schemas.IpUsageReport)
+def reservation_usage(db: Session = Depends(get_db)) -> schemas.IpUsageReport:
+    return IpPoolService.usage_report(db)
+
+
 @router.post(
     "/reservations",
     response_model=schemas.BaseIpReservationRead,
@@ -154,6 +159,21 @@ def release_reservation(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Reservation not found")
     try:
         return IpPoolService.release_reservation(db, reservation)
+    except IpPoolServiceError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.post(
+    "/reservations/hygiene", response_model=schemas.IpHygieneRunResult
+)
+def run_reservation_hygiene(
+    quarantine_grace_hours: int = Query(24, ge=0, le=24 * 30),
+    db: Session = Depends(get_db),
+) -> schemas.IpHygieneRunResult:
+    try:
+        return IpPoolService.run_hygiene(
+            db, quarantine_grace_hours=quarantine_grace_hours
+        )
     except IpPoolServiceError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 

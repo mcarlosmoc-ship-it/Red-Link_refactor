@@ -74,3 +74,29 @@ class BaseIpReservationRead(BaseIpReservationBase):
 
 class BaseIpReservationListResponse(PaginatedResponse[BaseIpReservationRead]):
     pass
+
+
+class IpUsageBreakdown(BaseModel):
+    base_id: int
+    pool_id: Optional[int] = None
+    pool_label: Optional[str] = None
+    total: int
+    free: int
+    reserved: int
+    in_use: int
+    quarantine: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class IpHygieneRunResult(BaseModel):
+    quarantined: list[str]
+    released: list[str]
+    freed: list[str]
+    usage_by_pool: list[IpUsageBreakdown]
+    usage_by_base: list[IpUsageBreakdown]
+
+
+class IpUsageReport(BaseModel):
+    usage_by_pool: list[IpUsageBreakdown]
+    usage_by_base: list[IpUsageBreakdown]
