@@ -27,10 +27,19 @@ from ..db_types import GUID, INET
 class IpReservationStatus(str, enum.Enum):
     """State of a reserved IP address."""
 
-    AVAILABLE = "available"
+    FREE = "free"
     RESERVED = "reserved"
-    ASSIGNED = "assigned"
-    RETIRED = "retired"
+    IN_USE = "in_use"
+    QUARANTINE = "quarantine"
+
+
+class IpAssignmentAction(str, enum.Enum):
+    """Actions tracked in the assignment history."""
+
+    RESERVE = "reserve"
+    ASSIGN = "assign"
+    RELEASE = "release"
+    QUARANTINE = "quarantine"
 
 
 class BaseIpPool(Base):
@@ -75,7 +84,7 @@ class BaseIpReservation(Base):
     __table_args__ = (
         UniqueConstraint("base_id", "ip_address", name="uq_base_ip_reservations_unique_ip"),
         CheckConstraint(
-            "status IN ('available', 'reserved', 'assigned', 'retired')",
+            "status IN ('free', 'reserved', 'in_use', 'quarantine')",
             name="ck_base_ip_reservations_status_valid",
         ),
     )
@@ -101,11 +110,17 @@ class BaseIpReservation(Base):
             values_callable=lambda enum_cls: [member.value for member in enum_cls],
         ),
         nullable=False,
-        default=IpReservationStatus.AVAILABLE,
+        default=IpReservationStatus.FREE,
     )
     service_id = Column(
         GUID(),
         ForeignKey("client_services.client_service_id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    inventory_item_id = Column(
+        GUID(),
+        ForeignKey("inventory_items.inventory_id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
@@ -128,7 +143,57 @@ class BaseIpReservation(Base):
 
     pool = relationship("BaseIpPool", back_populates="reservations")
     service = relationship("ClientService", back_populates="ip_reservations")
+    inventory_item = relationship("InventoryItem", back_populates="ip_reservations")
     base = relationship("Zone")
+    assignment_history = relationship(
+        "IpAssignmentHistory", back_populates="reservation", cascade="all, delete-orphan"
+    )
+
+
+class IpAssignmentHistory(Base):
+    """Audit log for reservation lifecycle operations."""
+
+    __tablename__ = "base_ip_assignment_history"
+
+    id = Column("assignment_id", GUID(), primary_key=True, default=uuid.uuid4)
+    reservation_id = Column(
+        GUID(),
+        ForeignKey("base_ip_reservations.reservation_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    action = Column(
+        Enum(
+            IpAssignmentAction,
+            name="ip_assignment_action_enum",
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+        ),
+        nullable=False,
+    )
+    previous_status = Column(String(32), nullable=True)
+    new_status = Column(String(32), nullable=False)
+    service_id = Column(
+        GUID(),
+        ForeignKey("client_services.client_service_id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    client_id = Column(
+        GUID(),
+        ForeignKey("clients.client_id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    inventory_item_id = Column(
+        GUID(),
+        ForeignKey("inventory_items.inventory_id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    note = Column(Text, nullable=True)
+    recorded_by = Column(String(120), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    reservation = relationship("BaseIpReservation", back_populates="assignment_history")
+    service = relationship("ClientService")
+    client = relationship("Client")
+    inventory_item = relationship("InventoryItem")
 
 
 Index("base_ip_reservations_status_idx", BaseIpReservation.status)

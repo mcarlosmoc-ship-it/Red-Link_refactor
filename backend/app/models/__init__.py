@@ -23,7 +23,13 @@ from .client_ledger import ClientLedgerEntry, LedgerEntryType
 from .expense import Expense, ExpenseCategory
 from .financial_snapshot import FinancialSnapshot
 from .inventory import InventoryItem, InventoryStatus
-from .ip_pool import BaseIpPool, BaseIpReservation, IpReservationStatus
+from .ip_pool import (
+    BaseIpPool,
+    BaseIpReservation,
+    IpAssignmentAction,
+    IpAssignmentHistory,
+    IpReservationStatus,
+)
 from .inventory_movement import InventoryMovement, InventoryMovementType
 from .payment import PaymentMethod
 from .payment_schedule import (
@@ -93,6 +99,8 @@ __all__ = [
     "InventoryStatus",
     "InventoryMovement",
     "InventoryMovementType",
+    "IpAssignmentAction",
+    "IpAssignmentHistory",
     "BaseIpPool",
     "BaseIpReservation",
     "IpReservationStatus",
