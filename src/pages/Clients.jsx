@@ -79,24 +79,30 @@ export default function ClientsPage() {
   useEffect(() => {
     const viewParam = searchParams.get('view')
     const clientIdParam = normalizeId(searchParams.get('clientId'))
+    const normalizedSelectedId = normalizeId(selectedClientId)
 
-    if (clientIdParam && clientIdParam !== normalizeId(selectedClientId)) {
+    if (clientIdParam && clientIdParam !== normalizedSelectedId) {
       setSelectedClientId(clientIdParam)
     }
 
-    if (viewParam === 'services') {
-      setActiveMainTab('services')
-    } else {
-      setActiveMainTab('clients')
-      if (viewParam === 'payments') {
-        setActiveClientTab('payments')
-      } else if (viewParam === 'create') {
-        setActiveClientTab('create')
-      } else if (viewParam === 'list') {
-        setActiveClientTab('list')
+    const nextMainTab = viewParam === 'services' ? 'services' : 'clients'
+    if (nextMainTab !== activeMainTab) {
+      setActiveMainTab(nextMainTab)
+    }
+
+    if (nextMainTab === 'clients') {
+      const nextClientTab =
+        viewParam === 'payments'
+          ? 'payments'
+          : viewParam === 'create'
+            ? 'create'
+            : 'list'
+
+      if (nextClientTab !== activeClientTab) {
+        setActiveClientTab(nextClientTab)
       }
     }
-  }, [searchParams, selectedClientId])
+  }, [activeClientTab, activeMainTab, searchParams, selectedClientId])
 
   useEffect(() => {
     const nextParams = new globalThis.URLSearchParams(searchParams)
