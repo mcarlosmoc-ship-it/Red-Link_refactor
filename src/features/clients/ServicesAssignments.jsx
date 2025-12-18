@@ -368,6 +368,41 @@ export default function ServicesAssignments({
                 </div>
               )}
 
+              {selectedPlanRequirements.requiresEquipment && (
+                <div className="space-y-1">
+                  <label className="text-sm font-medium" htmlFor="assignment-equipment">
+                    Equipo instalado
+                  </label>
+                  <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                    <input
+                      id="assignment-equipment"
+                      className="rounded border border-slate-200 p-2"
+                      placeholder="Modelo antena"
+                      value={serviceState.antennaModel}
+                      onChange={(event) =>
+                        handleServiceStateChange('antennaModel', event.target.value)
+                      }
+                    />
+                    <input
+                      className="rounded border border-slate-200 p-2"
+                      placeholder="Modelo módem"
+                      value={serviceState.modemModel}
+                      onChange={(event) =>
+                        handleServiceStateChange('modemModel', event.target.value)
+                      }
+                    />
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    Ingresa al menos un modelo del equipo instalado en el servicio.
+                  </p>
+                  {assignErrors.antennaModel && (
+                    <p className="text-xs font-medium text-red-600" data-testid="assignment-equipment-error">
+                      {assignErrors.antennaModel}
+                    </p>
+                  )}
+                </div>
+              )}
+
               {requiresCredentials && (
                 <div className="space-y-1">
                   <label className="text-sm font-medium" htmlFor="assignment-notes">
