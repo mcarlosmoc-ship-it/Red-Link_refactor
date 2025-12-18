@@ -157,6 +157,22 @@ def validate_duplicate_payment(
     )
 
 
+@router.post("/preview", response_model=schemas.PaymentPreviewResult)
+def preview_payment(
+    payment_in: schemas.ServicePaymentCreate, db: Session = Depends(get_db)
+):
+    """Return the projected state of a payment before persisting it."""
+
+    try:
+        return PaymentService.preview_payment(db, payment_in)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except PaymentServiceError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except SQLAlchemyError:
+        raise HTTPException(status_code=500, detail="No se pudo previsualizar el pago")
+
+
 @router.get("", response_model=schemas.ServicePaymentListResponse)
 def list_payments(
     db: Session = Depends(get_db),

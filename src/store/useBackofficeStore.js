@@ -804,7 +804,6 @@ export const useBackofficeStore = create((set, get) => ({
       action: async () => {
         await apiClient.post('/payments', {
           client_service_id: targetAccount.clientServiceId,
-          paid_on: paymentDate,
           amount,
           method: method ?? 'Transferencia',
           period_key: period ?? null,
@@ -986,7 +985,7 @@ export const useBackofficeStore = create((set, get) => ({
 
     return get().updateClientServiceStatus(clientId, targetService.id, nextStatus)
   },
-  recordPayment: async ({ clientId, serviceId, amount, method, note, periodKey, paidOn }) => {
+  recordPayment: async ({ clientId, serviceId, amount, method, note, periodKey }) => {
     const state = get()
     const client = state.clients.find((item) => String(item.id) === String(clientId))
     if (!client) {
@@ -1010,7 +1009,6 @@ export const useBackofficeStore = create((set, get) => ({
     const payload = {
       client_id: client.id,
       period_key: periodKey ?? state.periods?.selected ?? state.periods?.current,
-      paid_on: paidOn ?? today(),
       amount: normalizedAmount,
       method: method ?? 'Efectivo',
       note: note ?? '',
@@ -1020,11 +1018,12 @@ export const useBackofficeStore = create((set, get) => ({
       payload.client_service_id = service.id
     }
 
-    await runMutation({
+    const result = await runMutation({
       set,
       resources: 'payments',
       action: async () => {
-        await apiClient.post('/payments', payload)
+        const response = await apiClient.post('/payments', payload)
+        return response.data
       },
     })
 
@@ -1037,6 +1036,8 @@ export const useBackofficeStore = create((set, get) => ({
       get().loadPayments({ force: true, retries: 1, periodKey }),
       get().loadMetrics({ force: true, retries: 1, periodKey }),
     ])
+
+    return result
   },
   checkPaymentsConsistency: async () => {
     const response = await apiClient.get('/metrics/consistency/payments')

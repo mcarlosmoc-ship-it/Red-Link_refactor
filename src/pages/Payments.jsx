@@ -1,14 +1,8 @@
 /* global fetch, Blob, URL */
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import {
-  peso,
-  formatDate,
-  formatPeriodLabel,
-  getPeriodFromDateString,
-  today,
-} from '../utils/formatters.js'
+import { peso, formatPeriodLabel, getPeriodFromDateString } from '../utils/formatters.js'
 import Button from '../components/ui/Button.jsx'
 import { Card, CardContent } from '../components/ui/Card.jsx'
 import { useBackofficeStore } from '../store/useBackofficeStore.js'
@@ -19,11 +13,7 @@ import { useBackofficeRefresh } from '../contexts/BackofficeRefreshContext.jsx'
 import { apiClient, buildApiUrl } from '../services/apiClient.js'
 import PaymentsSkeleton from './PaymentsSkeleton.jsx'
 import FormField from '../components/ui/FormField.jsx'
-import {
-  getClientCoverageContext,
-  getClientMonthlyFee,
-  getPrimaryService,
-} from '../features/clients/utils.js'
+import { resolveApiErrorMessage } from '../features/clients/utils.js'
 
 const METHODS = ['Todos', 'Efectivo', 'Transferencia', 'Tarjeta', 'Revendedor']
 const METHOD_OPTIONS = METHODS.filter((method) => method !== 'Todos')
@@ -44,22 +34,6 @@ const formatMonthsForUi = (value) => {
   return `${monthCountFormatter.format(wholeMonths)} mes${wholeMonths === 1 ? '' : 'es'}`
 }
 
-const resolveCoverageLabel = ({ monthsCovered, hasOutstandingBalance }) => {
-  if (!Number.isFinite(monthsCovered)) {
-    return 'Sin tarifa definida'
-  }
-
-  if (monthsCovered >= 1) {
-    return monthsCovered > 1 ? 'Mensualidad cubierta (saldo a favor)' : 'Mensualidad cubierta'
-  }
-
-  if (monthsCovered > 0) {
-    return 'Pago parcial'
-  }
-
-  return hasOutstandingBalance ? 'Saldo pendiente' : 'Pago parcial'
-}
-
 export default function PaymentsPage() {
   const { selectedPeriod, recordPayment, initializeStatus } = useBackofficeStore((state) => ({
     selectedPeriod: state.periods?.selected ?? state.periods?.current,
@@ -71,21 +45,25 @@ export default function PaymentsPage() {
   const { clients, status: clientsStatus } = useClients()
   const { isRefreshing } = useBackofficeRefresh()
   const [searchParams] = useSearchParams()
+
   const [methodFilter, setMethodFilter] = useState('Todos')
   const [searchTerm, setSearchTerm] = useState('')
   const [isRetrying, setIsRetrying] = useState(false)
+
   const [paymentForm, setPaymentForm] = useState({
     clientId: '',
-    serviceId: '',
     amount: '',
     method: METHOD_OPTIONS[0] ?? 'Efectivo',
     note: '',
-    paidOn: today(),
   })
+  const [serviceId, setServiceId] = useState('')
   const [paymentError, setPaymentError] = useState(null)
-  const [isSubmittingPayment, setIsSubmittingPayment] = useState(false)
   const [paymentFieldErrors, setPaymentFieldErrors] = useState({})
-  const [hasAmountBeenManuallyEdited, setHasAmountBeenManuallyEdited] = useState(false)
+  const [previewResult, setPreviewResult] = useState(null)
+  const [pendingPayment, setPendingPayment] = useState(null)
+  const [isPreviewing, setIsPreviewing] = useState(false)
+  const [isConfirming, setIsConfirming] = useState(false)
+
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(PAGE_SIZE_OPTIONS[0])
 
@@ -94,6 +72,7 @@ export default function PaymentsPage() {
   const hasPaymentsError = Boolean(paymentsStatus?.error)
   const isLoadingClients = Boolean(clientsStatus?.isLoading && clients.length === 0)
   const shouldShowSkeleton = Boolean(initializeStatus?.isLoading) || isRefreshing
+  const isSubmittingPayment = isPreviewing || isConfirming
 
   const billableClients = useMemo(
     () => clients.filter((client) => (client.services ?? []).some((service) => service.status !== 'cancelled')),
@@ -106,7 +85,9 @@ export default function PaymentsPage() {
         .sort((a, b) => a.name.localeCompare(b.name))
         .map((client) => ({
           value: client.id,
-          label: `${client.name} · Base ${client.base} · ${client.location}`,
+          label: `${client.name}${client.base ? ` · Base ${client.base}` : ''}${
+            client.location ? ` · ${client.location}` : ''
+          }`,
         })),
     [billableClients],
   )
@@ -116,16 +97,6 @@ export default function PaymentsPage() {
       billableClients.find((client) => String(client.id) === String(paymentForm.clientId)) ?? null,
     [billableClients, paymentForm.clientId],
   )
-
-  const serviceOptions = useMemo(() => {
-    if (!selectedClient) {
-      return []
-    }
-    return (selectedClient.services ?? []).map((service) => ({
-      value: String(service.id),
-      label: `${service.name} · ${(service.type || 'servicio').replace(/_/g, ' ')}`,
-    }))
-  }, [selectedClient])
 
   useEffect(() => {
     const clientIdFromParams = searchParams.get('clientId')
@@ -142,21 +113,13 @@ export default function PaymentsPage() {
 
   useEffect(() => {
     if (!selectedClient?.services?.length) {
-      setPaymentForm((prev) => (prev.serviceId === '' ? prev : { ...prev, serviceId: '' }))
-      return
-    }
-
-    const hasCurrentService = selectedClient.services.some(
-      (service) => String(service.id) === String(paymentForm.serviceId),
-    )
-
-    if (hasCurrentService) {
+      setServiceId('')
       return
     }
 
     const defaultServiceId = String(selectedClient.services[0].id)
-    setPaymentForm((prev) => ({ ...prev, serviceId: defaultServiceId }))
-  }, [selectedClient, paymentForm.serviceId])
+    setServiceId(defaultServiceId)
+  }, [selectedClient])
 
   const selectedService = useMemo(() => {
     if (!selectedClient?.services?.length) {
@@ -164,242 +127,11 @@ export default function PaymentsPage() {
     }
 
     return (
-      selectedClient.services.find(
-        (service) => String(service.id) === String(paymentForm.serviceId),
-      ) ?? selectedClient.services[0] ?? null
-    )
-  }, [selectedClient, paymentForm.serviceId])
-
-  const selectedServiceTypeLabel = useMemo(() => {
-    if (!selectedService) {
-      return null
-    }
-
-    const rawType = selectedService.type || selectedService.plan?.category
-    if (!rawType) {
-      return 'Servicio'
-    }
-
-    return String(rawType).replace(/_/g, ' ')
-  }, [selectedService])
-
-  const selectedServiceStatusLabel = useMemo(() => {
-    if (!selectedService) {
-      return null
-    }
-
-    switch (selectedService.status) {
-      case 'active':
-        return 'Activo'
-      case 'suspended':
-        return 'Suspendido'
-      case 'cancelled':
-        return 'Baja'
-      default:
-        return 'Desconocido'
-    }
-  }, [selectedService])
-
-  const selectedServicePrice = useMemo(() => {
-    if (!selectedService) {
-      return 0
-    }
-    const parsed = Number(selectedService.price)
-    return Number.isFinite(parsed) ? parsed : 0
-  }, [selectedService])
-
-  const resolveSelectedClientFromForm = (formData) =>
-    billableClients.find((client) => String(client.id) === String(formData.clientId)) ?? null
-
-  const resolveSelectedServiceFromForm = (formData) => {
-    const client = resolveSelectedClientFromForm(formData)
-    if (!client?.services?.length) return null
-    return (
-      client.services.find((service) => String(service.id) === String(formData.serviceId)) ??
-      client.services[0] ??
+      selectedClient.services.find((service) => String(service.id) === String(serviceId)) ??
+      selectedClient.services[0] ??
       null
     )
-  }
-
-  const resolveCoverageAmounts = useMemo(
-    () =>
-      (client, service) => {
-        if (!client) {
-          return { outstanding: 0, ahead: 0, monthlyFee: 0 }
-        }
-
-        const effectiveService =
-          service ??
-          getPrimaryService(client) ??
-          (client.services && client.services.length > 0 ? client.services[0] : null)
-
-        const clientShape = effectiveService
-          ? { ...client, services: [effectiveService] }
-          : client
-
-        const monthlyFee = getClientMonthlyFee(clientShape, 0)
-        const coverage = getClientCoverageContext(clientShape)
-        const debtFromMonths = coverage.debtMonths > 0 && monthlyFee > 0
-          ? coverage.debtMonths * monthlyFee
-          : 0
-        const partialOutstanding = coverage.hasPartial
-          ? Math.max(monthlyFee - Number(coverage.partialAmount ?? 0), 0)
-          : 0
-
-        const ahead = coverage.aheadMonths > 0 && monthlyFee > 0
-          ? coverage.aheadMonths * monthlyFee
-          : 0
-
-        return {
-          outstanding: Number((debtFromMonths + partialOutstanding).toFixed(2)),
-          ahead: Number(ahead.toFixed(2)),
-          monthlyFee,
-        }
-      },
-    [],
-  )
-
-  const resolveSuggestedAmount = useCallback(
-    (form) => {
-      const client = resolveSelectedClientFromForm(form)
-      const service = resolveSelectedServiceFromForm(form)
-
-      if (!client || !service) {
-        return null
-      }
-
-      const { outstanding, ahead, monthlyFee } = resolveCoverageAmounts(client, service)
-
-      if (!Number.isFinite(monthlyFee) || monthlyFee <= 0) {
-        return outstanding > 0 ? outstanding - ahead : null
-      }
-
-      const suggested = monthlyFee + outstanding - ahead
-      return suggested > 0 ? Number(suggested.toFixed(2)) : 0
-    },
-    [resolveSelectedClientFromForm, resolveSelectedServiceFromForm, resolveCoverageAmounts],
-  )
-
-  const amountValue = Number(paymentForm.amount)
-  const hasAmountValue = Number.isFinite(amountValue) && amountValue > 0
-
-  const outstandingAmount = useMemo(() => {
-    if (!selectedClient || !selectedService) {
-      return 0
-    }
-
-    return Number(resolveCoverageAmounts(selectedClient, selectedService).outstanding ?? 0)
-  }, [resolveCoverageAmounts, selectedClient, selectedService])
-
-  const aheadAmount = useMemo(() => {
-    if (!selectedClient || !selectedService) {
-      return 0
-    }
-
-    return Number(resolveCoverageAmounts(selectedClient, selectedService).ahead ?? 0)
-  }, [resolveCoverageAmounts, selectedClient, selectedService])
-
-  const suggestedCharge = useMemo(
-    () => resolveSuggestedAmount(paymentForm),
-    [paymentForm, resolveSuggestedAmount],
-  )
-
-  const totalDue = useMemo(() => {
-    const base = Number.isFinite(selectedServicePrice) && selectedServicePrice > 0 ? selectedServicePrice : 0
-    const pending = Number.isFinite(outstandingAmount) && outstandingAmount > 0 ? outstandingAmount : 0
-    const credit = Number.isFinite(aheadAmount) && aheadAmount > 0 ? aheadAmount : 0
-    const total = base + pending - credit
-    return total > 0 ? Number(total.toFixed(2)) : 0
-  }, [aheadAmount, outstandingAmount, selectedServicePrice])
-
-  const resultingBalance = useMemo(() => {
-    const received = hasAmountValue ? amountValue : 0
-    const balance = totalDue - received
-    return Number(balance.toFixed(2))
-  }, [amountValue, hasAmountValue, totalDue])
-
-  const resultingPending = Math.max(0, resultingBalance)
-  const resultingAhead = Math.max(0, -resultingBalance)
-
-  const monthsCovered = useMemo(() => {
-    if (!selectedServicePrice) {
-      return Number.NaN
-    }
-
-    const effectiveContribution = (hasAmountValue ? amountValue : 0) + aheadAmount - outstandingAmount
-    const covered = effectiveContribution / selectedServicePrice
-    return Number.isFinite(covered) ? covered : Number.NaN
-  }, [aheadAmount, amountValue, hasAmountValue, outstandingAmount, selectedServicePrice])
-
-  const coverageLabel = resolveCoverageLabel({
-    monthsCovered,
-    hasOutstandingBalance: outstandingAmount > 0,
-  })
-
-  const monthsCoveredLabel = formatMonthsForUi(monthsCovered)
-  const baseCoveragePeriod = getPeriodFromDateString(paymentForm.paidOn) ?? selectedPeriod ?? null
-  const coveragePeriodLabel = baseCoveragePeriod ? formatPeriodLabel(baseCoveragePeriod) : null
-
-  const selectedCoverageContext = useMemo(() => {
-    if (!selectedClient || !selectedService) {
-      return null
-    }
-
-    const clientShape = { ...selectedClient, services: [selectedService] }
-    return getClientCoverageContext(clientShape, { periodKey: baseCoveragePeriod ?? undefined })
-  }, [baseCoveragePeriod, selectedClient, selectedService])
-
-  const hasCoverageHistory = Boolean(selectedCoverageContext?.coverageEnd)
-  const hasPartialCoverage = Boolean(
-    selectedCoverageContext?.partialPeriod && Number(selectedCoverageContext.partialAmount ?? 0) > 0,
-  )
-  const isFirstCoveragePayment = Boolean(selectedCoverageContext && !hasCoverageHistory && !hasPartialCoverage)
-  const coverageEndLabel = selectedCoverageContext?.coverageEnd
-    ? formatPeriodLabel(selectedCoverageContext.coverageEnd)
-    : 'Sin cobertura registrada'
-  const partialCoverageLabel = selectedCoverageContext?.partialPeriod
-    ? formatPeriodLabel(selectedCoverageContext.partialPeriod)
-    : null
-
-  const applyPaymentSuggestions = useCallback(
-    (form) => {
-      const suggestedAmount = resolveSuggestedAmount(form)
-
-      const nextForm = { ...form }
-      let hasUpdates = false
-
-      if (
-        !hasAmountBeenManuallyEdited &&
-        Number.isFinite(suggestedAmount) &&
-        suggestedAmount > 0 &&
-        Number(form.amount) !== suggestedAmount
-      ) {
-        nextForm.amount = String(suggestedAmount)
-        hasUpdates = true
-      }
-
-      return hasUpdates ? nextForm : form
-    },
-    [
-      hasAmountBeenManuallyEdited,
-      resolveSuggestedAmount,
-    ],
-  )
-
-  useEffect(() => {
-    if (!selectedClient || !selectedService) {
-      return
-    }
-
-    setPaymentForm((prev) => {
-      const isSameClient = String(prev.clientId) === String(selectedClient.id)
-      if (!isSameClient) {
-        return prev
-      }
-
-      return applyPaymentSuggestions(prev)
-    })
-  }, [selectedClient, selectedService, applyPaymentSuggestions])
+  }, [selectedClient, serviceId])
 
   const validatePaymentForm = (formData, service = selectedService) => {
     const errors = {}
@@ -412,18 +144,16 @@ export default function PaymentsPage() {
     }
 
     const amountValue = Number(formData.amount)
-    const normalizedAmount = Number.isFinite(amountValue) && amountValue > 0 ? amountValue : 0
-    if (normalizedAmount <= 0) {
-      errors.amount = 'Ingresa un monto a registrar.'
+    if (!Number.isFinite(amountValue) || amountValue <= 0) {
+      errors.amount = 'Ingresa un monto mayor a cero.'
     }
 
     return errors
   }
 
-  const syncPaymentValidation = (nextFormData) => {
-    const service = resolveSelectedServiceFromForm(nextFormData)
-    setPaymentFieldErrors(validatePaymentForm(nextFormData, service))
-  }
+  useEffect(() => {
+    setPaymentFieldErrors(validatePaymentForm(paymentForm))
+  }, [paymentForm, selectedService])
 
   const handlePaymentFieldChange = (field, value) => {
     setPaymentForm((prev) => {
@@ -433,29 +163,12 @@ export default function PaymentsPage() {
       }
 
       if (field === 'clientId') {
-        nextForm.serviceId = ''
-        nextForm.amount = ''
+        return { ...nextForm, amount: '', note: '' }
       }
 
-      if (field === 'serviceId') {
-        if (!hasAmountBeenManuallyEdited) {
-          nextForm.amount = ''
-        }
-      }
-
-      const formWithSuggestions = applyPaymentSuggestions(nextForm)
-
-      syncPaymentValidation(formWithSuggestions)
-      setPaymentError(null)
-
-      return formWithSuggestions
+      return nextForm
     })
-
-    if (field === 'amount') {
-      setHasAmountBeenManuallyEdited(true)
-    } else if (field === 'clientId' || field === 'serviceId') {
-      setHasAmountBeenManuallyEdited(false)
-    }
+    setPaymentError(null)
   }
 
   const handlePaymentSubmit = async (event) => {
@@ -467,43 +180,67 @@ export default function PaymentsPage() {
       return
     }
 
-    const amountValue = Number(paymentForm.amount)
-    const normalizedAmount = Number.isFinite(amountValue) && amountValue > 0 ? amountValue : 0
+    if (!selectedService) {
+      setPaymentError('El cliente seleccionado no tiene servicios configurados para pagos.')
+      return
+    }
 
-    setPaymentError(null)
-    setIsSubmittingPayment(true)
+    setIsPreviewing(true)
+    const payload = {
+      client_service_id: selectedService.id,
+      amount: Number(paymentForm.amount),
+      method: paymentForm.method,
+      note: paymentForm.note?.trim?.() || undefined,
+    }
 
+    try {
+      const response = await apiClient.post('/payments/preview', payload)
+      setPreviewResult(response.data)
+      setPendingPayment(payload)
+      setPaymentError(null)
+    } catch (error) {
+      const message = resolveApiErrorMessage(error, 'No se pudo previsualizar el pago.')
+      setPaymentError(message)
+      showToast({
+        type: 'error',
+        title: 'No se pudo previsualizar el pago',
+        description: message,
+      })
+    } finally {
+      setIsPreviewing(false)
+    }
+  }
+
+  const resetPreview = () => {
+    setPreviewResult(null)
+    setPendingPayment(null)
+  }
+
+  const handleConfirmPayment = async () => {
+    if (!pendingPayment || !selectedClient) return
+    setIsConfirming(true)
     try {
       await recordPayment({
         clientId: paymentForm.clientId,
-        serviceId: selectedService.id,
-        amount: normalizedAmount,
-        method: paymentForm.method,
-        note: paymentForm.note.trim(),
+        serviceId: pendingPayment.client_service_id,
+        amount: pendingPayment.amount,
+        method: pendingPayment.method,
+        note: paymentForm.note?.trim?.() || '',
         periodKey: selectedPeriod,
-        paidOn: paymentForm.paidOn || today(),
       })
 
       showToast({
         type: 'success',
         title: 'Pago registrado',
-        description:
-          resultingAhead > 0
-            ? `Saldo a favor generado: ${peso(resultingAhead)}.`
-            : resultingPending > 0
-              ? `Queda saldo pendiente de ${peso(resultingPending)}.`
-              : 'La cobranza se actualizó correctamente.',
+        description: previewResult?.message ?? 'Pago guardado.',
       })
 
-      const nextForm = {
-        ...paymentForm,
-        amount: '',
-        note: '',
-      }
+      const nextForm = { ...paymentForm, amount: '', note: '' }
       setPaymentForm(nextForm)
-      syncPaymentValidation(nextForm)
+      setPaymentFieldErrors(validatePaymentForm(nextForm))
+      resetPreview()
     } catch (error) {
-      const message = error?.message ?? 'No se pudo registrar el pago. Intenta nuevamente.'
+      const message = resolveApiErrorMessage(error, 'No se pudo registrar el pago.')
       setPaymentError(message)
       showToast({
         type: 'error',
@@ -511,7 +248,7 @@ export default function PaymentsPage() {
         description: message,
       })
     } finally {
-      setIsSubmittingPayment(false)
+      setIsConfirming(false)
     }
   }
 
@@ -551,10 +288,6 @@ export default function PaymentsPage() {
       })
     }
   }
-
-  useEffect(() => {
-    syncPaymentValidation(paymentForm)
-  }, [clients, paymentForm, selectedService])
 
   const handleRetry = async () => {
     setIsRetrying(true)
@@ -627,26 +360,27 @@ export default function PaymentsPage() {
             Registrar pago
           </h2>
           <p className="text-sm text-slate-500">
-            Actualiza la cobranza manualmente registrando pagos por cliente, monto o meses cubiertos.
+            Flujo simplificado: elige cliente, monto, método y confirma antes de guardar.
           </p>
         </div>
 
         <Card>
           <CardContent>
             <form className="space-y-4" onSubmit={handlePaymentSubmit}>
-              <div className="grid gap-3 md:grid-cols-3">
+              <div className="grid gap-3 md:grid-cols-2">
                 <FormField
-                  className="md:col-span-2"
                   label="Cliente"
                   htmlFor="payment-client"
                   status={paymentFieldErrors.clientId ? 'error' : paymentForm.clientId ? 'success' : 'default'}
                   message={
                     paymentFieldErrors.clientId ??
-                    'Selecciona a quién se registrará el cobro.'
+                    (isLoadingClients
+                      ? 'Cargando clientes…'
+                      : 'Selecciona a quién se registrará el cobro.')
                   }
-                  tooltip="Busca por nombre, base o ubicación para evitar errores de asignación."
                 >
                   <select
+                    id="payment-client"
                     value={paymentForm.clientId}
                     onChange={(event) => handlePaymentFieldChange('clientId', event.target.value)}
                     disabled={isLoadingClients}
@@ -662,162 +396,13 @@ export default function PaymentsPage() {
                   </select>
                 </FormField>
                 <FormField
-                  label="Fecha de pago"
-                  htmlFor="payment-date"
-                  status={paymentForm.paidOn ? 'success' : 'default'}
-                  message="Define la fecha efectiva del cobro."
-                >
-                  <input
-                    type="date"
-                    value={paymentForm.paidOn}
-                    onChange={(event) => handlePaymentFieldChange('paidOn', event.target.value)}
-                  />
-                </FormField>
-              </div>
-
-              <div className="grid gap-3 md:grid-cols-3">
-                <FormField
-                  className="md:col-span-2"
-                  label="Servicio"
-                  htmlFor="payment-service"
-                  status={paymentFieldErrors.serviceId ? 'error' : paymentForm.serviceId ? 'success' : 'default'}
-                  message={
-                    paymentFieldErrors.serviceId ??
-                    (selectedClient
-                      ? 'Elige el servicio que estás cobrando.'
-                      : 'Selecciona un cliente para listar servicios.')
-                  }
-                  tooltip="Solo se muestran los servicios activos o asignados al cliente."
-                >
-                  <select
-                    value={paymentForm.serviceId}
-                    onChange={(event) => handlePaymentFieldChange('serviceId', event.target.value)}
-                    disabled={!serviceOptions.length}
-                  >
-                    <option value="">
-                      {selectedClient
-                        ? serviceOptions.length
-                          ? 'Selecciona un servicio'
-                          : 'Este cliente no tiene servicios disponibles'
-                        : 'Selecciona primero un cliente'}
-                    </option>
-                    {serviceOptions.map((service) => (
-                      <option key={service.value} value={service.value}>
-                        {service.label}
-                      </option>
-                    ))}
-                  </select>
-                </FormField>
-                <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700 shadow-inner">
-                  {selectedService ? (
-                    <div className="space-y-2">
-                      <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
-                        <div>
-                          <p className="text-sm font-semibold text-slate-800">{selectedService.name}</p>
-                          <p className="text-xs capitalize text-slate-500">{selectedServiceTypeLabel ?? 'Servicio'}</p>
-                        </div>
-                        {selectedServiceStatusLabel && (
-                          <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-1 text-[11px] font-semibold capitalize text-slate-700">
-                            Estado: {selectedServiceStatusLabel}
-                          </span>
-                        )}
-                      </div>
-
-                      <dl className="grid gap-2 text-xs text-slate-600 sm:grid-cols-2">
-                        <div className="space-y-0.5">
-                          <dt className="font-semibold text-slate-700">Tarifa mensual</dt>
-                          <dd>{selectedServicePrice > 0 ? `${peso(selectedServicePrice)} al mes` : 'Sin tarifa fija'}</dd>
-                        </div>
-                        <div className="space-y-0.5">
-                          <dt className="font-semibold text-slate-700">Cobro recurrente</dt>
-                          <dd>
-                            {selectedService.nextBillingDate
-                              ? `Próximo cobro: ${formatDate(selectedService.nextBillingDate)}`
-                              : selectedService.billingDay
-                                ? `Cobro el día ${selectedService.billingDay} de cada mes`
-                                : 'Sin fecha de cobro configurada'}
-                          </dd>
-                        </div>
-                      </dl>
-
-                      <p className="text-[11px] text-slate-500">
-                        Ingresa el monto recibido; el sistema derivará la cobertura según la tarifa configurada.
-                      </p>
-                    </div>
-                  ) : (
-                    <p className="text-slate-500">Selecciona un cliente y servicio para ver el detalle.</p>
-                  )}
-                </div>
-              </div>
-
-              {selectedService && (
-                <div
-                  className={`rounded-md border px-3 py-3 text-sm shadow-inner ${
-                    isFirstCoveragePayment
-                      ? 'border-amber-200 bg-amber-50 text-amber-800'
-                      : 'border-slate-200 bg-slate-50 text-slate-700'
-                  }`}
-                >
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="font-semibold">Estado de cobertura del servicio</p>
-                    {isFirstCoveragePayment && (
-                      <span className="rounded-full bg-amber-200/80 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-amber-900">
-                        Primer pago tras importación
-                      </span>
-                    )}
-                  </div>
-                  <p className="mt-1 text-xs sm:text-sm">
-                    {isFirstCoveragePayment
-                      ? `Servicio importado sin cobertura previa. El primer pago aplicará a ${
-                          coveragePeriodLabel ?? 'el periodo seleccionado'
-                        } y fijará la vigencia a partir de ese mes.`
-                      : hasPartialCoverage
-                        ? `Hay un abono parcial registrado para ${
-                            partialCoverageLabel ?? 'un periodo anterior'
-                          }. Completa el monto para liberar la mensualidad.`
-                        : `Cobertura registrada hasta ${coverageEndLabel}. Usa el pago para adelantar o cubrir saldos pendientes.`}
-                  </p>
-                  <div className="mt-2 grid gap-2 text-xs sm:grid-cols-3">
-                    <div className="flex items-center justify-between gap-3 rounded border border-white/60 bg-white/80 px-3 py-2 shadow-sm">
-                      <span className="font-medium">Periodo objetivo</span>
-                      <span className="font-semibold text-slate-900">
-                        {coveragePeriodLabel ?? 'Periodo actual'}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between gap-3 rounded border border-white/60 bg-white/80 px-3 py-2 shadow-sm">
-                      <span className="font-medium">Tarifa mensual</span>
-                      <span className="font-semibold text-slate-900">
-                        {selectedServicePrice > 0 ? peso(selectedServicePrice) : 'Sin tarifa'}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between gap-3 rounded border border-white/60 bg-white/80 px-3 py-2 shadow-sm">
-                      <span className="font-medium">Saldo previo</span>
-                      <span className="font-semibold text-slate-900">
-                        {hasPartialCoverage && selectedCoverageContext?.partialAmount > 0
-                          ? `Abono de ${peso(Number(selectedCoverageContext.partialAmount))}`
-                          : outstandingAmount > 0
-                            ? `${peso(outstandingAmount)} pendiente`
-                            : 'Sin pendiente registrado'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              <div className="grid gap-3 md:grid-cols-2">
-                <FormField
                   label="Monto recibido (MXN)"
                   htmlFor="payment-amount"
-                  status={paymentFieldErrors.amount ? 'error' : hasAmountValue ? 'success' : 'default'}
-                  message={
-                    paymentFieldErrors.amount ??
-                    (suggestedCharge
-                      ? `Sugerido: ${peso(suggestedCharge)} considerando tarifa, saldos pendientes y saldo a favor.`
-                      : 'Registra el total recibido en efectivo, transferencia o tarjeta.')
-                  }
-                  tooltip="Se registrará tal cual para reportes; incluye centavos si aplica."
+                  status={paymentFieldErrors.amount ? 'error' : paymentForm.amount ? 'success' : 'default'}
+                  message={paymentFieldErrors.amount ?? 'Registra el total recibido.'}
                 >
                   <input
+                    id="payment-amount"
                     type="number"
                     min={0}
                     step="0.01"
@@ -827,13 +412,17 @@ export default function PaymentsPage() {
                     disabled={!selectedService}
                   />
                 </FormField>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2">
                 <FormField
                   label="Método"
                   htmlFor="payment-method"
                   status="default"
-                  message="Define el método para auditoría y conciliación."
+                  message="Define el método para auditoría."
                 >
                   <select
+                    id="payment-method"
                     value={paymentForm.method}
                     onChange={(event) => handlePaymentFieldChange('method', event.target.value)}
                   >
@@ -844,97 +433,25 @@ export default function PaymentsPage() {
                     ))}
                   </select>
                 </FormField>
-              </div>
-
-              <FormField
-                label="Nota (opcional)"
-                htmlFor="payment-note"
-                status={paymentForm.note ? 'success' : 'default'}
-                message={
-                  paymentForm.note
-                    ? 'Se guardará como referencia del movimiento.'
-                    : 'Agrega referencias, folios o comentarios relevantes.'
-                }
-                tooltip="Esta nota ayuda a rastrear comprobantes o aclaraciones futuras."
-              >
-                <textarea
-                  value={paymentForm.note}
-                  onChange={(event) => handlePaymentFieldChange('note', event.target.value)}
-                  className="min-h-[80px]"
-                  placeholder="Referencia, folio o comentarios relevantes"
-                  disabled={!selectedService}
-                />
-              </FormField>
-
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-                <div className="mb-3 flex items-center justify-between gap-2">
-                  <p className="font-semibold text-slate-800">Resumen previo</p>
-                  <span className="text-xs text-slate-500">Visible antes de registrar el pago</span>
-                </div>
-
-                <dl className="grid gap-3 md:grid-cols-2">
-                  <div className="flex items-center justify-between gap-3 rounded-md bg-white px-3 py-2 shadow-sm">
-                    <dt className="text-xs font-medium text-slate-500">Tarifa mensual</dt>
-                    <dd className="text-sm font-semibold text-slate-800">
-                      {selectedService ? peso(selectedServicePrice) : '—'}
-                    </dd>
-                  </div>
-                  <div className="flex items-center justify-between gap-3 rounded-md bg-white px-3 py-2 shadow-sm">
-                    <dt className="text-xs font-medium text-slate-500">Saldo pendiente previo</dt>
-                    <dd className="text-sm font-semibold text-slate-800">
-                      {outstandingAmount > 0 ? peso(outstandingAmount) : 'Sin pendiente'}
-                    </dd>
-                  </div>
-                  <div className="flex items-center justify-between gap-3 rounded-md bg-white px-3 py-2 shadow-sm">
-                    <dt className="text-xs font-medium text-slate-500">Saldo a favor previo</dt>
-                    <dd className="text-sm font-semibold text-emerald-700">
-                      {aheadAmount > 0 ? peso(aheadAmount) : 'Sin saldo a favor'}
-                    </dd>
-                  </div>
-                  <div className="flex items-center justify-between gap-3 rounded-md bg-white px-3 py-2 shadow-sm">
-                    <dt className="text-xs font-medium text-slate-500">Monto sugerido</dt>
-                    <dd className="text-sm font-semibold text-blue-700">
-                      {suggestedCharge > 0 ? peso(suggestedCharge) : 'Define el monto a cobrar'}
-                    </dd>
-                  </div>
-                  <div className="flex items-center justify-between gap-3 rounded-md bg-white px-3 py-2 shadow-sm">
-                    <dt className="text-xs font-medium text-slate-500">Monto recibido</dt>
-                    <dd className="text-sm font-semibold text-slate-800">
-                      {hasAmountValue ? peso(amountValue) : 'Pendiente de captura'}
-                    </dd>
-                  </div>
-                  <div className="flex items-center justify-between gap-3 rounded-md bg-white px-3 py-2 shadow-sm">
-                    <dt className="text-xs font-medium text-slate-500">Saldo resultante</dt>
-                    <dd
-                      className={`text-sm font-semibold ${
-                        resultingPending > 0
-                          ? 'text-amber-700'
-                          : resultingAhead > 0
-                            ? 'text-emerald-700'
-                            : 'text-slate-800'
-                      }`}
-                    >
-                      {resultingPending > 0
-                        ? `${peso(resultingPending)} pendiente`
-                        : resultingAhead > 0
-                          ? `${peso(resultingAhead)} a favor`
-                          : 'Al corriente'}
-                    </dd>
-                  </div>
-                  <div className="flex items-center justify-between gap-3 rounded-md bg-white px-3 py-2 shadow-sm">
-                    <dt className="text-xs font-medium text-slate-500">Estado</dt>
-                    <dd className="text-sm font-semibold text-slate-800">
-                      {coverageLabel}
-                      {monthsCoveredLabel ? ` · ${monthsCoveredLabel}` : ''}
-                    </dd>
-                  </div>
-                  <div className="flex items-center justify-between gap-3 rounded-md bg-white px-3 py-2 shadow-sm">
-                    <dt className="text-xs font-medium text-slate-500">Periodo cubierto</dt>
-                    <dd className="text-sm font-semibold text-slate-800">
-                      {coveragePeriodLabel ?? 'Sin periodo definido'}
-                    </dd>
-                  </div>
-                </dl>
+                <FormField
+                  label="Nota (opcional)"
+                  htmlFor="payment-note"
+                  status={paymentForm.note ? 'success' : 'default'}
+                  message={
+                    paymentForm.note
+                      ? 'Se guardará como referencia del movimiento.'
+                      : 'Agrega referencias o comentarios relevantes.'
+                  }
+                >
+                  <textarea
+                    id="payment-note"
+                    value={paymentForm.note}
+                    onChange={(event) => handlePaymentFieldChange('note', event.target.value)}
+                    className="min-h-[80px]"
+                    placeholder="Referencia, folio o comentarios relevantes"
+                    disabled={!selectedService}
+                  />
+                </FormField>
               </div>
 
               {paymentError && (
@@ -948,7 +465,7 @@ export default function PaymentsPage() {
                   type="submit"
                   disabled={isSubmittingPayment || isLoadingClients || !selectedService}
                 >
-                  {isSubmittingPayment ? 'Guardando…' : 'Registrar pago'}
+                  {isSubmittingPayment ? 'Procesando…' : 'Registrar pago'}
                 </Button>
               </div>
             </form>
@@ -1153,6 +670,32 @@ export default function PaymentsPage() {
           </CardContent>
         </Card>
       </section>
+
+      {previewResult && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-lg rounded-lg bg-white p-6 shadow-xl">
+            <h3 className="text-lg font-semibold text-slate-900">Confirmar pago</h3>
+            <p className="mt-3 text-sm text-slate-700">{previewResult.message}</p>
+            <div className="mt-6 flex justify-end gap-3">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={resetPreview}
+                disabled={isConfirming}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                onClick={handleConfirmPayment}
+                disabled={isConfirming}
+              >
+                {isConfirming ? 'Guardando…' : 'Confirmar pago'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

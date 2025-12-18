@@ -28,7 +28,9 @@ class ServicePaymentBase(BaseModel):
     client_service_id: str = Field(
         ..., description="Identifier of the service receiving the payment"
     )
-    paid_on: date = Field(..., description="Date when the payment was recorded")
+    paid_on: Optional[date] = Field(
+        default=None, description="Date when the payment was recorded"
+    )
     amount: Decimal = Field(..., gt=0, description="Amount received for the payment")
     method: Optional[PaymentMethod] = Field(
         default=None, description="Payment method used by the client"
@@ -230,6 +232,14 @@ class PaymentBalanceSnapshot(BaseModel):
     credit_amount: Decimal = Field(default=Decimal("0"), ge=0)
 
 
+class PaymentBalanceState(str, Enum):
+    """Resulting state after applying a payment."""
+
+    PENDING = "pending"
+    CLEAR = "clear"
+    CREDIT = "credit"
+
+
 class PaymentCaptureSummary(BaseModel):
     """Summarizes the effect of a payment on balances and coverage."""
 
@@ -237,6 +247,18 @@ class PaymentCaptureSummary(BaseModel):
     resulting: PaymentBalanceSnapshot
     coverage_start: Optional[date] = None
     coverage_end: Optional[date] = None
+
+
+class PaymentPreviewResult(BaseModel):
+    """Projected effect of a payment without persisting it."""
+
+    client_id: str
+    client_service_id: str
+    amount: Decimal
+    method: PaymentMethod
+    state: PaymentBalanceState
+    message: str
+    summary: PaymentCaptureSummary
 
 
 class ServicePaymentResult(BaseModel):
