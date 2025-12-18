@@ -162,6 +162,26 @@ class PaymentService:
             credit_amount=credit_amount,
         )
 
+    @staticmethod
+    def _resolve_balance_state(
+        snapshot: schemas.PaymentBalanceSnapshot,
+    ) -> schemas.PaymentBalanceState:
+        if snapshot.debt_amount > 0:
+            return schemas.PaymentBalanceState.PENDING
+        if snapshot.credit_amount > 0:
+            return schemas.PaymentBalanceState.CREDIT
+        return schemas.PaymentBalanceState.CLEAR
+
+    @staticmethod
+    def _build_preview_message(
+        state: schemas.PaymentBalanceState, snapshot: schemas.PaymentBalanceSnapshot
+    ) -> str:
+        if state == schemas.PaymentBalanceState.CREDIT:
+            return f"El cliente tendrá un saldo a favor de ${snapshot.credit_amount}"
+        if state == schemas.PaymentBalanceState.PENDING:
+            return f"El cliente tendrá un saldo pendiente de ${snapshot.debt_amount}"
+        return "El cliente no tendrá adeudos"
+
     @classmethod
     def _normalize_method_breakdown(
         cls, data: schemas.ServicePaymentBase
@@ -228,6 +248,7 @@ class PaymentService:
         try:
             service = cls._resolve_service(db, data.client_service_id, for_update=True)
             client = service.client
+            paid_on = data.paid_on or date.today()
 
             period_key = None
             if data.period_key:
@@ -243,14 +264,14 @@ class PaymentService:
             previous_snapshot = cls._balance_snapshot(service, client)
 
             coverage_start_key, coverage_end_key = cls._apply_amount_coverage(
-                service, amount, reference_date=data.paid_on
+                service, amount, reference_date=paid_on
             )
 
             payment = models.ServicePayment(
                 client_service_id=service.id,
                 client_id=client.id,
                 period_key=period_key,
-                paid_on=data.paid_on,
+                paid_on=paid_on,
                 amount=amount,
                 months_paid=months_paid,
                 method=method,
@@ -348,6 +369,57 @@ class PaymentService:
                 duration_ms=(perf_counter() - start) * 1000,
             )
             raise PaymentServiceError("Unable to record payment at this time.") from exc
+
+    @classmethod
+    def preview_payment(
+        cls, db: Session, data: schemas.ServicePaymentCreate
+    ) -> schemas.PaymentPreviewResult:
+        """Simulate a payment to surface the resulting balance and message."""
+
+        service = cls._resolve_service(db, data.client_service_id, for_update=True)
+        client = service.client
+
+        paid_on = data.paid_on or date.today()
+        amount = cls._normalize_amount(data.amount)
+        months_paid = cls._normalize_months(data.months_paid)
+        method, breakdown = cls._normalize_method_breakdown(data)
+
+        previous_snapshot = cls._balance_snapshot(service, client)
+
+        try:
+            with db.begin_nested():
+                coverage_start_key, coverage_end_key = cls._apply_amount_coverage(
+                    service, amount, reference_date=paid_on
+                )
+
+                resulting_snapshot = cls._balance_snapshot(service, client)
+                coverage = cls._coverage_dates(service, coverage_start_key, coverage_end_key)
+
+                summary = cls._build_capture_summary(
+                    previous=previous_snapshot,
+                    resulting=resulting_snapshot,
+                    coverage=coverage,
+                )
+        finally:
+            db.rollback()
+            try:
+                db.refresh(service)
+                db.refresh(client)
+            except Exception:
+                pass
+
+        state = cls._resolve_balance_state(summary.resulting)
+        message = cls._build_preview_message(state, summary.resulting)
+
+        return schemas.PaymentPreviewResult(
+            client_id=str(client.id),
+            client_service_id=str(service.id),
+            amount=amount,
+            method=method,
+            state=state,
+            message=message,
+            summary=summary,
+        )
 
     @staticmethod
     def _ensure_no_duplicate_payment(
