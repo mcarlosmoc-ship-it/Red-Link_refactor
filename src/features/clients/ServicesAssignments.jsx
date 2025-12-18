@@ -64,8 +64,6 @@ export default function ServicesAssignments({
     [availablePlans, serviceState.servicePlanId],
   )
 
-  const selectedPlanPrice = useMemo(() => resolvePlanPrice(selectedPlan), [selectedPlan])
-
   const selectedPlanRequirements = useMemo(
     () => resolvePlanRequirements(selectedPlan),
     [selectedPlan],
@@ -213,18 +211,19 @@ export default function ServicesAssignments({
     const planId = event.target.value
     const plan = findPlanById(planId)
     const requirements = resolvePlanRequirements(plan)
-    const suggestedPrice = resolvePlanPrice(plan)
     setServiceState((prev) => ({
       ...prev,
       servicePlanId: planId,
       serviceType: plan?.serviceType ?? plan?.category ?? prev.serviceType,
-      price: suggestedPrice === null ? '' : String(suggestedPrice),
+      price: '',
       ipAddress: requirements.requiresIp ? prev.ipAddress : '',
-      antennaIp: requirements.requiresIp ? prev.antennaIp : '',
-      modemIp: requirements.requiresIp ? prev.modemIp : '',
-      antennaModel: requirements.requiresEquipment ? prev.antennaModel : '',
-      modemModel: requirements.requiresEquipment ? prev.modemModel : '',
-      notes: prev.notes,
+      antennaIp: '',
+      modemIp: '',
+      antennaModel: '',
+      modemModel: '',
+      notes: requirements.requiresCredentials ? prev.notes : '',
+      baseId: requirements.requiresBase ? prev.baseId || client?.zoneId || '' : '',
+      useClientBase: requirements.requiresBase ? Boolean(client?.zoneId) : false,
     }))
     setAssignErrors({})
   }
@@ -233,9 +232,16 @@ export default function ServicesAssignments({
     setServiceState((prev) => ({ ...prev, [key]: value }))
   }
 
-  const { requiresBase, requiresIp, requiresCredentials, requiresEquipment } =
-    selectedPlanRequirements
-  const showEquipmentFields = requiresEquipment || requiresIp
+  const { requiresBase, requiresIp, requiresCredentials } = selectedPlanRequirements
+
+  const resetBaseToClientZone = () => {
+    if (!client?.zoneId) return
+    setServiceState((prev) => ({
+      ...prev,
+      baseId: String(client.zoneId),
+      useClientBase: true,
+    }))
+  }
 
   const renderRequirementBadges = (requirements, prefix) => (
     <div
@@ -301,271 +307,87 @@ export default function ServicesAssignments({
             </Button>
           </div>
           {serviceState.servicePlanId && (
-            <div className="mt-3 space-y-2 text-sm">
+            <div className="mt-3 space-y-3 text-sm">
+              {renderRequirementBadges(selectedPlanRequirements, 'assignment')}
+
               {requiresBase && (
-                <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                  <label className="flex items-center gap-2 font-medium">
+                <div className="space-y-1">
+                  <label className="text-sm font-medium" htmlFor="assignment-base">
+                    Base / torre asignada
+                  </label>
+                  <div className="flex gap-2">
                     <input
-                      type="checkbox"
-                      checked={serviceState.useClientBase}
-                      onChange={(event) => {
-                        const shouldUseClientBase = event.target.checked
+                      id="assignment-base"
+                      type="number"
+                      min="1"
+                      className="w-full rounded border border-slate-200 p-2"
+                      value={serviceState.baseId}
+                      onChange={(event) =>
                         setServiceState((prev) => ({
                           ...prev,
-                          useClientBase: shouldUseClientBase,
-                          baseId: shouldUseClientBase ? client.zoneId : prev.baseId,
+                          baseId: event.target.value,
+                          useClientBase: false,
                         }))
-                      }}
-                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus-visible:ring-blue-500"
+                      }
+                      placeholder="ID de base/torre"
                     />
-                    Usar zona del cliente como base
+                    {client?.zoneId && (
+                      <Button size="sm" variant="outline" onClick={resetBaseToClientZone}>
+                        Usar base {client.zoneId}
+                      </Button>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    Prefill automático con la base del cliente si está disponible.
+                  </p>
+                  {assignErrors.baseId && (
+                    <p className="text-xs font-medium text-red-600" data-testid="assignment-base-error">
+                      {assignErrors.baseId}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {requiresIp && (
+                <div className="space-y-1">
+                  <label className="text-sm font-medium" htmlFor="assignment-ip">
+                    Dirección IP asignada
                   </label>
                   <input
-                    type="number"
-                    min="1"
-                    className="rounded border border-slate-200 p-2"
-                    value={serviceState.baseId}
-                    onChange={(event) =>
-                      setServiceState((prev) => ({ ...prev, baseId: event.target.value }))
-                    }
-                    disabled={serviceState.useClientBase}
-                    placeholder="ID de base/torre"
+                    id="assignment-ip"
+                    className="w-full rounded border border-slate-200 p-2"
+                    placeholder="000.000.000.000"
+                    value={serviceState.ipAddress}
+                    onChange={(event) => handleServiceStateChange('ipAddress', event.target.value)}
                   />
-                </div>
-              )}
-              {assignErrors.baseId && (
-                <p className="text-xs font-medium text-red-600" data-testid="assignment-base-error">
-                  {assignErrors.baseId}
-                </p>
-              )}
-
-              <div className="space-y-1">
-                <label className="text-sm font-medium" htmlFor="assignment-price">
-                  Tarifa mensual
-                </label>
-                <input
-                  id="assignment-price"
-                  type="number"
-                  min="0"
-                  className="w-full rounded border border-slate-200 p-2"
-                  value={serviceState.price}
-                  onChange={(event) =>
-                    setServiceState((prev) => ({ ...prev, price: event.target.value }))
-                  }
-                  placeholder={
-                    selectedPlanPrice !== null
-                      ? `Usa el precio del plan: ${selectedPlanPrice}`
-                      : 'Ejemplo: 120'
-                  }
-                />
-                <p className="text-xs text-slate-500">
-                  Deja el campo vacío para usar el precio configurado en el plan
-                  {selectedPlanPrice !== null ? ` (${selectedPlanPrice})` : ''}.
-                </p>
-              </div>
-
-              {(requiresIp || showEquipmentFields) && (
-                <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                  {requiresIp && (
-                    <>
-                      <input
-                        className="rounded border border-slate-200 p-2"
-                        placeholder="IP de servicio"
-                        value={serviceState.ipAddress}
-                        onChange={(event) =>
-                          setServiceState((prev) => ({ ...prev, ipAddress: event.target.value }))
-                        }
-                      />
-                      <input
-                        className="rounded border border-slate-200 p-2"
-                        placeholder="IP de antena"
-                        value={serviceState.antennaIp}
-                        onChange={(event) =>
-                          setServiceState((prev) => ({ ...prev, antennaIp: event.target.value }))
-                        }
-                      />
-                      <input
-                        className="rounded border border-slate-200 p-2"
-                        placeholder="IP de módem"
-                        value={serviceState.modemIp}
-                        onChange={(event) =>
-                          setServiceState((prev) => ({ ...prev, modemIp: event.target.value }))
-                        }
-                      />
-                    </>
-                  )}
-
-                  {showEquipmentFields && (
-                    <>
-                      <input
-                        className="rounded border border-slate-200 p-2"
-                        placeholder="Modelo antena"
-                        value={serviceState.antennaModel}
-                        onChange={(event) =>
-                          setServiceState((prev) => ({ ...prev, antennaModel: event.target.value }))
-                        }
-                      />
-                      <input
-                        className="rounded border border-slate-200 p-2"
-                        placeholder="Modelo módem"
-                        value={serviceState.modemModel}
-                        onChange={(event) =>
-                          setServiceState((prev) => ({ ...prev, modemModel: event.target.value }))
-                        }
-                      />
-                    </>
+                  {assignErrors.ipAddress && (
+                    <p className="text-xs font-medium text-red-600" data-testid="assignment-ip-error">
+                      {assignErrors.ipAddress}
+                    </p>
                   )}
                 </div>
               )}
-              {(assignErrors.ipAddress || assignErrors.antennaModel || assignErrors.notes) && (
-                <div className="space-y-1 text-xs font-medium text-red-600">
-                  {assignErrors.ipAddress && <p data-testid="assignment-ip-error">{assignErrors.ipAddress}</p>}
-                  {assignErrors.antennaModel && (
-                    <p data-testid="assignment-equipment-error">{assignErrors.antennaModel}</p>
-                  )}
-                  {assignErrors.notes && <p data-testid="assignment-notes-error">{assignErrors.notes}</p>}
-                </div>
-              )}
-              {error && <p className="text-xs text-red-600">{error}</p>}
-            </div>
-          )}
-          {selectedPlan && (
-            <div className="mt-3 space-y-2">
-              {renderRequirementBadges(selectedPlanRequirements, 'assignment')}
-              <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                <div className="rounded border border-slate-200 bg-slate-50 p-3">
-                  <p className="text-sm font-semibold text-slate-800">Precio del plan</p>
-                  <p className="mt-1 text-2xl font-bold text-slate-900">
-                    {selectedPlanPrice !== null ? `$${selectedPlanPrice}` : 'N/D'}
-                  </p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    Si dejas la tarifa mensual vacía, se cobrará este valor automáticamente.
-                  </p>
-                </div>
-                <div>
+
+              {requiresCredentials && (
+                <div className="space-y-1">
                   <label className="text-sm font-medium" htmlFor="assignment-notes">
-                    Notas del servicio {requiresCredentials && <span className="text-red-600">*</span>}
+                    Notas / credenciales
                   </label>
                   <input
                     id="assignment-notes"
-                    className="mt-1 w-full rounded border border-slate-200 p-2"
+                    className="w-full rounded border border-slate-200 p-2"
                     value={serviceState.notes}
                     onChange={(event) => handleServiceStateChange('notes', event.target.value)}
                   />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
-                <div>
-                  <label className="text-sm font-medium" htmlFor="assignment-debt-months">
-                    Meses vencidos
-                  </label>
-                  <input
-                    id="assignment-debt-months"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    className="mt-1 w-full rounded border border-slate-200 p-2"
-                    value={serviceState.debtMonths}
-                    onChange={(event) => handleServiceStateChange('debtMonths', event.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium" htmlFor="assignment-debt-amount">
-                    Monto pendiente
-                  </label>
-                  <input
-                    id="assignment-debt-amount"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    className="mt-1 w-full rounded border border-slate-200 p-2"
-                    value={serviceState.debtAmount}
-                    onChange={(event) => handleServiceStateChange('debtAmount', event.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium" htmlFor="assignment-debt-notes">
-                    Notas de adeudo
-                  </label>
-                  <input
-                    id="assignment-debt-notes"
-                    className="mt-1 w-full rounded border border-slate-200 p-2"
-                    value={serviceState.debtNotes}
-                    onChange={(event) => handleServiceStateChange('debtNotes', event.target.value)}
-                  />
-                </div>
-              </div>
-
-              {(requiresIp || showEquipmentFields) && (
-                <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                  {requiresIp && (
-                    <>
-                      <div>
-                        <label className="text-sm font-medium" htmlFor="assignment-ip">
-                          Dirección IP
-                        </label>
-                        <input
-                          id="assignment-ip"
-                          className="mt-1 w-full rounded border border-slate-200 p-2"
-                          placeholder="000.000.000.000"
-                          value={serviceState.ipAddress}
-                          onChange={(event) => handleServiceStateChange('ipAddress', event.target.value)}
-                        />
-                      </div>
-                      <div>
-                        <label className="text-sm font-medium" htmlFor="assignment-modem-ip">
-                          IP del módem
-                        </label>
-                        <input
-                          id="assignment-modem-ip"
-                          className="mt-1 w-full rounded border border-slate-200 p-2"
-                          value={serviceState.modemIp}
-                          onChange={(event) => handleServiceStateChange('modemIp', event.target.value)}
-                        />
-                      </div>
-                      <div>
-                        <label className="text-sm font-medium" htmlFor="assignment-antenna-ip">
-                          IP de antena
-                        </label>
-                        <input
-                          id="assignment-antenna-ip"
-                          className="mt-1 w-full rounded border border-slate-200 p-2"
-                          value={serviceState.antennaIp}
-                          onChange={(event) => handleServiceStateChange('antennaIp', event.target.value)}
-                        />
-                      </div>
-                    </>
-                  )}
-
-                  {showEquipmentFields && (
-                    <>
-                      <div>
-                        <label className="text-sm font-medium" htmlFor="assignment-modem-model">
-                          Modelo de módem/ont
-                        </label>
-                        <input
-                          id="assignment-modem-model"
-                          className="mt-1 w-full rounded border border-slate-200 p-2"
-                          value={serviceState.modemModel}
-                          onChange={(event) => handleServiceStateChange('modemModel', event.target.value)}
-                        />
-                      </div>
-                      <div>
-                        <label className="text-sm font-medium" htmlFor="assignment-antenna-model">
-                          Modelo de antena
-                        </label>
-                        <input
-                          id="assignment-antenna-model"
-                          className="mt-1 w-full rounded border border-slate-200 p-2"
-                          value={serviceState.antennaModel}
-                          onChange={(event) => handleServiceStateChange('antennaModel', event.target.value)}
-                        />
-                      </div>
-                    </>
+                  {assignErrors.notes && (
+                    <p className="text-xs font-medium text-red-600" data-testid="assignment-notes-error">
+                      {assignErrors.notes}
+                    </p>
                   )}
                 </div>
               )}
+
+              {error && <p className="text-xs text-red-600">{error}</p>}
             </div>
           )}
         </div>
