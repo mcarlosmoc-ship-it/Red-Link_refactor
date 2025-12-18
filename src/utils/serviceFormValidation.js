@@ -172,15 +172,6 @@ export const computeServiceFormErrors = (
     }
   }
 
-  const requiresEquipment = planRequiresEquipment(plan)
-  if (requiresEquipment) {
-    const antennaModel = state?.antennaModel ?? ''
-    const modemModel = state?.modemModel ?? ''
-    if (!String(antennaModel).trim() && !String(modemModel).trim()) {
-      errors.antennaModel = 'Registra el modelo del equipo instalado en el servicio.'
-    }
-  }
-
   const requiresIp = planRequiresIp(plan)
   if (requiresIp) {
     if (!String(state?.ipAddress ?? state?.ip ?? '').trim()) {
