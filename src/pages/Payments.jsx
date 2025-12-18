@@ -19,6 +19,39 @@ const METHODS = ['Todos', 'Efectivo', 'Transferencia', 'Tarjeta', 'Revendedor']
 const METHOD_OPTIONS = METHODS.filter((method) => method !== 'Todos')
 const PAGE_SIZE_OPTIONS = [10, 25, 50]
 const monthCountFormatter = new Intl.NumberFormat('es-MX', { maximumFractionDigits: 0 })
+const dateFormatter = new Intl.DateTimeFormat('es-MX', { day: '2-digit', month: 'short', year: 'numeric' })
+
+const parseNumber = (value) => {
+  const numericValue = Number(value)
+  return Number.isFinite(numericValue) ? numericValue : 0
+}
+
+const buildPreviewMessage = (preview) => {
+  if (!preview) return ''
+
+  const resulting = preview.summary?.resulting ?? {}
+  const creditAmount = parseNumber(resulting.credit_amount ?? resulting.creditAmount)
+  const debtAmount = parseNumber(resulting.debt_amount ?? resulting.debtAmount)
+
+  if (creditAmount > 0) {
+    return `El monto ingresado es mayor al requerido. Se generará saldo a favor de ${peso(creditAmount)}.`
+  }
+
+  if (debtAmount > 0) {
+    return `El monto ingresado no cubre el total. Quedará saldo pendiente de ${peso(debtAmount)}.`
+  }
+
+  const coverageStart = preview.summary?.coverage_start ?? preview.summary?.coverageStart
+  const coverageEnd = preview.summary?.coverage_end ?? preview.summary?.coverageEnd
+
+  if (coverageStart && coverageEnd) {
+    const formattedStart = dateFormatter.format(new Date(coverageStart))
+    const formattedEnd = dateFormatter.format(new Date(coverageEnd))
+    return `El cliente quedará al corriente con cobertura del ${formattedStart} al ${formattedEnd}.`
+  }
+
+  return 'El cliente quedará al corriente.'
+}
 
 const formatMonthsForUi = (value) => {
   const numericValue = Number(value)
@@ -63,6 +96,7 @@ export default function PaymentsPage() {
   const [pendingPayment, setPendingPayment] = useState(null)
   const [isPreviewing, setIsPreviewing] = useState(false)
   const [isConfirming, setIsConfirming] = useState(false)
+  const previewMessage = useMemo(() => buildPreviewMessage(previewResult), [previewResult])
 
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(PAGE_SIZE_OPTIONS[0])
@@ -232,7 +266,7 @@ export default function PaymentsPage() {
       showToast({
         type: 'success',
         title: 'Pago registrado',
-        description: previewResult?.message ?? 'Pago guardado.',
+        description: previewMessage || 'Pago guardado.',
       })
 
       const nextForm = { ...paymentForm, amount: '', note: '' }
@@ -675,7 +709,7 @@ export default function PaymentsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
           <div className="w-full max-w-lg rounded-lg bg-white p-6 shadow-xl">
             <h3 className="text-lg font-semibold text-slate-900">Confirmar pago</h3>
-            <p className="mt-3 text-sm text-slate-700">{previewResult.message}</p>
+            <p className="mt-3 text-sm text-slate-700">{previewMessage}</p>
             <div className="mt-6 flex justify-end gap-3">
               <Button
                 type="button"
