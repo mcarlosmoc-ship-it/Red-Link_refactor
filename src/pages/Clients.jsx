@@ -71,26 +71,21 @@ export default function ClientsPage() {
   const serviceFormRef = useRef(null)
 
   useEffect(() => {
-    if (location.hash === '#services' || location.hash === '#monthly-services') {
-      setActiveMainTab('services')
-    }
-  }, [location.hash])
-
-  useEffect(() => {
     const viewParam = searchParams.get('view')
     const clientIdParam = normalizeId(searchParams.get('clientId'))
     const normalizedSelectedId = normalizeId(selectedClientId)
+    const isServicesView =
+      viewParam === 'services' ||
+      location.hash === '#services' ||
+      location.hash === '#monthly-services'
 
-    if (clientIdParam && clientIdParam !== normalizedSelectedId) {
-      setSelectedClientId(clientIdParam)
-    }
+    setSelectedClientId((prev) =>
+      clientIdParam && clientIdParam !== prev ? clientIdParam : prev,
+    )
 
-    const nextMainTab = viewParam === 'services' ? 'services' : 'clients'
-    if (nextMainTab !== activeMainTab) {
-      setActiveMainTab(nextMainTab)
-    }
+    setActiveMainTab(isServicesView ? 'services' : 'clients')
 
-    if (nextMainTab === 'clients') {
+    if (!isServicesView) {
       const nextClientTab =
         viewParam === 'payments'
           ? 'payments'
@@ -98,11 +93,9 @@ export default function ClientsPage() {
             ? 'create'
             : 'list'
 
-      if (nextClientTab !== activeClientTab) {
-        setActiveClientTab(nextClientTab)
-      }
+      setActiveClientTab(nextClientTab)
     }
-  }, [activeClientTab, activeMainTab, searchParams, selectedClientId])
+  }, [location.hash, searchParams, selectedClientId])
 
   useEffect(() => {
     const nextParams = new globalThis.URLSearchParams(searchParams)
