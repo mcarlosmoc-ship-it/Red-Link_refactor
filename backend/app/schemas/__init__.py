@@ -46,6 +46,9 @@ from .ip_pool import (
     BaseIpReservationListResponse,
     BaseIpReservationRead,
     BaseIpReservationUpdate,
+    IpHygieneRunResult,
+    IpUsageBreakdown,
+    IpUsageReport,
 )
 from .metrics import (
     BaseCostUpdateRequest,
