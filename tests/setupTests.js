@@ -1,5 +1,12 @@
 import { afterEach, expect } from 'vitest'
+import React from 'react'
 import { cleanup } from '@testing-library/react'
+
+// React lanza advertencias sobre useLayoutEffect al renderizar en modo servidor
+// (verbo por renderToStaticMarkup en los mocks de testing-library). Para los
+// tests preferimos silenciar esos avisos y delegar en useEffect, ya que no hay
+// un DOM real en este entorno.
+React.useLayoutEffect = React.useEffect
 
 afterEach(() => {
   cleanup()
