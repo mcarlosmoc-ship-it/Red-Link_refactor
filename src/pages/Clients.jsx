@@ -100,9 +100,7 @@ export default function ClientsPage() {
             ? 'create'
             : 'list'
 
-      if (nextClientTab !== activeClientTab) {
-        setActiveClientTab(nextClientTab)
-      }
+      setActiveClientTab(nextClientTab)
     }
   }, [activeClientTab, activeMainTab, location.hash, searchParams, selectedClientId])
 
