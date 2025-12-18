@@ -19,6 +19,27 @@ class IpPoolService:
     """Operations for managing IP pool segments and reservations."""
 
     @staticmethod
+    def _record_history(
+        db: Session,
+        reservation: models.BaseIpReservation,
+        action: models.IpAssignmentAction,
+        *,
+        previous_status: Optional[str] = None,
+        note: Optional[str] = None,
+    ) -> None:
+        entry = models.IpAssignmentHistory(
+            reservation=reservation,
+            action=action,
+            previous_status=previous_status,
+            new_status=reservation.status.value,
+            service_id=reservation.service_id,
+            client_id=reservation.client_id,
+            inventory_item_id=reservation.inventory_item_id,
+            note=note,
+        )
+        db.add(entry)
+
+    @staticmethod
     def list_pools(
         db: Session,
         *,
@@ -102,6 +123,7 @@ class IpPoolService:
         query = db.query(models.BaseIpReservation).options(
             selectinload(models.BaseIpReservation.pool),
             selectinload(models.BaseIpReservation.service),
+            selectinload(models.BaseIpReservation.inventory_item),
         )
         if base_id is not None:
             query = query.filter(models.BaseIpReservation.base_id == base_id)
@@ -152,14 +174,23 @@ class IpPoolService:
         service: models.ClientService,
         *,
         client_id: Optional[str] = None,
+        inventory_item_id: Optional[str] = None,
     ) -> models.BaseIpReservation:
-        reservation.status = models.IpReservationStatus.ASSIGNED
+        previous_status = reservation.status.value
+        reservation.status = models.IpReservationStatus.IN_USE
         reservation.service_id = service.id
         reservation.client_id = client_id or service.client_id
+        reservation.inventory_item_id = inventory_item_id or reservation.inventory_item_id
         reservation.assigned_at = datetime.now(timezone.utc)
         reservation.released_at = None
         try:
             db.add(reservation)
+            IpPoolService._record_history(
+                db,
+                reservation,
+                models.IpAssignmentAction.ASSIGN,
+                previous_status=previous_status,
+            )
             db.commit()
         except SQLAlchemyError as exc:
             db.rollback()
@@ -171,12 +202,20 @@ class IpPoolService:
     def release_reservation(
         db: Session, reservation: models.BaseIpReservation
     ) -> models.BaseIpReservation:
-        reservation.status = models.IpReservationStatus.AVAILABLE
+        previous_status = reservation.status.value
+        reservation.status = models.IpReservationStatus.QUARANTINE
         reservation.service_id = None
         reservation.client_id = None
+        reservation.inventory_item_id = None
         reservation.released_at = datetime.now(timezone.utc)
         try:
             db.add(reservation)
+            IpPoolService._record_history(
+                db,
+                reservation,
+                models.IpAssignmentAction.RELEASE,
+                previous_status=previous_status,
+            )
             db.commit()
         except SQLAlchemyError as exc:
             db.rollback()
@@ -189,16 +228,46 @@ class IpPoolService:
         db: Session, reservation: models.BaseIpReservation, data: schemas.BaseIpReservationUpdate
     ) -> models.BaseIpReservation:
         update_data = data.model_dump(exclude_unset=True)
-        if "status" in update_data:
-            reservation.status = update_data["status"]
+        previous_status = reservation.status.value
+        new_status = update_data.get("status", reservation.status)
+
+        if "inventory_item_id" in update_data:
+            reservation.inventory_item_id = update_data["inventory_item_id"]
         if "service_id" in update_data:
             reservation.service_id = update_data["service_id"]
         if "client_id" in update_data:
             reservation.client_id = update_data["client_id"]
         if "notes" in update_data:
             reservation.notes = update_data["notes"]
+
+        action: Optional[models.IpAssignmentAction] = None
+        if "status" in update_data:
+            reservation.status = new_status
+            if new_status == models.IpReservationStatus.FREE:
+                reservation.service_id = None
+                reservation.client_id = None
+                reservation.inventory_item_id = None
+                reservation.assigned_at = None
+                reservation.released_at = datetime.now(timezone.utc)
+                action = models.IpAssignmentAction.RELEASE
+            elif new_status == models.IpReservationStatus.RESERVED:
+                reservation.assigned_at = None
+                reservation.released_at = None
+                action = models.IpAssignmentAction.RESERVE
+            elif new_status == models.IpReservationStatus.IN_USE:
+                action = models.IpAssignmentAction.ASSIGN
+            elif new_status == models.IpReservationStatus.QUARANTINE:
+                reservation.released_at = datetime.now(timezone.utc)
+                action = models.IpAssignmentAction.QUARANTINE
         try:
             db.add(reservation)
+            if previous_status != reservation.status.value:
+                IpPoolService._record_history(
+                    db,
+                    reservation,
+                    action or models.IpAssignmentAction.RESERVE,
+                    previous_status=previous_status,
+                )
             db.commit()
         except SQLAlchemyError as exc:
             db.rollback()

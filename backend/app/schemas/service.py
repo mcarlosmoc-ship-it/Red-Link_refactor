@@ -46,6 +46,9 @@ class ClientServiceBase(BaseModel):
         validation_alias=AliasChoices("zone_id", "base_id"),
         serialization_alias="zone_id",
     )
+    ip_reservation_id: Optional[str] = Field(
+        default=None, description="Reserva de IP asignada al servicio"
+    )
     ip_address: Optional[str] = None
     antenna_ip: Optional[str] = None
     modem_ip: Optional[str] = None
@@ -119,6 +122,9 @@ class ClientServiceUpdate(BaseModel):
         serialization_alias="zone_id",
     )
     ip_address: Optional[str] = None
+    ip_reservation_id: Optional[str] = Field(
+        default=None, description="Reserva de IP asignada al servicio"
+    )
     custom_price: Optional[Decimal] = Field(default=None, ge=0)
     debt_amount: Optional[Decimal] = Field(default=None, ge=0)
     debt_months: Optional[Decimal] = Field(default=None, ge=0)
@@ -152,6 +158,7 @@ class ClientServiceRead(BaseModel):
         serialization_alias="zone_id",
     )
     ip_address: Optional[str] = None
+    ip_reservation_id: Optional[str] = None
     custom_price: Optional[Decimal] = None
     effective_price: Optional[Decimal] = None
     debt_amount: Optional[Decimal] = None

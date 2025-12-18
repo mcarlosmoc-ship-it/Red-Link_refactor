@@ -128,6 +128,7 @@ def assign_reservation(
     reservation_id: str,
     *,
     client_service_id: str,
+    inventory_item_id: Optional[str] = None,
     db: Session = Depends(get_db),
 ) -> schemas.BaseIpReservationRead:
     reservation = IpPoolService.get_reservation(db, reservation_id)
@@ -137,7 +138,9 @@ def assign_reservation(
     if service is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Service not found")
     try:
-        return IpPoolService.assign_reservation(db, reservation, service)
+        return IpPoolService.assign_reservation(
+            db, reservation, service, inventory_item_id=inventory_item_id
+        )
     except IpPoolServiceError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
