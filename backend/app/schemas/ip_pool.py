@@ -42,17 +42,19 @@ class BaseIpReservationBase(BaseModel):
     base_id: int = Field(..., ge=1)
     pool_id: Optional[int] = Field(default=None, ge=1)
     ip_address: str = Field(...)
+    inventory_item_id: Optional[str] = Field(default=None, description="Equipo asociado")
     notes: Optional[str] = None
 
 
 class BaseIpReservationCreate(BaseIpReservationBase):
-    status: IpReservationStatus = IpReservationStatus.AVAILABLE
+    status: IpReservationStatus = IpReservationStatus.FREE
 
 
 class BaseIpReservationUpdate(BaseModel):
     status: Optional[IpReservationStatus] = None
     service_id: Optional[str] = None
     client_id: Optional[str] = None
+    inventory_item_id: Optional[str] = None
     notes: Optional[str] = None
 
 
@@ -61,6 +63,7 @@ class BaseIpReservationRead(BaseIpReservationBase):
     status: IpReservationStatus
     service_id: Optional[str] = None
     client_id: Optional[str] = None
+    inventory_item_id: Optional[str] = None
     assigned_at: Optional[datetime] = None
     released_at: Optional[datetime] = None
     created_at: datetime

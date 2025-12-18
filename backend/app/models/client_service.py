@@ -163,6 +163,14 @@ class ClientService(Base):
         return self.service_plan.category if self.service_plan else None
 
     @property
+    def ip_reservation_id(self):
+        """Return the identifier of the primary IP reservation linked to the service."""
+
+        if self.ip_reservations:
+            return self.ip_reservations[0].id
+        return None
+
+    @property
     def effective_price(self):
         """Price to charge for the service, using custom price when available."""
 

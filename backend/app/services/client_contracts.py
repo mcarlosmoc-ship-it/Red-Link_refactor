@@ -11,6 +11,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 
 from .. import models, schemas
+from .ip_pools import IpPoolService, IpPoolServiceError
 from .observability import MetricOutcome, ObservabilityService
 
 
@@ -102,6 +103,12 @@ class ClientContractService:
     """Operations to manage `ClientService` resources."""
 
     @staticmethod
+    def _release_service_reservations(db: Session, service: models.ClientService) -> None:
+        reservations = list(service.ip_reservations or [])
+        for reservation in reservations:
+            IpPoolService.release_reservation(db, reservation)
+
+    @staticmethod
     def list_services(
         db: Session,
         *,
@@ -115,6 +122,7 @@ class ClientContractService:
             selectinload(models.ClientService.client),
             selectinload(models.ClientService.payments),
             selectinload(models.ClientService.service_plan),
+            selectinload(models.ClientService.ip_reservations),
         )
 
         if client_id:
@@ -143,6 +151,7 @@ class ClientContractService:
                 selectinload(models.ClientService.client),
                 selectinload(models.ClientService.payments),
                 selectinload(models.ClientService.service_plan),
+                selectinload(models.ClientService.ip_reservations),
             )
             .filter(models.ClientService.id == service_id)
             .first()
@@ -172,7 +181,7 @@ class ClientContractService:
         *,
         client: Optional[models.Client] = None,
         existing: Optional[models.ClientService] = None,
-    ) -> tuple[dict, models.ServicePlan, Decimal]:
+    ) -> tuple[dict, models.ServicePlan, Decimal, Optional[models.BaseIpReservation]]:
         payload = data.model_dump(exclude_unset=True, by_alias=True)
         start_date = payload.pop("start_date", None)
         apply_prorate = bool(payload.pop("apply_prorate", True))
@@ -199,17 +208,50 @@ class ClientContractService:
         service_metadata = payload.get("service_metadata") if isinstance(payload.get("service_metadata"), dict) else None
         requirements = _resolve_plan_requirements(plan, service_metadata)
 
+        ip_reservation_id = payload.pop("ip_reservation_id", None)
+        provided_ip = payload.pop("ip_address", None)
+        selected_reservation: Optional[models.BaseIpReservation] = None
+
         if client and payload.get("zone_id") is None and requirements["requires_base"]:
             payload["zone_id"] = client.zone_id
 
         if requirements["requires_base"] and payload.get("zone_id") is None:
             raise ClientContractError("Este servicio requiere asignar una zona.")
 
+        existing_reservations = (
+            existing.ip_reservations if existing and existing.ip_reservations else []
+        )
         if requirements["requires_ip"]:
-            if not payload.get("ip_address") and existing and existing.ip_address:
-                payload.setdefault("ip_address", existing.ip_address)
-            if not payload.get("ip_address"):
-                raise ClientContractError("Este servicio requiere asignar una dirección IP.")
+            if ip_reservation_id:
+                selected_reservation = IpPoolService.get_reservation(db, ip_reservation_id)
+                if selected_reservation is None:
+                    raise ClientContractError("No se encontró la reserva de IP solicitada.")
+                if selected_reservation.status not in (
+                    models.IpReservationStatus.FREE,
+                    models.IpReservationStatus.RESERVED,
+                ) and selected_reservation.service_id != (existing.id if existing else None):
+                    raise ClientContractError(
+                        "La IP seleccionada no está disponible para asignar al servicio."
+                    )
+            elif provided_ip:
+                base_id = payload.get("zone_id") or (existing.zone_id if existing else None)
+                if base_id is None:
+                    raise ClientContractError(
+                        "Este servicio requiere asociar una base para reservar la IP."
+                    )
+                try:
+                    reservation_payload = schemas.BaseIpReservationCreate(
+                        base_id=base_id, pool_id=None, ip_address=provided_ip
+                    )
+                    selected_reservation = IpPoolService.create_reservation(
+                        db, reservation_payload
+                    )
+                except IpPoolServiceError as exc:
+                    raise ClientContractError(str(exc)) from exc
+            elif not existing_reservations:
+                raise ClientContractError(
+                    "Este servicio requiere asociar una IP reservada desde el pool."
+                )
 
         if requirements["requires_equipment"]:
             antenna_model = payload.get("antenna_model")
@@ -284,7 +326,7 @@ class ClientContractService:
             payload["billing_day"] = None
             payload.pop("next_billing_date", None)
             payload["next_billing_date"] = None
-            return payload, plan, effective_price
+            return payload, plan, effective_price, selected_reservation
 
         if start_date and apply_prorate and payload.get("billing_day"):
             billing_day = int(payload["billing_day"])
@@ -311,7 +353,7 @@ class ClientContractService:
                 ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
                 payload["next_billing_date"] = next_billing
 
-        return payload, plan, effective_price
+        return payload, plan, effective_price, selected_reservation
 
     @staticmethod
     def _validate_capacity(
@@ -343,7 +385,9 @@ class ClientContractService:
         cls, db: Session, data: schemas.ClientServiceCreate
     ) -> models.ClientService:
         client = cls._resolve_client(db, data.client_id)
-        payload, plan, effective_price = cls._normalize_payload(db, data, client=client)
+        payload, plan, effective_price, reservation = cls._normalize_payload(
+            db, data, client=client
+        )
         payload["client_id"] = client.id
 
         if (
@@ -367,6 +411,11 @@ class ClientContractService:
                 "El cliente ya tiene un servicio activo con ese plan."
             ) from exc
         db.refresh(service)
+        if reservation:
+            try:
+                IpPoolService.assign_reservation(db, reservation, service, client_id=client.id)
+            except IpPoolServiceError as exc:
+                raise ClientContractError(str(exc)) from exc
         return service
 
     @classmethod
@@ -463,6 +512,9 @@ class ClientContractService:
             exclude={"client_ids"}, by_alias=True, exclude_none=True
         )
 
+        pending_assignments: list[
+            tuple[models.BaseIpReservation, models.ClientService, str]
+        ] = []
         try:
             for client_id in unique_client_ids:
                 client = _get_client(client_id)
@@ -471,9 +523,12 @@ class ClientContractService:
                     client_id=client_id,
                     **base_payload,
                 )
-                payload, normalized_plan, effective_price = cls._normalize_payload(
-                    db, create_payload, client=client
-                )
+                (
+                    payload,
+                    normalized_plan,
+                    effective_price,
+                    reservation,
+                ) = cls._normalize_payload(db, create_payload, client=client)
                 status = payload.get("status", models.ClientServiceStatus.ACTIVE)
 
                 cls._validate_capacity(
@@ -503,9 +558,16 @@ class ClientContractService:
                     payload.pop("next_billing_date", None)
                 service = models.ClientService(**payload)
                 db.add(service)
+                if reservation:
+                    pending_assignments.append((reservation, service, client.id))
                 created.append(service)
-
             db.commit()
+            for service in created:
+                db.refresh(service)
+            for reservation, service, client_id in pending_assignments:
+                IpPoolService.assign_reservation(
+                    db, reservation, service, client_id=client_id
+                )
         except IntegrityError as exc:
             db.rollback()
             raise ClientContractError(
@@ -527,7 +589,7 @@ class ClientContractService:
     ) -> models.ClientService:
         previous_plan_id = service.service_plan_id
         previous_status = service.status
-        update_data, plan, effective_price = cls._normalize_payload(
+        update_data, plan, effective_price, reservation = cls._normalize_payload(
             db, data, client=service.client, existing=service
         )
 
@@ -554,6 +616,19 @@ class ClientContractService:
             raise ClientContractError("No se pudo actualizar el servicio.") from exc
 
         db.refresh(service)
+        if reservation:
+            for existing_reservation in list(service.ip_reservations):
+                if existing_reservation.id != reservation.id:
+                    IpPoolService.release_reservation(db, existing_reservation)
+            IpPoolService.assign_reservation(
+                db, reservation, service, client_id=service.client_id
+            )
+
+        if (
+            previous_status != models.ClientServiceStatus.CANCELLED
+            and service.status == models.ClientServiceStatus.CANCELLED
+        ):
+            cls._release_service_reservations(db, service)
 
         if previous_plan_id != service.service_plan_id:
             ObservabilityService.record_event(
@@ -618,6 +693,7 @@ class ClientContractService:
 
     @staticmethod
     def delete_service(db: Session, service: models.ClientService) -> None:
+        ClientContractService._release_service_reservations(db, service)
         db.delete(service)
         db.commit()
 
@@ -688,7 +764,7 @@ class ClientContractService:
             debt_months=service.debt_months,
         )
 
-        normalized, _, effective_price = cls._normalize_payload(
+        normalized, _, effective_price, _ = cls._normalize_payload(
             db, payload, client=service.client, existing=service
         )
 

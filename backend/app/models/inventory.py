@@ -82,6 +82,9 @@ class InventoryItem(Base):
         back_populates="inventory_item",
         cascade="all, delete-orphan",
     )
+    ip_reservations = relationship(
+        "BaseIpReservation", back_populates="inventory_item", cascade="all, delete-orphan"
+    )
     support_tickets = relationship("SupportTicket", back_populates="inventory_item")
 
 
