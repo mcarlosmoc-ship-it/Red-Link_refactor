@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Iterable, Optional, Tuple
 
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 
@@ -38,6 +39,29 @@ class IpPoolService:
             note=note,
         )
         db.add(entry)
+
+    @staticmethod
+    def _find_available_reservation(
+        db: Session,
+        *,
+        base_id: int,
+        pool_id: Optional[int] = None,
+    ) -> models.BaseIpReservation:
+        query = db.query(models.BaseIpReservation).filter(
+            models.BaseIpReservation.base_id == base_id,
+            models.BaseIpReservation.status.in_(
+                [models.IpReservationStatus.FREE, models.IpReservationStatus.RESERVED]
+            ),
+        )
+        if pool_id:
+            query = query.filter(models.BaseIpReservation.pool_id == pool_id)
+
+        reservation = query.order_by(models.BaseIpReservation.ip_address).first()
+        if reservation is None:
+            raise IpPoolServiceError(
+                "No hay IPs disponibles para la base o pool seleccionado."
+            )
+        return reservation
 
     @staticmethod
     def list_pools(
@@ -176,6 +200,16 @@ class IpPoolService:
         client_id: Optional[str] = None,
         inventory_item_id: Optional[str] = None,
     ) -> models.BaseIpReservation:
+        if reservation.status == models.IpReservationStatus.IN_USE and (
+            reservation.service_id not in (None, service.id)
+        ):
+            raise IpPoolServiceError("La IP seleccionada ya está asignada a otro servicio.")
+
+        if reservation.base_id != service.zone_id:
+            raise IpPoolServiceError(
+                "La IP seleccionada pertenece a una base distinta a la del servicio."
+            )
+
         previous_status = reservation.status.value
         reservation.status = models.IpReservationStatus.IN_USE
         reservation.service_id = service.id
@@ -203,25 +237,30 @@ class IpPoolService:
 
     @staticmethod
     def release_reservation(
-        db: Session, reservation: models.BaseIpReservation
+        db: Session,
+        reservation: models.BaseIpReservation,
+        *,
+        note: Optional[str] = None,
     ) -> models.BaseIpReservation:
         previous_status = reservation.status.value
+        linked_service = reservation.service
         reservation.status = models.IpReservationStatus.QUARANTINE
         reservation.service_id = None
         reservation.client_id = None
         reservation.inventory_item_id = None
         reservation.released_at = datetime.now(timezone.utc)
-        if reservation.service is not None:
-            reservation.service.ip_address = None
+        if linked_service is not None:
+            linked_service.ip_address = None
         try:
             db.add(reservation)
-            if reservation.service is not None:
-                db.add(reservation.service)
+            if linked_service is not None:
+                db.add(linked_service)
             IpPoolService._record_history(
                 db,
                 reservation,
                 models.IpAssignmentAction.RELEASE,
                 previous_status=previous_status,
+                note=note,
             )
             db.commit()
         except SQLAlchemyError as exc:
@@ -229,6 +268,165 @@ class IpPoolService:
             raise IpPoolServiceError("No se pudo liberar la IP.") from exc
         db.refresh(reservation)
         return reservation
+
+    @staticmethod
+    def acquire_reservation_for_service(
+        db: Session,
+        *,
+        base_id: int,
+        pool_id: Optional[int] = None,
+    ) -> models.BaseIpReservation:
+        return IpPoolService._find_available_reservation(db, base_id=base_id, pool_id=pool_id)
+
+    @staticmethod
+    def run_hygiene(
+        db: Session,
+        *,
+        quarantine_grace_hours: int = 24,
+    ) -> schemas.IpHygieneRunResult:
+        now = datetime.now(timezone.utc)
+        cutoff = now - timedelta(hours=max(quarantine_grace_hours, 0))
+        quarantined: list[str] = []
+        released: list[str] = []
+        freed: list[str] = []
+
+        inconsistent = (
+            db.query(models.BaseIpReservation)
+            .filter(
+                models.BaseIpReservation.status == models.IpReservationStatus.IN_USE,
+                models.BaseIpReservation.service_id.is_(None),
+            )
+            .all()
+        )
+        for reservation in inconsistent:
+            previous_status = reservation.status.value
+            reservation.status = models.IpReservationStatus.QUARANTINE
+            reservation.released_at = now
+            reservation.inventory_item_id = None
+            reservation.client_id = None
+            IpPoolService._record_history(
+                db,
+                reservation,
+                models.IpAssignmentAction.QUARANTINE,
+                previous_status=previous_status,
+                note="Liberada por higiene (servicio inexistente)",
+            )
+            quarantined.append(str(reservation.id))
+
+        db.flush()
+
+        stale_quarantine = (
+            db.query(models.BaseIpReservation)
+            .filter(models.BaseIpReservation.status == models.IpReservationStatus.QUARANTINE)
+            .filter(
+                (models.BaseIpReservation.released_at.is_(None))
+                | (models.BaseIpReservation.released_at <= cutoff)
+            )
+            .all()
+        )
+        for reservation in stale_quarantine:
+            previous_status = reservation.status.value
+            reservation.status = models.IpReservationStatus.FREE
+            reservation.assigned_at = None
+            reservation.released_at = now
+            reservation.service_id = None
+            reservation.inventory_item_id = None
+            reservation.client_id = None
+            IpPoolService._record_history(
+                db,
+                reservation,
+                models.IpAssignmentAction.RELEASE,
+                previous_status=previous_status,
+                note="Liberada por higiene",
+            )
+            freed.append(str(reservation.id))
+
+        try:
+            db.commit()
+        except SQLAlchemyError as exc:
+            db.rollback()
+            raise IpPoolServiceError("No se pudo ejecutar la higiene de IPs.") from exc
+
+        usage_by_pool, usage_by_base = IpPoolService._usage_report(db)
+        return schemas.IpHygieneRunResult(
+            quarantined=quarantined,
+            released=released,
+            freed=freed,
+            usage_by_pool=usage_by_pool,
+            usage_by_base=usage_by_base,
+        )
+
+    @staticmethod
+    def usage_report(db: Session) -> schemas.IpUsageReport:
+        usage_by_pool, usage_by_base = IpPoolService._usage_report(db)
+        return schemas.IpUsageReport(
+            usage_by_pool=usage_by_pool, usage_by_base=usage_by_base
+        )
+
+    @staticmethod
+    def _usage_report(
+        db: Session,
+    ) -> tuple[list[schemas.IpUsageBreakdown], list[schemas.IpUsageBreakdown]]:
+        pool_rows = (
+            db.query(
+                models.BaseIpReservation.pool_id,
+                models.BaseIpReservation.base_id,
+                models.BaseIpPool.label,
+                models.BaseIpReservation.status,
+                func.count(models.BaseIpReservation.id),
+            )
+            .join(models.BaseIpPool, models.BaseIpPool.id == models.BaseIpReservation.pool_id, isouter=True)
+            .group_by(
+                models.BaseIpReservation.pool_id,
+                models.BaseIpReservation.base_id,
+                models.BaseIpPool.label,
+                models.BaseIpReservation.status,
+            )
+            .all()
+        )
+
+        base_rows = (
+            db.query(
+                models.BaseIpReservation.base_id,
+                models.BaseIpReservation.status,
+                func.count(models.BaseIpReservation.id),
+            )
+            .group_by(models.BaseIpReservation.base_id, models.BaseIpReservation.status)
+            .all()
+        )
+
+        def _collapse(rows, include_pool: bool) -> list[schemas.IpUsageBreakdown]:
+            accum: dict[tuple[Optional[int], int], dict[str, int]] = {}
+            labels: dict[tuple[Optional[int], int], Optional[str]] = {}
+            for row in rows:
+                if include_pool:
+                    pool_id, base_id, label, status, count = row
+                    key = (pool_id, base_id)
+                    labels[key] = label
+                else:
+                    base_id, status, count = row
+                    key = (None, base_id)
+                stats = accum.setdefault(key, {"total": 0, "free": 0, "reserved": 0, "in_use": 0, "quarantine": 0})
+                stats["total"] += count
+                stats[status.value] = stats.get(status.value, 0) + count
+            breakdown: list[schemas.IpUsageBreakdown] = []
+            for key, stats in accum.items():
+                pool_id, base_id = key
+                breakdown.append(
+                    schemas.IpUsageBreakdown(
+                        base_id=base_id,
+                        pool_id=pool_id,
+                        pool_label=labels.get(key) if include_pool else None,
+                        total=stats["total"],
+                        free=stats.get(models.IpReservationStatus.FREE.value, 0),
+                        reserved=stats.get(models.IpReservationStatus.RESERVED.value, 0),
+                        in_use=stats.get(models.IpReservationStatus.IN_USE.value, 0),
+                        quarantine=stats.get(models.IpReservationStatus.QUARANTINE.value, 0),
+                    )
+                )
+            return sorted(breakdown, key=lambda entry: (entry.base_id, entry.pool_id or 0))
+
+        return _collapse(pool_rows, True), _collapse(base_rows, False)
 
     @staticmethod
     def update_reservation(
