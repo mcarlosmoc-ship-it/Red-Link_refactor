@@ -145,7 +145,7 @@ def test_create_streaming_service_requires_credentials(client, db_session):
     assert "credenciales" in response.json()["detail"].lower()
 
 
-def test_create_internet_service_requires_equipment(client, db_session):
+def test_create_internet_service_allows_missing_equipment(client, db_session):
     zone = _create_base(db_session, code="BASE-EQUIP")
     plan = _create_limited_plan(db_session, capacity_limit=5, name="Plan Equipo")
     customer = _create_client(db_session, zone, "Cliente Equipo")
@@ -160,5 +160,32 @@ def test_create_internet_service_requires_equipment(client, db_session):
     }
 
     response = client.post("/client-services/", json=payload)
-    assert response.status_code == 400, response.json()
-    assert "equipo" in response.json()["detail"].lower()
+    assert response.status_code == 201, response.json()
+    assert response.json()["service_plan"]["id"] == plan.id
+
+
+def test_update_internet_service_without_equipment(client, db_session):
+    zone = _create_base(db_session, code="BASE-EQUIP-UPDATE")
+    plan = _create_limited_plan(db_session, capacity_limit=5, name="Plan Equipo Update")
+    customer = _create_client(db_session, zone, "Cliente Equipo Update")
+
+    create_payload = {
+        "client_id": str(customer.id),
+        "service_id": plan.id,
+        "status": models.ClientServiceStatus.ACTIVE.value,
+        "billing_day": 12,
+        "zone_id": zone.id,
+        "ip_address": "10.0.0.20",
+    }
+    create_response = client.post("/client-services/", json=create_payload)
+    assert create_response.status_code == 201, create_response.json()
+
+    service_id = create_response.json()["id"]
+    update_payload = {
+        "status": models.ClientServiceStatus.SUSPENDED.value,
+        "billing_day": 15,
+    }
+
+    update_response = client.put(f"/client-services/{service_id}", json=update_payload)
+    assert update_response.status_code == 200, update_response.json()
+    assert update_response.json()["status"] == models.ClientServiceStatus.SUSPENDED.value
