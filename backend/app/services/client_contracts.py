@@ -19,13 +19,13 @@ DEFAULT_PLAN_REQUIREMENTS: dict[models.ClientServiceType, dict[str, bool]] = {
         "requires_ip": True,
         "requires_base": True,
         "requires_credentials": False,
-        "requires_equipment": True,
+        "requires_equipment": False,
     },
     models.ClientServiceType.HOTSPOT: {
         "requires_ip": True,
         "requires_base": True,
         "requires_credentials": False,
-        "requires_equipment": True,
+        "requires_equipment": False,
     },
     models.ClientServiceType.STREAMING: {
         "requires_ip": False,
@@ -64,18 +64,29 @@ def _resolve_plan_requirements(
         plan.category, DEFAULT_PLAN_REQUIREMENTS[models.ClientServiceType.OTHER]
     )
 
+    requires_ip = _from_metadata(["requires_ip", "requiresIp"])
+    requires_base = _from_metadata(["requires_base", "requiresBase"])
+    requires_credentials = _from_metadata(
+        ["requires_credentials", "requiresCredentials", "requireCredentials"]
+    )
+    requires_equipment = _from_metadata(
+        ["requires_equipment", "requiresEquipment", "requireEquipment"]
+    )
+
+    if requires_ip is None:
+        requires_ip = plan.requires_ip
+    if requires_base is None:
+        requires_base = plan.requires_base
+    if requires_credentials is None:
+        requires_credentials = defaults["requires_credentials"]
+    if requires_equipment is None:
+        requires_equipment = defaults["requires_equipment"]
+
     return {
-        "requires_ip": _from_metadata(["requires_ip", "requiresIp"]) or plan.requires_ip,
-        "requires_base": _from_metadata(["requires_base", "requiresBase"])
-        or plan.requires_base,
-        "requires_credentials": _from_metadata(
-            ["requires_credentials", "requiresCredentials", "requireCredentials"]
-        )
-        or defaults["requires_credentials"],
-        "requires_equipment": _from_metadata(
-            ["requires_equipment", "requiresEquipment", "requireEquipment"]
-        )
-        or defaults["requires_equipment"],
+        "requires_ip": requires_ip,
+        "requires_base": requires_base,
+        "requires_credentials": requires_credentials,
+        "requires_equipment": requires_equipment,
     }
 
 
