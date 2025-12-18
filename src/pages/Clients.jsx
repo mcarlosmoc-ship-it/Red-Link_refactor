@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { useLocation, useSearchParams } from 'react-router-dom'
+import React, { useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Card, CardContent } from '../components/ui/Card.jsx'
 import ClientsList from '../features/clients/ClientsList.jsx'
 import ClientForm from '../features/clients/ClientForm.jsx'
@@ -41,7 +41,6 @@ export default function ClientsPage() {
     initializeStatus: state.status.initialize,
   }))
   const { isRefreshing } = useBackofficeRefresh()
-  const location = useLocation()
   const [searchParams, setSearchParams] = useSearchParams()
   const {
     clients,
@@ -57,9 +56,6 @@ export default function ClientsPage() {
   const { deleteClientService, updateClientService } = useClientServices({ autoLoad: false })
   const { servicePlans, status: servicePlansStatus } = useServicePlans()
   const { showToast } = useToast()
-  const [activeMainTab, setActiveMainTab] = useState('clients')
-  const [activeClientTab, setActiveClientTab] = useState('list')
-  const [selectedClientId, setSelectedClientId] = useState(null)
   const [selectedClientIds, setSelectedClientIds] = useState([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isProcessingService, setIsProcessingService] = useState(false)
@@ -70,62 +66,63 @@ export default function ClientsPage() {
   const [isImporting, setIsImporting] = useState(false)
   const serviceFormRef = useRef(null)
 
-  useEffect(() => {
-    const viewParam = searchParams.get('view')
-    const clientIdParam = normalizeId(searchParams.get('clientId'))
-    const normalizedSelectedId = normalizeId(selectedClientId)
-    const isServicesView =
-      viewParam === 'services' ||
-      location.hash === '#services' ||
-      location.hash === '#monthly-services'
-
-    setSelectedClientId((prev) =>
-      clientIdParam && clientIdParam !== prev ? clientIdParam : prev,
-    )
-
-    setActiveMainTab(isServicesView ? 'services' : 'clients')
-
-    if (!isServicesView) {
-      const nextClientTab =
-        viewParam === 'payments'
-          ? 'payments'
-          : viewParam === 'create'
-            ? 'create'
-            : 'list'
-
-      setActiveClientTab(nextClientTab)
-    }
-  }, [location.hash, searchParams, selectedClientId])
-
-  useEffect(() => {
-    const nextParams = new globalThis.URLSearchParams(searchParams)
-    const normalizedClientId = normalizeId(selectedClientId)
-    const viewValue =
-      activeMainTab === 'services' ? 'services' : activeClientTab || 'list'
-
-    if (normalizedClientId) {
-      nextParams.set('clientId', normalizedClientId)
-    } else {
-      nextParams.delete('clientId')
-    }
-
-    if (viewValue && viewValue !== 'list') {
-      nextParams.set('view', viewValue)
-    } else {
-      nextParams.delete('view')
-    }
-
-    const nextString = nextParams.toString()
-    if (nextString !== searchParams.toString()) {
-      setSearchParams(nextParams, { replace: true })
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeMainTab, activeClientTab, selectedClientId, setSearchParams])
+  const viewParam = searchParams.get('view')
+  const mainView = viewParam === 'services' ? 'services' : 'clients'
+  const clientView =
+    mainView === 'clients'
+      ? viewParam === 'payments'
+        ? 'payments'
+        : viewParam === 'create'
+          ? 'create'
+          : 'list'
+      : 'list'
+  const selectedClientId = normalizeId(searchParams.get('clientId'))
 
   const selectedClient = useMemo(
-    () => clients.find((client) => normalizeId(client.id) === normalizeId(selectedClientId)) ?? null,
+    () => clients.find((client) => normalizeId(client.id) === selectedClientId) ?? null,
     [clients, selectedClientId],
   )
+
+  const updateNavigation = (updater, options = {}) => {
+    setSearchParams((currentParams) => {
+      const nextParams = new globalThis.URLSearchParams(currentParams)
+      updater(nextParams)
+      return nextParams
+    }, options)
+  }
+
+  const goToServices = () => {
+    updateNavigation((params) => {
+      params.set('view', 'services')
+      params.delete('clientId')
+    })
+  }
+
+  const goToList = () => {
+    updateNavigation((params) => {
+      params.delete('view')
+      params.delete('clientId')
+    })
+  }
+
+  const goToCreate = () => {
+    updateNavigation((params) => {
+      params.set('view', 'create')
+      params.delete('clientId')
+    })
+  }
+
+  const goToPayments = (clientId) => {
+    const normalizedId = normalizeId(clientId)
+    updateNavigation((params) => {
+      params.set('view', 'payments')
+      if (normalizedId) {
+        params.set('clientId', normalizedId)
+      } else {
+        params.delete('clientId')
+      }
+    })
+  }
 
   const focusServiceForm = () => {
     setTimeout(() => {
@@ -135,13 +132,7 @@ export default function ClientsPage() {
     }, 50)
   }
 
-  const handleSelectClient = (clientId) => {
-    const normalizedId = normalizeId(clientId)
-    setSelectedClientId(normalizedId)
-    if (normalizedId) {
-      setActiveClientTab('payments')
-    }
-  }
+  const handleSelectClient = (clientId) => goToPayments(clientId)
 
   const handleCreateClient = async ({ client, service }) => {
     setIsSubmitting(true)
@@ -155,8 +146,7 @@ export default function ClientsPage() {
         title: 'Cliente creado',
         description: 'El cliente se registró correctamente.',
       })
-      setSelectedClientId(normalizeId(created.id))
-      setActiveClientTab('payments')
+      goToPayments(created.id)
       return created
     } catch (error) {
       const description = resolveApiErrorMessage(error, 'No se pudo crear el cliente.')
@@ -179,7 +169,9 @@ export default function ClientsPage() {
         description: 'Se eliminó el cliente seleccionado.',
       })
       if (selectedClientId === normalizedId) {
-        setSelectedClientId(null)
+        updateNavigation((params) => {
+          params.delete('clientId')
+        }, { replace: true })
       }
     } catch (error) {
       showToast({
@@ -667,14 +659,14 @@ export default function ClientsPage() {
               key={tab.id}
               id={`main-tab-${tab.id}`}
               role="tab"
-              aria-selected={activeMainTab === tab.id}
+              aria-selected={mainView === tab.id}
               aria-controls={`main-panel-${tab.id}`}
               className={`rounded px-4 py-2 text-sm font-medium ${
-                activeMainTab === tab.id
+                mainView === tab.id
                   ? 'bg-blue-600 text-white'
                   : 'bg-white text-slate-700 ring-1 ring-slate-200'
               } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2`}
-              onClick={() => setActiveMainTab(tab.id)}
+              onClick={() => (tab.id === 'services' ? goToServices() : goToList())}
             >
               {tab.label}
             </button>
@@ -682,7 +674,7 @@ export default function ClientsPage() {
         </CardContent>
       </Card>
 
-      {activeMainTab === 'services' ? (
+      {mainView === 'services' ? (
         <div id="main-panel-services" role="tabpanel" aria-labelledby="main-tab-services">
           <MonthlyServicesPage />
         </div>
@@ -700,14 +692,22 @@ export default function ClientsPage() {
                   key={tab.id}
                   id={`client-tab-${tab.id}`}
                   role="tab"
-                  aria-selected={activeClientTab === tab.id}
+                  aria-selected={clientView === tab.id}
                   aria-controls={`client-panel-${tab.id}`}
                   className={`rounded px-4 py-2 text-sm font-medium ${
-                    activeClientTab === tab.id
+                    clientView === tab.id
                       ? 'bg-blue-600 text-white'
                       : 'bg-white text-slate-700 ring-1 ring-slate-200'
                   } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2`}
-                  onClick={() => setActiveClientTab(tab.id)}
+                  onClick={() => {
+                    if (tab.id === 'create') {
+                      goToCreate()
+                    } else if (tab.id === 'payments') {
+                      goToPayments(selectedClientId)
+                    } else {
+                      goToList()
+                    }
+                  }}
                 >
                   {tab.label}
                 </button>
@@ -715,7 +715,7 @@ export default function ClientsPage() {
             </CardContent>
           </Card>
 
-          {activeClientTab === 'list' && (
+          {clientView === 'list' && (
             <div id="client-panel-list" role="tabpanel" aria-labelledby="client-tab-list" className="space-y-4">
               <ClientsList
                 clients={clients}
@@ -739,7 +739,7 @@ export default function ClientsPage() {
             </div>
           )}
 
-          {activeClientTab === 'create' && (
+          {clientView === 'create' && (
             <div
               id="client-panel-create"
               role="tabpanel"
@@ -756,7 +756,7 @@ export default function ClientsPage() {
             </div>
           )}
 
-          {activeClientTab === 'payments' && (
+          {clientView === 'payments' && (
             <div
               id="client-panel-payments"
               role="tabpanel"
