@@ -300,3 +300,102 @@ def test_hygiene_reports_and_payments(client, db_session):
     )
     assert listed_payments.status_code == 200, listed_payments.json()
     assert listed_payments.json()["total"] == 1
+
+
+@pytest.mark.usefixtures("client")
+def test_full_flow_client_creation_and_ip_selection(client, db_session):
+    zone = _create_base(db_session, "FLOW")
+
+    plan_response = client.post(
+        "/service-plans",
+        json={
+            "name": "Plan Completo",
+            "category": models.ClientServiceType.INTERNET.value,
+            "monthly_price": 450,
+            "description": "Plan con IP fija",
+            "requires_ip": True,
+            "requires_base": True,
+            "capacity_type": models.CapacityType.UNLIMITED.value,
+            "status": models.ServicePlanStatus.ACTIVE.value,
+        },
+    )
+    assert plan_response.status_code == 201, plan_response.json()
+    plan_id = plan_response.json()["id"]
+
+    client_response = client.post(
+        "/clients",
+        json={
+            "full_name": "Cliente Flujo",
+            "client_type": models.ClientType.RESIDENTIAL.value,
+            "location": "Centro",
+            "zone_id": zone.id,
+        },
+    )
+    assert client_response.status_code == 201, client_response.json()
+    client_id = client_response.json()["id"]
+
+    pool_response = client.post(
+        "/ip-pools",
+        json={"base_id": zone.id, "label": "Pool Flujo", "cidr": "10.1.0.0/24"},
+    )
+    assert pool_response.status_code == 201, pool_response.json()
+    pool_id = pool_response.json()["id"]
+
+    free_response = client.post(
+        "/ip-pools/reservations",
+        json={
+            "base_id": zone.id,
+            "pool_id": pool_id,
+            "ip_address": "10.1.0.10",
+            "status": models.IpReservationStatus.FREE.value,
+        },
+    )
+    assert free_response.status_code == 201, free_response.json()
+    free_reservation_id = free_response.json()["id"]
+
+    in_use_response = client.post(
+        "/ip-pools/reservations",
+        json={
+            "base_id": zone.id,
+            "pool_id": pool_id,
+            "ip_address": "10.1.0.11",
+            "status": models.IpReservationStatus.IN_USE.value,
+        },
+    )
+    assert in_use_response.status_code == 201, in_use_response.json()
+    in_use_reservation_id = in_use_response.json()["id"]
+
+    available_response = client.get(
+        "/ip-pools/reservations",
+        params={
+            "base_id": zone.id,
+            "status": models.IpReservationStatus.FREE.value,
+        },
+    )
+    assert available_response.status_code == 200, available_response.json()
+    available_ids = {item["id"] for item in available_response.json()["items"]}
+    assert free_reservation_id in available_ids
+    assert in_use_reservation_id not in available_ids
+
+    service_response = client.post(
+        "/client-services/",
+        json={
+            "client_id": client_id,
+            "service_id": plan_id,
+            "status": models.ClientServiceStatus.ACTIVE.value,
+            "billing_day": 7,
+            "zone_id": zone.id,
+            "ip_reservation_id": free_reservation_id,
+        },
+    )
+    assert service_response.status_code == 201, service_response.json()
+    service_data = service_response.json()
+    assert service_data["ip_address"] == "10.1.0.10"
+
+    assigned_reservation = (
+        db_session.query(models.BaseIpReservation)
+        .filter(models.BaseIpReservation.id == free_reservation_id)
+        .one()
+    )
+    assert assigned_reservation.status == models.IpReservationStatus.IN_USE
+    assert assigned_reservation.service_id == service_data["id"]
