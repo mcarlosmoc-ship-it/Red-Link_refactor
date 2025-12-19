@@ -12,7 +12,7 @@ from .. import schemas
 from ..models.client import ServiceStatus
 from ..database import get_db
 from ..security import require_admin
-from ..services import ClientContractService, ClientService, PaymentService
+from ..services import ClientContractService, ClientService, IpPoolService, PaymentService
 
 router = APIRouter(dependencies=[Depends(require_admin)])
 
@@ -109,6 +109,35 @@ def get_client(client_id: str, db: Session = Depends(get_db)) -> schemas.ClientR
     if client is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client not found")
     return client
+
+
+@router.get(
+    "/{client_id}/ip-history",
+    response_model=schemas.IpAssignmentHistoryListResponse,
+    summary="Historial de asignaciones de IP del cliente",
+)
+def list_client_ip_history(
+    client_id: str,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db),
+) -> schemas.IpAssignmentHistoryListResponse:
+    client = ClientService.get_client(db, client_id)
+    if client is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client not found")
+
+    items, total = IpPoolService.list_assignment_history_for_client(
+        db,
+        client_id=client_id,
+        skip=skip,
+        limit=limit,
+    )
+    return schemas.IpAssignmentHistoryListResponse(
+        items=items,
+        total=total,
+        limit=limit,
+        skip=skip,
+    )
 
 
 @router.get(
