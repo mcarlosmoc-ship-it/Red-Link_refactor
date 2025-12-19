@@ -124,9 +124,18 @@ def test_import_clients_rejects_duplicate_ips_against_existing(client, db_sessio
         client=existing_client,
         service_plan=plan,
         zone_id=zone.id,
-        ip_address="10.0.0.10",
     )
     db_session.add_all([zone, plan, existing_client, existing_service])
+    db_session.flush()
+    db_session.add(
+        models.BaseIpReservation(
+            base_id=zone.id,
+            ip_address="10.0.0.10",
+            status=models.IpReservationStatus.IN_USE,
+            service_id=existing_service.id,
+            client_id=existing_client.id,
+        )
+    )
     db_session.commit()
 
     csv_content = (

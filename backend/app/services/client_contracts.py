@@ -194,6 +194,7 @@ class ClientContractService:
         inventory_item_id = payload.pop("inventory_item_id", None)
         start_date = payload.pop("start_date", None)
         apply_prorate = bool(payload.pop("apply_prorate", True))
+        ip_address = payload.pop("ip_address", None)
         if existing is not None:
             client = client or existing.client
 
@@ -241,10 +242,54 @@ class ClientContractService:
                     raise ClientContractError(
                         "La IP seleccionada no está disponible para asignar al servicio."
                     )
-            elif not existing_reservations:
+            elif not ip_address and not existing_reservations:
+                base_id = payload.get("zone_id")
+                if base_id is None:
+                    raise ClientContractError(
+                        "Selecciona una reserva de IP disponible para este servicio."
+                    )
+                try:
+                    selected_reservation = IpPoolService.acquire_reservation_for_service(
+                        db, base_id=base_id
+                    )
+                except IpPoolServiceError as exc:
+                    raise ClientContractError(str(exc)) from exc
+        else:
+            if ip_reservation_id:
                 raise ClientContractError(
-                    "Selecciona una reserva de IP disponible para este servicio."
+                    "El plan no requiere IP, pero se proporcionó una reserva."
                 )
+            if ip_address:
+                raise ClientContractError(
+                    "El plan no requiere IP, pero se proporcionó una dirección."
+                )
+
+        if ip_address and not ip_reservation_id:
+            base_id = payload.get("zone_id")
+            if base_id is None:
+                raise ClientContractError(
+                    "Debes seleccionar una base para registrar la IP manualmente."
+                )
+            existing_reservation = IpPoolService.get_reservation_by_ip(
+                db, base_id=base_id, ip_address=ip_address
+            )
+            if existing_reservation is not None:
+                if (
+                    existing_reservation.status == models.IpReservationStatus.IN_USE
+                    and existing_reservation.service_id not in (None, existing.id if existing else None)
+                ):
+                    raise ClientContractError(
+                        "La IP seleccionada ya está asignada a otro servicio."
+                    )
+                selected_reservation = existing_reservation
+            else:
+                selected_reservation = IpPoolService.ensure_reservation_for_ip(
+                    db,
+                    base_id=base_id,
+                    ip_address=ip_address,
+                    status=models.IpReservationStatus.RESERVED,
+                )
+            ip_reservation_id = str(selected_reservation.id)
 
         if requirements["requires_equipment"]:
             antenna_model = payload.get("antenna_model")

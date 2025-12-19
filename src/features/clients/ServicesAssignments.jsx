@@ -93,16 +93,16 @@ export default function ServicesAssignments({
           ? undefined
           : normalizedPrice
 
-    const payload = {
-      ...(clientId ? { clientId } : {}),
-      servicePlanId: state.servicePlanId,
-      billingDay: Number(state.billingDay) || 1,
-      baseId: resolveBaseId(),
-      ipReservationId: trim(state.ipReservationId) || undefined,
-      antennaIp: trim(state.antennaIp) || undefined,
-      modemIp: trim(state.modemIp) || undefined,
-      antennaModel: trim(state.antennaModel) || undefined,
-      modemModel: trim(state.modemModel) || undefined,
+      const payload = {
+        ...(clientId ? { clientId } : {}),
+        servicePlanId: state.servicePlanId,
+        billingDay: Number(state.billingDay) || 1,
+        baseId: resolveBaseId(),
+        ipAddress: trim(state.ipAddress) || undefined,
+        antennaIp: trim(state.antennaIp) || undefined,
+        modemIp: trim(state.modemIp) || undefined,
+        antennaModel: trim(state.antennaModel) || undefined,
+        modemModel: trim(state.modemModel) || undefined,
       customPrice,
       debtAmount: state.debtAmount === '' ? undefined : Number(state.debtAmount) || 0,
       debtMonths: state.debtMonths === '' ? undefined : Number(state.debtMonths) || 0,
@@ -113,7 +113,7 @@ export default function ServicesAssignments({
     if (forUpdate) {
       const nullableKeys = [
         'baseId',
-        'ipReservationId',
+        'ipAddress',
         'antennaIp',
         'modemIp',
         'antennaModel',
@@ -170,7 +170,7 @@ export default function ServicesAssignments({
       baseId: service.baseId ? String(service.baseId) : '',
       useClientBase: !service.baseId && Boolean(client.zoneId),
       price: service.customPrice ?? '',
-      ipReservationId: service.ipReservationId ?? '',
+      ipAddress: service.ipAddress ?? '',
       antennaIp: service.antennaIp ?? '',
       modemIp: service.modemIp ?? '',
       antennaModel: service.antennaModel ?? '',
@@ -216,7 +216,7 @@ export default function ServicesAssignments({
       servicePlanId: planId,
       serviceType: plan?.serviceType ?? plan?.category ?? prev.serviceType,
       price: '',
-      ipReservationId: requirements.requiresIp ? prev.ipReservationId : '',
+      ipAddress: requirements.requiresIp ? prev.ipAddress : '',
       antennaIp: '',
       modemIp: '',
       antennaModel: '',
@@ -351,20 +351,23 @@ export default function ServicesAssignments({
               {requiresIp && (
                 <div className="space-y-1">
                   <label className="text-sm font-medium" htmlFor="assignment-ip">
-                    Reserva IP asignada
+                    IP asignada
                   </label>
                   <input
                     id="assignment-ip"
                     className="w-full rounded border border-slate-200 p-2"
-                    placeholder="ID de reserva"
-                    value={serviceState.ipReservationId}
+                    placeholder="Ejemplo: 10.0.0.10"
+                    value={serviceState.ipAddress}
                     onChange={(event) =>
-                      handleServiceStateChange('ipReservationId', event.target.value)
+                      handleServiceStateChange('ipAddress', event.target.value)
                     }
                   />
-                  {assignErrors.ipReservationId && (
+                  <p className="text-xs text-slate-500">
+                    Puedes dejarla vacía para asignar automáticamente la siguiente IP disponible.
+                  </p>
+                  {assignErrors.ipAddress && (
                     <p className="text-xs font-medium text-red-600" data-testid="assignment-ip-error">
-                      {assignErrors.ipReservationId}
+                      {assignErrors.ipAddress}
                     </p>
                   )}
                 </div>
@@ -542,12 +545,12 @@ export default function ServicesAssignments({
                               <>
                                 <input
                                   className="rounded border border-slate-200 p-2"
-                                  placeholder="Reserva IP"
-                                  value={editState.ipReservationId}
+                                  placeholder="IP principal"
+                                  value={editState.ipAddress}
                                   onChange={(event) =>
                                     setEditState((prev) => ({
                                       ...prev,
-                                      ipReservationId: event.target.value,
+                                      ipAddress: event.target.value,
                                     }))
                                   }
                                 />
@@ -591,11 +594,11 @@ export default function ServicesAssignments({
                             )}
                           </div>
                         )}
-                        {(editErrors.ipReservationId || editErrors.antennaModel) && (
+                        {(editErrors.ipAddress || editErrors.antennaModel) && (
                           <div className="space-y-1 text-xs font-medium text-red-600">
-                            {editErrors.ipReservationId && (
+                            {editErrors.ipAddress && (
                               <p data-testid={`edit-ip-error-${service.id}`}>
-                                {editErrors.ipReservationId}
+                                {editErrors.ipAddress}
                               </p>
                             )}
                             {editErrors.antennaModel && (

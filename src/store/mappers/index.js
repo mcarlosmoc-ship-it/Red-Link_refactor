@@ -424,6 +424,10 @@ export const serializeClientPayload = (payload) => {
             serviceBody.base_id = numericBaseId
           }
 
+          if (service?.ipAddress || service?.ip_address) {
+            serviceBody.ip_address = service.ipAddress ?? service.ip_address
+          }
+
           if (service?.ipReservationId || service?.ip_reservation_id) {
             serviceBody.ip_reservation_id =
               service.ipReservationId ?? service.ip_reservation_id
@@ -493,6 +497,10 @@ export const serializeClientServicePayload = (payload) => {
 
   if (payload.baseId) {
     body.base_id = payload.baseId
+  }
+
+  if (payload.ipAddress) {
+    body.ip_address = payload.ipAddress
   }
 
   if (payload.ipReservationId) {
@@ -640,6 +648,10 @@ export const serializeClientServiceUpdatePayload = (payload = {}) => {
 
   if (Object.prototype.hasOwnProperty.call(payload, 'baseId')) {
     body.base_id = payload.baseId ?? null
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'ipAddress')) {
+    body.ip_address = payload.ipAddress ?? null
   }
 
   if (Object.prototype.hasOwnProperty.call(payload, 'ipReservationId')) {

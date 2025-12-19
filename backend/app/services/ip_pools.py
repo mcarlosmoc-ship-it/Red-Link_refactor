@@ -73,6 +73,47 @@ class IpPoolService:
         return reservation
 
     @staticmethod
+    def get_reservation_by_ip(
+        db: Session,
+        *,
+        base_id: int,
+        ip_address: str,
+    ) -> Optional[models.BaseIpReservation]:
+        return (
+            db.query(models.BaseIpReservation)
+            .filter(
+                models.BaseIpReservation.base_id == base_id,
+                models.BaseIpReservation.ip_address == ip_address,
+            )
+            .first()
+        )
+
+    @staticmethod
+    def ensure_reservation_for_ip(
+        db: Session,
+        *,
+        base_id: int,
+        ip_address: str,
+        pool_id: Optional[int] = None,
+        status: models.IpReservationStatus = models.IpReservationStatus.RESERVED,
+    ) -> models.BaseIpReservation:
+        existing = IpPoolService.get_reservation_by_ip(
+            db, base_id=base_id, ip_address=ip_address
+        )
+        if existing is not None:
+            return existing
+
+        reservation = models.BaseIpReservation(
+            base_id=base_id,
+            pool_id=pool_id,
+            ip_address=ip_address,
+            status=status,
+        )
+        db.add(reservation)
+        db.flush()
+        return reservation
+
+    @staticmethod
     def list_pools(
         db: Session,
         *,
@@ -264,10 +305,8 @@ class IpPoolService:
         reservation.inventory_item_id = inventory_item_id or reservation.inventory_item_id
         reservation.assigned_at = datetime.now(timezone.utc)
         reservation.released_at = None
-        service.ip_address = None
         try:
             db.add(reservation)
-            db.add(service)
             IpPoolService._record_history(
                 db,
                 reservation,
@@ -474,37 +513,37 @@ class IpPoolService:
             .all()
         )
         for reservation, service in reservation_rows:
-            if service.primary_ip_address is not None:
-                service_ip = str(service.primary_ip_address)
-            elif service.ip_address is not None:
-                service_ip = str(service.ip_address)
-            else:
-                service_ip = None
             reservation_ip = (
                 str(reservation.ip_address) if reservation.ip_address is not None else None
             )
-            if service.ip_address is None or service_ip == reservation_ip:
+            if (
+                service.primary_ip_reservation_id is not None
+                and str(service.primary_ip_reservation_id) != str(reservation.id)
+            ):
+                continue
+            if service.primary_ip_address is None or service.primary_ip_address == reservation.ip_address:
                 continue
             items.append(
                 schemas.IpAssignmentInconsistency(
                     service_id=str(service.id),
                     reservation_id=str(reservation.id),
-                    service_ip=service_ip,
+                    service_ip=str(service.primary_ip_address),
                     reservation_ip=reservation_ip,
                     reservation_status=reservation.status,
-                    issue="IP legacy del servicio difiere de la reserva",
+                    issue="IP principal del servicio difiere de la reserva",
                     suggested_actions=["limpiar", "reasignar"],
                 )
             )
 
         services_without_reservation = (
             db.query(models.ClientService)
+            .join(models.ServicePlan)
             .outerjoin(
                 models.BaseIpReservation,
                 models.BaseIpReservation.service_id == models.ClientService.id,
             )
             .filter(
-                models.ClientService.ip_address.isnot(None),
+                models.ServicePlan.requires_ip.is_(True),
                 models.BaseIpReservation.id.is_(None),
             )
             .all()
@@ -514,11 +553,11 @@ class IpPoolService:
                 schemas.IpAssignmentInconsistency(
                     service_id=str(service.id),
                     reservation_id=None,
-                    service_ip=str(service.ip_address) if service.ip_address is not None else None,
+                    service_ip=None,
                     reservation_ip=None,
                     reservation_status=None,
-                    issue="Servicio con IP sin reserva asociada",
-                    suggested_actions=["reasignar", "liberar"],
+                    issue="Servicio requiere IP sin reserva asociada",
+                    suggested_actions=["asignar", "reservar"],
                 )
             )
 

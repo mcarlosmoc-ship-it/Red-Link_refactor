@@ -46,6 +46,10 @@ class ClientServiceBase(BaseModel):
         validation_alias=AliasChoices("zone_id", "base_id"),
         serialization_alias="zone_id",
     )
+    ip_address: Optional[str] = Field(
+        default=None,
+        description="IP principal para crear una reserva automáticamente",
+    )
     ip_reservation_id: Optional[str] = Field(
         default=None, description="Reserva de IP asignada al servicio"
     )
@@ -111,6 +115,10 @@ class ClientServiceUpdate(BaseModel):
         ge=1,
         validation_alias=AliasChoices("zone_id", "base_id"),
         serialization_alias="zone_id",
+    )
+    ip_address: Optional[str] = Field(
+        default=None,
+        description="IP principal para crear una reserva automáticamente",
     )
     ip_reservation_id: Optional[str] = Field(
         default=None, description="Reserva de IP asignada al servicio"
