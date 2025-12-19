@@ -2,6 +2,8 @@
 -- Target database: PostgreSQL 15+
 -- This schema captures the core entities used across the Red-Link backoffice UI,
 -- including clients, payments, inventory, resellers, vouchers, and operational expenses.
+-- NOTE: This file is a reference schema; keep it synchronized with Alembic migrations
+-- under backend/alembic/versions to match production changes.
 
 BEGIN;
 
@@ -22,9 +24,6 @@ CREATE TABLE clients (
   full_name TEXT NOT NULL,
   location TEXT NOT NULL,
   base_id INTEGER NOT NULL REFERENCES base_stations(base_id) ON UPDATE CASCADE,
-  ip_address INET,
-  antenna_ip INET,
-  modem_ip INET,
   antenna_model TEXT,
   modem_model TEXT,
   monthly_fee NUMERIC(10,2) NOT NULL DEFAULT 0,
@@ -38,6 +37,48 @@ CREATE TABLE clients (
 CREATE INDEX clients_full_name_idx ON clients USING GIN (to_tsvector('spanish', full_name));
 CREATE INDEX clients_location_idx ON clients(location);
 CREATE INDEX clients_base_idx ON clients(base_id);
+
+-- Individual services contracted by each client (internet, streaming, hotspot, etc.).
+CREATE TABLE client_services (
+  client_service_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id UUID NOT NULL REFERENCES clients(client_id) ON DELETE CASCADE,
+  service_type TEXT NOT NULL CHECK (
+    service_type IN (
+      'internet_private',
+      'internet_tokens',
+      'streaming_spotify',
+      'streaming_netflix',
+      'streaming_vix',
+      'public_desk',
+      'point_of_sale',
+      'other'
+    )
+  ),
+  display_name TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'suspended', 'cancelled', 'pending')),
+  billing_day INTEGER CHECK (billing_day IS NULL OR (billing_day >= 1 AND billing_day <= 31)),
+  next_billing_date DATE,
+  price NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (price >= 0),
+  currency TEXT NOT NULL DEFAULT 'MXN',
+  base_id INTEGER REFERENCES base_stations(base_id) ON DELETE SET NULL,
+  ip_address INET,
+  antenna_ip INET,
+  modem_ip INET,
+  antenna_model TEXT,
+  modem_model TEXT,
+  notes TEXT,
+  metadata JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  cancelled_at TIMESTAMPTZ,
+  UNIQUE (client_id, service_type, display_name)
+);
+
+CREATE INDEX client_services_client_idx ON client_services(client_id);
+CREATE INDEX client_services_base_idx ON client_services(base_id);
+CREATE UNIQUE INDEX client_services_ip_unique_idx ON client_services(ip_address) WHERE ip_address IS NOT NULL;
+CREATE UNIQUE INDEX client_services_antenna_ip_unique_idx ON client_services(antenna_ip) WHERE antenna_ip IS NOT NULL;
+CREATE UNIQUE INDEX client_services_modem_ip_unique_idx ON client_services(modem_ip) WHERE modem_ip IS NOT NULL;
 
 -- Billing periods tracked by the frontend (yyyy-mm format).
 CREATE TABLE billing_periods (
@@ -189,6 +230,58 @@ CREATE TABLE inventory_items (
 
 CREATE INDEX inventory_status_idx ON inventory_items(status);
 CREATE INDEX inventory_client_idx ON inventory_items(client_id);
+
+-- IP pools allocated to each base and their reservations.
+CREATE TABLE base_ip_pools (
+  pool_id SERIAL PRIMARY KEY,
+  base_id INTEGER NOT NULL REFERENCES base_stations(base_id) ON DELETE CASCADE,
+  label TEXT NOT NULL,
+  cidr TEXT NOT NULL,
+  vlan TEXT,
+  notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (base_id, cidr)
+);
+
+CREATE INDEX base_ip_pools_base_idx ON base_ip_pools(base_id);
+
+CREATE TABLE base_ip_reservations (
+  reservation_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  base_id INTEGER NOT NULL REFERENCES base_stations(base_id) ON DELETE CASCADE,
+  pool_id INTEGER REFERENCES base_ip_pools(pool_id) ON DELETE SET NULL,
+  ip_address INET NOT NULL,
+  status TEXT NOT NULL DEFAULT 'free' CHECK (status IN ('free', 'reserved', 'in_use', 'quarantine')),
+  service_id UUID REFERENCES client_services(client_service_id) ON DELETE SET NULL,
+  inventory_item_id UUID REFERENCES inventory_items(inventory_id) ON DELETE SET NULL,
+  client_id UUID REFERENCES clients(client_id) ON DELETE SET NULL,
+  notes TEXT,
+  assigned_at TIMESTAMPTZ,
+  released_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (base_id, ip_address)
+);
+
+CREATE INDEX base_ip_reservations_status_idx ON base_ip_reservations(status);
+CREATE INDEX base_ip_reservations_pool_idx ON base_ip_reservations(pool_id);
+CREATE INDEX base_ip_reservations_service_idx ON base_ip_reservations(service_id);
+CREATE INDEX base_ip_reservations_client_idx ON base_ip_reservations(client_id);
+CREATE INDEX base_ip_reservations_inventory_item_idx ON base_ip_reservations(inventory_item_id);
+
+CREATE TABLE base_ip_assignment_history (
+  assignment_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  reservation_id UUID NOT NULL REFERENCES base_ip_reservations(reservation_id) ON DELETE CASCADE,
+  action TEXT NOT NULL CHECK (action IN ('reserve', 'assign', 'release', 'quarantine')),
+  previous_status TEXT,
+  new_status TEXT NOT NULL,
+  service_id UUID REFERENCES client_services(client_service_id) ON DELETE SET NULL,
+  client_id UUID REFERENCES clients(client_id) ON DELETE SET NULL,
+  inventory_item_id UUID REFERENCES inventory_items(inventory_id) ON DELETE SET NULL,
+  note TEXT,
+  recorded_by TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
 -- Operating expenses tracked per base.
 CREATE TABLE expenses (
