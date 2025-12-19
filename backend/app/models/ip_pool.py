@@ -42,6 +42,13 @@ class IpAssignmentAction(str, enum.Enum):
     QUARANTINE = "quarantine"
 
 
+class IpPoolType(str, enum.Enum):
+    """Network type for IP pools."""
+
+    PUBLIC = "public"
+    PRIVATE = "private"
+
+
 class BaseIpPool(Base):
     """Represents a CIDR block allocated to a base station."""
 
@@ -59,6 +66,14 @@ class BaseIpPool(Base):
     )
     label = Column(String(120), nullable=False)
     cidr = Column(String(64), nullable=False)
+    ip_type = Column(
+        Enum(
+            IpPoolType,
+            name="ip_pool_type_enum",
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+        ),
+        nullable=True,
+    )
     vlan = Column(String(32), nullable=True)
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

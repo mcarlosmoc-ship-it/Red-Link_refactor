@@ -3,7 +3,7 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from ..models.ip_pool import IpReservationStatus
+from ..models.ip_pool import IpPoolType, IpReservationStatus
 from .common import PaginatedResponse
 
 
@@ -11,6 +11,7 @@ class BaseIpPoolBase(BaseModel):
     base_id: int = Field(..., ge=1)
     label: str = Field(..., min_length=1, max_length=120)
     cidr: str = Field(..., min_length=3, max_length=64)
+    ip_type: Optional[IpPoolType] = None
     vlan: Optional[str] = Field(default=None, max_length=32)
     notes: Optional[str] = None
 
@@ -22,6 +23,7 @@ class BaseIpPoolCreate(BaseIpPoolBase):
 class BaseIpPoolUpdate(BaseModel):
     label: Optional[str] = None
     cidr: Optional[str] = None
+    ip_type: Optional[IpPoolType] = None
     vlan: Optional[str] = None
     notes: Optional[str] = None
 
