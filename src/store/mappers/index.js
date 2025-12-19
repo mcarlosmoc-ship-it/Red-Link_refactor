@@ -424,21 +424,9 @@ export const serializeClientPayload = (payload) => {
             serviceBody.base_id = numericBaseId
           }
 
-          if (service?.ipAddress || service?.ip_address) {
-            serviceBody.ip_address = service.ipAddress ?? service.ip_address
-          }
-
           if (service?.ipReservationId || service?.ip_reservation_id) {
             serviceBody.ip_reservation_id =
               service.ipReservationId ?? service.ip_reservation_id
-          }
-
-          if (service?.antennaIp || service?.antenna_ip) {
-            serviceBody.antenna_ip = service.antennaIp ?? service.antenna_ip
-          }
-
-          if (service?.modemIp || service?.modem_ip) {
-            serviceBody.modem_ip = service.modemIp ?? service.modem_ip
           }
 
           if (service?.antennaModel || service?.antenna_model) {
@@ -499,20 +487,8 @@ export const serializeClientServicePayload = (payload) => {
     body.base_id = payload.baseId
   }
 
-  if (payload.ipAddress) {
-    body.ip_address = payload.ipAddress
-  }
-
   if (payload.ipReservationId) {
     body.ip_reservation_id = payload.ipReservationId
-  }
-
-  if (payload.antennaIp) {
-    body.antenna_ip = payload.antennaIp
-  }
-
-  if (payload.modemIp) {
-    body.modem_ip = payload.modemIp
   }
 
   if (payload.antennaModel) {
@@ -596,14 +572,6 @@ export const serializeClientServiceBulkPayload = (payload = {}) => {
     body.ip_reservation_id = payload.ipReservationId
   }
 
-  if (payload.antennaIp) {
-    body.antenna_ip = payload.antennaIp
-  }
-
-  if (payload.modemIp) {
-    body.modem_ip = payload.modemIp
-  }
-
   if (payload.antennaModel) {
     body.antenna_model = payload.antennaModel
   }
@@ -650,20 +618,8 @@ export const serializeClientServiceUpdatePayload = (payload = {}) => {
     body.base_id = payload.baseId ?? null
   }
 
-  if (Object.prototype.hasOwnProperty.call(payload, 'ipAddress')) {
-    body.ip_address = payload.ipAddress ?? null
-  }
-
   if (Object.prototype.hasOwnProperty.call(payload, 'ipReservationId')) {
     body.ip_reservation_id = payload.ipReservationId ?? null
-  }
-
-  if (Object.prototype.hasOwnProperty.call(payload, 'antennaIp')) {
-    body.antenna_ip = payload.antennaIp ?? null
-  }
-
-  if (Object.prototype.hasOwnProperty.call(payload, 'modemIp')) {
-    body.modem_ip = payload.modemIp ?? null
   }
 
   if (Object.prototype.hasOwnProperty.call(payload, 'antennaModel')) {

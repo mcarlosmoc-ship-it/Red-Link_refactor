@@ -2,10 +2,6 @@ import React, { useEffect, useMemo, useState } from 'react'
 import Button from '../../components/ui/Button.jsx'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card.jsx'
 import {
-  planRequiresBase,
-  planRequiresCredentials,
-  planRequiresEquipment,
-  planRequiresIp,
   resolvePlanRequirements,
 } from '../../utils/servicePlanMetadata.js'
 import { computeServiceFormErrors } from '../../utils/serviceFormValidation.js'
@@ -64,10 +60,10 @@ export default function ServicesAssignments({
     [availablePlans, serviceState.servicePlanId],
   )
 
-  const selectedPlanRequirements = useMemo(
-    () => resolvePlanRequirements(selectedPlan),
-    [selectedPlan],
-  )
+  const selectedPlanRequirements = useMemo(() => {
+    const requirements = resolvePlanRequirements(selectedPlan)
+    return { ...requirements, requiresIp: false }
+  }, [selectedPlan])
 
   if (!client) {
     return null
@@ -93,16 +89,13 @@ export default function ServicesAssignments({
           ? undefined
           : normalizedPrice
 
-      const payload = {
-        ...(clientId ? { clientId } : {}),
-        servicePlanId: state.servicePlanId,
-        billingDay: Number(state.billingDay) || 1,
-        baseId: resolveBaseId(),
-        ipAddress: trim(state.ipAddress) || undefined,
-        antennaIp: trim(state.antennaIp) || undefined,
-        modemIp: trim(state.modemIp) || undefined,
-        antennaModel: trim(state.antennaModel) || undefined,
-        modemModel: trim(state.modemModel) || undefined,
+    const payload = {
+      ...(clientId ? { clientId } : {}),
+      servicePlanId: state.servicePlanId,
+      billingDay: Number(state.billingDay) || 1,
+      baseId: resolveBaseId(),
+      antennaModel: trim(state.antennaModel) || undefined,
+      modemModel: trim(state.modemModel) || undefined,
       customPrice,
       debtAmount: state.debtAmount === '' ? undefined : Number(state.debtAmount) || 0,
       debtMonths: state.debtMonths === '' ? undefined : Number(state.debtMonths) || 0,
@@ -113,9 +106,6 @@ export default function ServicesAssignments({
     if (forUpdate) {
       const nullableKeys = [
         'baseId',
-        'ipAddress',
-        'antennaIp',
-        'modemIp',
         'antennaModel',
         'modemModel',
         'debtAmount',
@@ -170,9 +160,6 @@ export default function ServicesAssignments({
       baseId: service.baseId ? String(service.baseId) : '',
       useClientBase: !service.baseId && Boolean(client.zoneId),
       price: service.customPrice ?? '',
-      ipAddress: service.ipAddress ?? '',
-      antennaIp: service.antennaIp ?? '',
-      modemIp: service.modemIp ?? '',
       antennaModel: service.antennaModel ?? '',
       modemModel: service.modemModel ?? '',
       notes: service.notes ?? '',
@@ -216,9 +203,6 @@ export default function ServicesAssignments({
       servicePlanId: planId,
       serviceType: plan?.serviceType ?? plan?.category ?? prev.serviceType,
       price: '',
-      ipAddress: requirements.requiresIp ? prev.ipAddress : '',
-      antennaIp: '',
-      modemIp: '',
       antennaModel: '',
       modemModel: '',
       notes: requirements.requiresCredentials ? prev.notes : '',
@@ -232,7 +216,7 @@ export default function ServicesAssignments({
     setServiceState((prev) => ({ ...prev, [key]: value }))
   }
 
-  const { requiresBase, requiresIp, requiresCredentials } = selectedPlanRequirements
+  const { requiresBase, requiresCredentials } = selectedPlanRequirements
 
   const resetBaseToClientZone = () => {
     if (!client?.zoneId) return
@@ -251,11 +235,6 @@ export default function ServicesAssignments({
       {requirements.requiresBase && (
         <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-1 font-semibold text-slate-800">
           Base obligatoria
-        </span>
-      )}
-      {requirements.requiresIp && (
-        <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-1 font-semibold text-blue-700">
-          IP requerida
         </span>
       )}
       {requirements.requiresEquipment && (
@@ -348,30 +327,13 @@ export default function ServicesAssignments({
                 </div>
               )}
 
-              {requiresIp && (
-                <div className="space-y-1">
-                  <label className="text-sm font-medium" htmlFor="assignment-ip">
-                    IP asignada
-                  </label>
-                  <input
-                    id="assignment-ip"
-                    className="w-full rounded border border-slate-200 p-2"
-                    placeholder="Ejemplo: 10.0.0.10"
-                    value={serviceState.ipAddress}
-                    onChange={(event) =>
-                      handleServiceStateChange('ipAddress', event.target.value)
-                    }
-                  />
-                  <p className="text-xs text-slate-500">
-                    Puedes dejarla vacía para asignar automáticamente la siguiente IP disponible.
-                  </p>
-                  {assignErrors.ipAddress && (
-                    <p className="text-xs font-medium text-red-600" data-testid="assignment-ip-error">
-                      {assignErrors.ipAddress}
-                    </p>
-                  )}
-                </div>
-              )}
+              <div className="rounded border border-blue-100 bg-blue-50/50 p-3 text-xs text-slate-600">
+                <p className="font-semibold text-slate-700">Gestión de IPs</p>
+                <p>
+                  Las IPs ya no se capturan durante el alta del servicio. Se administran
+                  desde los pools de IP y se vinculan al servicio cuando sea necesario.
+                </p>
+              </div>
 
               {requiresCredentials && (
                 <div className="space-y-1">
@@ -401,8 +363,11 @@ export default function ServicesAssignments({
           {Array.isArray(client.services) && client.services.length > 0 ? (
             client.services.map((service) => {
               const plan = findPlanById(service.servicePlanId ?? service.plan?.id)
-              const planRequirements = resolvePlanRequirements(plan)
-              const showTechnicalFields = planRequirements.requiresIp || planRequirements.requiresEquipment
+              const planRequirements = {
+                ...resolvePlanRequirements(plan),
+                requiresIp: false,
+              }
+              const showTechnicalFields = planRequirements.requiresEquipment
 
               return (
                 <div
@@ -464,6 +429,11 @@ export default function ServicesAssignments({
                       {service.modemIp && <span>IP módem: {service.modemIp}</span>}
                       {service.antennaModel && <span>Antena: {service.antennaModel}</span>}
                       {service.modemModel && <span>Módem: {service.modemModel}</span>}
+                      {!service.ipAddress && (
+                        <span className="text-slate-500">
+                          IP administrada desde pools
+                        </span>
+                      )}
                     </div>
                     {editState?.id === service.id && (
                       <div className="mt-2 space-y-2 rounded border border-slate-200 p-2">
@@ -541,66 +511,26 @@ export default function ServicesAssignments({
                         </div>
                         {showTechnicalFields && (
                           <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                            {planRequirements.requiresIp && (
-                              <>
-                                <input
-                                  className="rounded border border-slate-200 p-2"
-                                  placeholder="IP principal"
-                                  value={editState.ipAddress}
-                                  onChange={(event) =>
-                                    setEditState((prev) => ({
-                                      ...prev,
-                                      ipAddress: event.target.value,
-                                    }))
-                                  }
-                                />
-                                <input
-                                  className="rounded border border-slate-200 p-2"
-                                  placeholder="IP de antena"
-                                  value={editState.antennaIp}
-                                  onChange={(event) =>
-                                    setEditState((prev) => ({ ...prev, antennaIp: event.target.value }))
-                                  }
-                                />
-                                <input
-                                  className="rounded border border-slate-200 p-2"
-                                  placeholder="IP de módem"
-                                  value={editState.modemIp}
-                                  onChange={(event) =>
-                                    setEditState((prev) => ({ ...prev, modemIp: event.target.value }))
-                                  }
-                                />
-                              </>
-                            )}
-                            {planRequirements.requiresEquipment && (
-                              <>
-                                <input
-                                  className="rounded border border-slate-200 p-2"
-                                  placeholder="Modelo antena"
-                                  value={editState.antennaModel}
-                                  onChange={(event) =>
-                                    setEditState((prev) => ({ ...prev, antennaModel: event.target.value }))
-                                  }
-                                />
-                                <input
-                                  className="rounded border border-slate-200 p-2"
-                                  placeholder="Modelo módem"
-                                  value={editState.modemModel}
-                                  onChange={(event) =>
-                                    setEditState((prev) => ({ ...prev, modemModel: event.target.value }))
-                                  }
-                                />
-                              </>
-                            )}
+                            <input
+                              className="rounded border border-slate-200 p-2"
+                              placeholder="Modelo antena"
+                              value={editState.antennaModel}
+                              onChange={(event) =>
+                                setEditState((prev) => ({ ...prev, antennaModel: event.target.value }))
+                              }
+                            />
+                            <input
+                              className="rounded border border-slate-200 p-2"
+                              placeholder="Modelo módem"
+                              value={editState.modemModel}
+                              onChange={(event) =>
+                                setEditState((prev) => ({ ...prev, modemModel: event.target.value }))
+                              }
+                            />
                           </div>
                         )}
-                        {(editErrors.ipAddress || editErrors.antennaModel) && (
+                        {editErrors.antennaModel && (
                           <div className="space-y-1 text-xs font-medium text-red-600">
-                            {editErrors.ipAddress && (
-                              <p data-testid={`edit-ip-error-${service.id}`}>
-                                {editErrors.ipAddress}
-                              </p>
-                            )}
                             {editErrors.antennaModel && (
                               <p data-testid={`edit-equipment-error-${service.id}`}>
                                 {editErrors.antennaModel}
