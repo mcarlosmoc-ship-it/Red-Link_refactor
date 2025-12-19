@@ -45,6 +45,7 @@ beforeEach(() => {
         data: {
           id: 'service-99',
           client_id: body.client_id,
+          ip_address: body.ip_address ?? null,
           service_plan: {
             id: body.service_plan_id,
             name: 'Plan de prueba',
@@ -144,5 +145,34 @@ describe('flujo de alta con servicio y pago', () => {
         client_service_id: createdService.id,
       }),
     )
+  })
+
+  it('crea cliente, asigna servicio y registra la IP del servicio', async () => {
+    const { createClient, createClientService } = useBackofficeStore.getState()
+
+    const createdClient = await createClient({
+      type: 'residential',
+      name: 'Cliente con IP',
+      location: 'Norte',
+      zoneId: 2,
+    })
+
+    const createdService = await createClientService({
+      clientId: createdClient.id,
+      servicePlanId: 101,
+      ipAddress: '192.168.10.45',
+      billingDay: 10,
+      status: 'active',
+    })
+
+    expect(postMock).toHaveBeenCalledWith(
+      '/client-services',
+      expect.objectContaining({
+        client_id: createdClient.id,
+        service_plan_id: 101,
+        ip_address: '192.168.10.45',
+      }),
+    )
+    expect(createdService.ipAddress).toBe('192.168.10.45')
   })
 })
