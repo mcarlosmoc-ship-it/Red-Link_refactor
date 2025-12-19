@@ -177,6 +177,41 @@ class IpPoolService:
         return items, total
 
     @staticmethod
+    def list_assignment_history_for_client(
+        db: Session,
+        *,
+        client_id: str,
+        skip: int = 0,
+        limit: int = 200,
+    ) -> Tuple[Iterable[schemas.IpAssignmentHistoryRead], int]:
+        query = (
+            db.query(models.IpAssignmentHistory, models.Client)
+            .join(
+                models.Client,
+                models.IpAssignmentHistory.client_id == models.Client.id,
+                isouter=True,
+            )
+            .filter(models.IpAssignmentHistory.client_id == client_id)
+        )
+        total = query.count()
+        rows = (
+            query.order_by(models.IpAssignmentHistory.created_at.desc())
+            .offset(max(skip, 0))
+            .limit(max(limit, 1))
+            .all()
+        )
+        items: list[schemas.IpAssignmentHistoryRead] = []
+        for history, client in rows:
+            client_payload = (
+                schemas.IpAssignmentHistoryClient.model_validate(client)
+                if client is not None
+                else None
+            )
+            history_payload = schemas.IpAssignmentHistoryRead.model_validate(history)
+            items.append(history_payload.model_copy(update={"client": client_payload}))
+        return items, total
+
+    @staticmethod
     def create_reservation(
         db: Session, data: schemas.BaseIpReservationCreate
     ) -> models.BaseIpReservation:

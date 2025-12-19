@@ -3,7 +3,7 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from ..models.ip_pool import IpPoolType, IpReservationStatus
+from ..models.ip_pool import IpAssignmentAction, IpPoolType, IpReservationStatus
 from .common import PaginatedResponse
 
 
@@ -75,6 +75,38 @@ class BaseIpReservationRead(BaseIpReservationBase):
 
 
 class BaseIpReservationListResponse(PaginatedResponse[BaseIpReservationRead]):
+    pass
+
+
+class IpAssignmentHistoryClient(BaseModel):
+    id: str
+    full_name: str
+    external_code: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class IpAssignmentHistoryRead(BaseModel):
+    id: str
+    reservation_id: str
+    action: IpAssignmentAction
+    previous_status: Optional[str] = None
+    new_status: str
+    service_id: Optional[str] = None
+    client_id: Optional[str] = None
+    inventory_item_id: Optional[str] = None
+    actor_id: Optional[str] = None
+    actor_role: Optional[str] = None
+    source: Optional[str] = None
+    note: Optional[str] = None
+    recorded_by: Optional[str] = None
+    created_at: datetime
+    client: Optional[IpAssignmentHistoryClient] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class IpAssignmentHistoryListResponse(PaginatedResponse[IpAssignmentHistoryRead]):
     pass
 
 
