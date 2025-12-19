@@ -16,6 +16,7 @@ from ..services import (
     IpPoolService,
     IpPoolServiceError,
 )
+from ..services.ip_quarantine import get_quarantine_ttl_hours
 
 router = APIRouter(dependencies=[Depends(require_admin)])
 
@@ -192,10 +193,34 @@ def release_reservation(
 
 
 @router.post(
+    "/reservations/{reservation_id}/release-quarantine",
+    response_model=schemas.BaseIpReservationRead,
+)
+def release_quarantine_reservation(
+    reservation_id: str,
+    db: Session = Depends(get_db),
+    admin: AdminIdentity = Depends(require_admin),
+) -> schemas.BaseIpReservationRead:
+    reservation = IpPoolService.get_reservation(db, reservation_id)
+    if reservation is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Reservation not found")
+    try:
+        return IpPoolService.release_quarantined_reservation(
+            db,
+            reservation,
+            actor_id=admin.username,
+            actor_role="admin",
+            source="api",
+        )
+    except IpPoolServiceError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.post(
     "/reservations/hygiene", response_model=schemas.IpHygieneRunResult
 )
 def run_reservation_hygiene(
-    quarantine_grace_hours: int = Query(24, ge=0, le=24 * 30),
+    quarantine_grace_hours: int = Query(get_quarantine_ttl_hours(), ge=0, le=24 * 30),
     db: Session = Depends(get_db),
 ) -> schemas.IpHygieneRunResult:
     try:
