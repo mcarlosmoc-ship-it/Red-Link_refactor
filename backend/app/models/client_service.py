@@ -165,6 +165,13 @@ class ClientService(Base):
         .limit(1)
         .scalar_subquery()
     )
+    primary_ip_reservation_id = column_property(
+        select(BaseIpReservation.id)
+        .where(BaseIpReservation.service_id == id)
+        .order_by(nullslast(BaseIpReservation.assigned_at).desc())
+        .limit(1)
+        .scalar_subquery()
+    )
 
     @property
     def category(self) -> ClientServiceType | None:
@@ -176,6 +183,8 @@ class ClientService(Base):
     def ip_reservation_id(self):
         """Return the identifier of the primary IP reservation linked to the service."""
 
+        if self.primary_ip_reservation_id is not None:
+            return self.primary_ip_reservation_id
         if self.ip_reservations:
             return self.ip_reservations[0].id
         return None

@@ -59,6 +59,7 @@ export const mapClientService = (service) => ({
   nextBillingDate: service.next_billing_date ?? null,
   baseId: service.base_id ?? null,
   ipAddress: service.ip_address ?? null,
+  ipReservationId: service.ip_reservation_id ?? service.ipReservationId ?? null,
   antennaIp: service.antenna_ip ?? null,
   modemIp: service.modem_ip ?? null,
   antennaModel: service.antenna_model ?? null,
@@ -423,8 +424,9 @@ export const serializeClientPayload = (payload) => {
             serviceBody.base_id = numericBaseId
           }
 
-          if (service?.ipAddress || service?.ip_address) {
-            serviceBody.ip_address = service.ipAddress ?? service.ip_address
+          if (service?.ipReservationId || service?.ip_reservation_id) {
+            serviceBody.ip_reservation_id =
+              service.ipReservationId ?? service.ip_reservation_id
           }
 
           if (service?.antennaIp || service?.antenna_ip) {
@@ -493,8 +495,8 @@ export const serializeClientServicePayload = (payload) => {
     body.base_id = payload.baseId
   }
 
-  if (payload.ipAddress) {
-    body.ip_address = payload.ipAddress
+  if (payload.ipReservationId) {
+    body.ip_reservation_id = payload.ipReservationId
   }
 
   if (payload.antennaIp) {
@@ -582,8 +584,8 @@ export const serializeClientServiceBulkPayload = (payload = {}) => {
     body.base_id = payload.baseId
   }
 
-  if (payload.ipAddress) {
-    body.ip_address = payload.ipAddress
+  if (payload.ipReservationId) {
+    body.ip_reservation_id = payload.ipReservationId
   }
 
   if (payload.antennaIp) {
@@ -640,8 +642,8 @@ export const serializeClientServiceUpdatePayload = (payload = {}) => {
     body.base_id = payload.baseId ?? null
   }
 
-  if (Object.prototype.hasOwnProperty.call(payload, 'ipAddress')) {
-    body.ip_address = payload.ipAddress ?? null
+  if (Object.prototype.hasOwnProperty.call(payload, 'ipReservationId')) {
+    body.ip_reservation_id = payload.ipReservationId ?? null
   }
 
   if (Object.prototype.hasOwnProperty.call(payload, 'antennaIp')) {

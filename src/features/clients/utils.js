@@ -75,7 +75,7 @@ export const createInitialServiceState = (zoneId) => ({
   useClientBase: Boolean(zoneId),
   status: 'active',
   notes: '',
-  ipAddress: '',
+  ipReservationId: '',
   antennaIp: '',
   modemIp: '',
   antennaModel: '',

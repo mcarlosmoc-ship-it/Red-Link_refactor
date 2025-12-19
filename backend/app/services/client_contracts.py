@@ -218,7 +218,6 @@ class ClientContractService:
         requirements = _resolve_plan_requirements(plan, service_metadata)
 
         ip_reservation_id = payload.pop("ip_reservation_id", None)
-        provided_ip = payload.pop("ip_address", None)
         selected_reservation: Optional[models.BaseIpReservation] = None
 
         if client and payload.get("zone_id") is None and requirements["requires_base"]:
@@ -242,28 +241,10 @@ class ClientContractService:
                     raise ClientContractError(
                         "La IP seleccionada no está disponible para asignar al servicio."
                     )
-            elif provided_ip:
-                base_id = payload.get("zone_id") or (existing.zone_id if existing else None)
-                if base_id is None:
-                    raise ClientContractError(
-                        "Este servicio requiere asociar una base para reservar la IP."
-                    )
-                try:
-                    reservation_payload = schemas.BaseIpReservationCreate(
-                        base_id=base_id, pool_id=None, ip_address=provided_ip
-                    )
-                    selected_reservation = IpPoolService.create_reservation(
-                        db, reservation_payload
-                    )
-                except IpPoolServiceError as exc:
-                    raise ClientContractError(str(exc)) from exc
             elif not existing_reservations:
-                try:
-                    selected_reservation = IpPoolService.acquire_reservation_for_service(
-                        db, base_id=payload["zone_id"]
-                    )
-                except IpPoolServiceError as exc:
-                    raise ClientContractError(str(exc)) from exc
+                raise ClientContractError(
+                    "Selecciona una reserva de IP disponible para este servicio."
+                )
 
         if requirements["requires_equipment"]:
             antenna_model = payload.get("antenna_model")
