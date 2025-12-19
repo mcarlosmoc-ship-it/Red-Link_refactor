@@ -274,7 +274,12 @@ class ClientService:
                 )
                 db.add(assignment)
                 db.flush()
+                reservation = None
                 if service_in.ip_reservation_id:
+                    if not plan.requires_ip:
+                        raise ValueError(
+                            "El plan no requiere IP, pero se proporcionó una reserva."
+                        )
                     reservation = IpPoolService.get_reservation(
                         db, service_in.ip_reservation_id
                     )
@@ -282,6 +287,21 @@ class ClientService:
                         raise ValueError(
                             "No se encontró la reserva de IP solicitada."
                         )
+                elif service_in.ip_address:
+                    if not plan.requires_ip:
+                        raise ValueError(
+                            "El plan no requiere IP, pero se proporcionó una dirección."
+                        )
+                    if zone_id is None:
+                        raise ValueError("Debes seleccionar una base para registrar la IP.")
+                    reservation = IpPoolService.ensure_reservation_for_ip(
+                        db,
+                        base_id=zone_id,
+                        ip_address=service_in.ip_address,
+                        status=models.IpReservationStatus.RESERVED,
+                    )
+
+                if reservation is not None:
                     try:
                         IpPoolService.assign_reservation(
                             db, reservation, assignment, client_id=client.id
