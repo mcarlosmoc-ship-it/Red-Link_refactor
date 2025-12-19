@@ -384,6 +384,40 @@ class IpPoolService:
         )
 
     @staticmethod
+    def summary_by_base(db: Session) -> schemas.IpPoolSummaryResponse:
+        rows = (
+            db.query(
+                models.BaseIpReservation.base_id,
+                models.BaseIpReservation.status,
+                func.count(models.BaseIpReservation.id),
+            )
+            .group_by(models.BaseIpReservation.base_id, models.BaseIpReservation.status)
+            .all()
+        )
+
+        summary: dict[int, dict[str, int]] = {}
+        for base_id, status, count in rows:
+            stats = summary.setdefault(
+                base_id,
+                {"total": 0, "free": 0, "reserved": 0, "in_use": 0, "quarantine": 0},
+            )
+            stats["total"] += count
+            stats[status.value] = stats.get(status.value, 0) + count
+
+        items = [
+            schemas.IpPoolSummaryItem(
+                base_id=base_id,
+                total=stats["total"],
+                free=stats.get(models.IpReservationStatus.FREE.value, 0),
+                reserved=stats.get(models.IpReservationStatus.RESERVED.value, 0),
+                in_use=stats.get(models.IpReservationStatus.IN_USE.value, 0),
+                quarantine=stats.get(models.IpReservationStatus.QUARANTINE.value, 0),
+            )
+            for base_id, stats in sorted(summary.items())
+        ]
+        return schemas.IpPoolSummaryResponse(items=items)
+
+    @staticmethod
     def _usage_report(
         db: Session,
     ) -> tuple[list[schemas.IpUsageBreakdown], list[schemas.IpUsageBreakdown]]:
