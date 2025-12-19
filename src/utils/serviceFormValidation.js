@@ -174,23 +174,23 @@ export const computeServiceFormErrors = (
 
   const requiresIp = planRequiresIp(plan)
   if (requiresIp) {
-    if (!String(state?.ipAddress ?? state?.ip ?? '').trim()) {
-      errors.ipAddress = 'Asigna una IP disponible para este servicio.'
+    if (!String(state?.ipReservationId ?? state?.ipReservation ?? '').trim()) {
+      errors.ipReservationId = 'Selecciona una reserva de IP para este servicio.'
     }
   }
 
   const shouldValidateTechnicalFields = validateTechnicalFields && requiresIp
 
   if (shouldValidateTechnicalFields) {
-    const ipAddress = state?.ipAddress ?? state?.ip ?? ''
+    const ipReservationId = state?.ipReservationId ?? state?.ipReservation ?? ''
     const antennaIp = state?.antennaIp ?? ''
     const modemIp = state?.modemIp ?? ''
     const networkNode = state?.networkNode ?? resolveMetadataValue(state, 'node')
     const router = state?.router ?? resolveMetadataValue(state, 'router')
     const vlanId = state?.vlanId ?? resolveMetadataValue(state, 'vlan')
 
-    if (!String(ipAddress).trim()) {
-      errors.ipAddress = 'Asigna una IP disponible para este servicio.'
+    if (!String(ipReservationId).trim()) {
+      errors.ipReservationId = 'Selecciona una reserva de IP para este servicio.'
     }
 
     if (!String(networkNode ?? '').trim()) {

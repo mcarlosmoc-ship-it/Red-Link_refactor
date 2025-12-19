@@ -29,7 +29,7 @@ class ClientServiceBase(BaseModel):
     """Shared fields for service creation and updates."""
 
     service_id: int = Field(
-        ..., 
+        ...,
         ge=1,
         validation_alias=AliasChoices("service_id", "service_plan_id"),
     )
@@ -52,19 +52,6 @@ class ClientServiceBase(BaseModel):
     inventory_item_id: Optional[str] = Field(
         default=None, description="Equipo asociado a la IP principal"
     )
-    ip_address: Optional[str] = None
-    antenna_ip: Optional[str] = None
-    modem_ip: Optional[str] = None
-    antenna_model: Optional[str] = None
-    modem_model: Optional[str] = None
-    antenna_ip: Optional[str] = None
-    modem_ip: Optional[str] = None
-    antenna_model: Optional[str] = None
-    modem_model: Optional[str] = None
-    antenna_ip: Optional[str] = None
-    modem_ip: Optional[str] = None
-    antenna_model: Optional[str] = None
-    modem_model: Optional[str] = None
     antenna_ip: Optional[str] = None
     modem_ip: Optional[str] = None
     antenna_model: Optional[str] = None
@@ -107,6 +94,7 @@ class ClientServiceInlineCreate(ClientServiceBase):
         validation_alias=AliasChoices("service_id", "service_plan_id"),
     )
 
+
 class ClientServiceUpdate(BaseModel):
     """Payload to update an existing client service."""
 
@@ -124,7 +112,6 @@ class ClientServiceUpdate(BaseModel):
         validation_alias=AliasChoices("zone_id", "base_id"),
         serialization_alias="zone_id",
     )
-    ip_address: Optional[str] = None
     ip_reservation_id: Optional[str] = Field(
         default=None, description="Reserva de IP asignada al servicio"
     )
@@ -165,7 +152,7 @@ class ClientServiceRead(BaseModel):
     )
     ip_address: Optional[str] = Field(
         default=None,
-        validation_alias=AliasChoices("primary_ip_address", "ip_address"),
+        validation_alias="primary_ip_address",
     )
     ip_reservation_id: Optional[str] = None
     custom_price: Optional[Decimal] = None
@@ -266,7 +253,9 @@ class ClientServiceBulkCreate(BaseModel):
         validation_alias=AliasChoices("zone_id", "base_id"),
         serialization_alias="zone_id",
     )
-    ip_address: Optional[str] = None
+    ip_reservation_id: Optional[str] = Field(
+        default=None, description="Reserva de IP asignada al servicio"
+    )
     custom_price: Optional[Decimal] = Field(default=None, ge=0)
     notes: Optional[str] = None
     service_metadata: Optional[dict[str, Any]] = Field(

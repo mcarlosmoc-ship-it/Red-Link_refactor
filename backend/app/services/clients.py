@@ -15,6 +15,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from .. import models, schemas
+from .ip_pools import IpPoolService, IpPoolServiceError
 
 
 class ClientService:
@@ -263,7 +264,6 @@ class ClientService:
                     billing_day=billing_day,
                     next_billing_date=service_in.next_billing_date,
                     zone_id=zone_id,
-                    ip_address=service_in.ip_address,
                     antenna_ip=service_in.antenna_ip,
                     modem_ip=service_in.modem_ip,
                     antenna_model=service_in.antenna_model,
@@ -274,6 +274,20 @@ class ClientService:
                 )
                 db.add(assignment)
                 db.flush()
+                if service_in.ip_reservation_id:
+                    reservation = IpPoolService.get_reservation(
+                        db, service_in.ip_reservation_id
+                    )
+                    if reservation is None:
+                        raise ValueError(
+                            "No se encontró la reserva de IP solicitada."
+                        )
+                    try:
+                        IpPoolService.assign_reservation(
+                            db, reservation, assignment, client_id=client.id
+                        )
+                    except IpPoolServiceError as exc:
+                        raise ValueError(str(exc)) from exc
 
                 price_reference = custom_price
                 if price_reference is None and plan.monthly_price is not None:
