@@ -814,7 +814,7 @@ class ClientService:
             }
 
         return {
-            "ip_address": _fetch(models.ClientService.ip_address),
+            "ip_address": _fetch(models.BaseIpReservation.ip_address),
             "antenna_ip": _fetch(models.ClientService.antenna_ip),
             "modem_ip": _fetch(models.ClientService.modem_ip),
         }

@@ -264,7 +264,7 @@ class IpPoolService:
         reservation.inventory_item_id = inventory_item_id or reservation.inventory_item_id
         reservation.assigned_at = datetime.now(timezone.utc)
         reservation.released_at = None
-        service.ip_address = reservation.ip_address
+        service.ip_address = None
         try:
             db.add(reservation)
             db.add(service)
@@ -302,8 +302,6 @@ class IpPoolService:
         reservation.client_id = None
         reservation.inventory_item_id = None
         reservation.released_at = datetime.now(timezone.utc)
-        if linked_service is not None:
-            linked_service.ip_address = None
         try:
             db.add(reservation)
             if linked_service is not None:
@@ -476,11 +474,16 @@ class IpPoolService:
             .all()
         )
         for reservation, service in reservation_rows:
-            service_ip = str(service.ip_address) if service.ip_address is not None else None
+            if service.primary_ip_address is not None:
+                service_ip = str(service.primary_ip_address)
+            elif service.ip_address is not None:
+                service_ip = str(service.ip_address)
+            else:
+                service_ip = None
             reservation_ip = (
                 str(reservation.ip_address) if reservation.ip_address is not None else None
             )
-            if service_ip == reservation_ip:
+            if service.ip_address is None or service_ip == reservation_ip:
                 continue
             items.append(
                 schemas.IpAssignmentInconsistency(
@@ -489,8 +492,8 @@ class IpPoolService:
                     service_ip=service_ip,
                     reservation_ip=reservation_ip,
                     reservation_status=reservation.status,
-                    issue="IP de servicio difiere de la reserva",
-                    suggested_actions=["reparar", "reasignar"],
+                    issue="IP legacy del servicio difiere de la reserva",
+                    suggested_actions=["limpiar", "reasignar"],
                 )
             )
 

@@ -163,7 +163,10 @@ class ClientServiceRead(BaseModel):
         validation_alias=AliasChoices("zone_id", "base_id"),
         serialization_alias="zone_id",
     )
-    ip_address: Optional[str] = None
+    ip_address: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("primary_ip_address", "ip_address"),
+    )
     ip_reservation_id: Optional[str] = None
     custom_price: Optional[Decimal] = None
     effective_price: Optional[Decimal] = None
