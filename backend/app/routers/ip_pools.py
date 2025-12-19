@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from .. import schemas
 from ..database import get_db
 from ..models.ip_pool import IpReservationStatus
-from ..security import require_admin
+from ..security import AdminIdentity, require_admin
 from ..services import (
     ClientContractService,
     IpPoolService,
@@ -118,12 +118,20 @@ def update_reservation(
     reservation_id: str,
     payload: schemas.BaseIpReservationUpdate,
     db: Session = Depends(get_db),
+    admin: AdminIdentity = Depends(require_admin),
 ) -> schemas.BaseIpReservationRead:
     reservation = IpPoolService.get_reservation(db, reservation_id)
     if reservation is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Reservation not found")
     try:
-        return IpPoolService.update_reservation(db, reservation, payload)
+        return IpPoolService.update_reservation(
+            db,
+            reservation,
+            payload,
+            actor_id=admin.username,
+            actor_role="admin",
+            source="api",
+        )
     except IpPoolServiceError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -135,6 +143,7 @@ def assign_reservation(
     client_service_id: str,
     inventory_item_id: Optional[str] = None,
     db: Session = Depends(get_db),
+    admin: AdminIdentity = Depends(require_admin),
 ) -> schemas.BaseIpReservationRead:
     reservation = IpPoolService.get_reservation(db, reservation_id)
     if reservation is None:
@@ -144,7 +153,13 @@ def assign_reservation(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Service not found")
     try:
         return IpPoolService.assign_reservation(
-            db, reservation, service, inventory_item_id=inventory_item_id
+            db,
+            reservation,
+            service,
+            inventory_item_id=inventory_item_id,
+            actor_id=admin.username,
+            actor_role="admin",
+            source="api",
         )
     except IpPoolServiceError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -152,13 +167,21 @@ def assign_reservation(
 
 @router.post("/reservations/{reservation_id}/release", response_model=schemas.BaseIpReservationRead)
 def release_reservation(
-    reservation_id: str, db: Session = Depends(get_db)
+    reservation_id: str,
+    db: Session = Depends(get_db),
+    admin: AdminIdentity = Depends(require_admin),
 ) -> schemas.BaseIpReservationRead:
     reservation = IpPoolService.get_reservation(db, reservation_id)
     if reservation is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Reservation not found")
     try:
-        return IpPoolService.release_reservation(db, reservation)
+        return IpPoolService.release_reservation(
+            db,
+            reservation,
+            actor_id=admin.username,
+            actor_role="admin",
+            source="api",
+        )
     except IpPoolServiceError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 

@@ -27,6 +27,9 @@ class IpPoolService:
         *,
         previous_status: Optional[str] = None,
         note: Optional[str] = None,
+        actor_id: Optional[str] = None,
+        actor_role: Optional[str] = None,
+        source: Optional[str] = None,
     ) -> None:
         entry = models.IpAssignmentHistory(
             reservation=reservation,
@@ -37,6 +40,9 @@ class IpPoolService:
             client_id=reservation.client_id,
             inventory_item_id=reservation.inventory_item_id,
             note=note,
+            actor_id=actor_id,
+            actor_role=actor_role,
+            source=source,
         )
         db.add(entry)
 
@@ -199,6 +205,9 @@ class IpPoolService:
         *,
         client_id: Optional[str] = None,
         inventory_item_id: Optional[str] = None,
+        actor_id: Optional[str] = None,
+        actor_role: Optional[str] = None,
+        source: Optional[str] = None,
     ) -> models.BaseIpReservation:
         if reservation.status == models.IpReservationStatus.IN_USE and (
             reservation.service_id not in (None, service.id)
@@ -226,6 +235,9 @@ class IpPoolService:
                 reservation,
                 models.IpAssignmentAction.ASSIGN,
                 previous_status=previous_status,
+                actor_id=actor_id,
+                actor_role=actor_role,
+                source=source,
             )
             db.commit()
         except SQLAlchemyError as exc:
@@ -241,6 +253,9 @@ class IpPoolService:
         reservation: models.BaseIpReservation,
         *,
         note: Optional[str] = None,
+        actor_id: Optional[str] = None,
+        actor_role: Optional[str] = None,
+        source: Optional[str] = None,
     ) -> models.BaseIpReservation:
         previous_status = reservation.status.value
         linked_service = reservation.service
@@ -261,6 +276,9 @@ class IpPoolService:
                 models.IpAssignmentAction.RELEASE,
                 previous_status=previous_status,
                 note=note,
+                actor_id=actor_id,
+                actor_role=actor_role,
+                source=source,
             )
             db.commit()
         except SQLAlchemyError as exc:
@@ -310,6 +328,7 @@ class IpPoolService:
                 models.IpAssignmentAction.QUARANTINE,
                 previous_status=previous_status,
                 note="Liberada por higiene (servicio inexistente)",
+                source="hygiene",
             )
             quarantined.append(str(reservation.id))
 
@@ -338,6 +357,7 @@ class IpPoolService:
                 models.IpAssignmentAction.RELEASE,
                 previous_status=previous_status,
                 note="Liberada por higiene",
+                source="hygiene",
             )
             freed.append(str(reservation.id))
 
@@ -430,7 +450,13 @@ class IpPoolService:
 
     @staticmethod
     def update_reservation(
-        db: Session, reservation: models.BaseIpReservation, data: schemas.BaseIpReservationUpdate
+        db: Session,
+        reservation: models.BaseIpReservation,
+        data: schemas.BaseIpReservationUpdate,
+        *,
+        actor_id: Optional[str] = None,
+        actor_role: Optional[str] = None,
+        source: Optional[str] = None,
     ) -> models.BaseIpReservation:
         update_data = data.model_dump(exclude_unset=True)
         previous_status = reservation.status.value
@@ -472,6 +498,9 @@ class IpPoolService:
                     reservation,
                     action or models.IpAssignmentAction.RESERVE,
                     previous_status=previous_status,
+                    actor_id=actor_id,
+                    actor_role=actor_role,
+                    source=source,
                 )
             db.commit()
         except SQLAlchemyError as exc:
