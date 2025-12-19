@@ -17,13 +17,13 @@ from .observability import MetricOutcome, ObservabilityService
 
 DEFAULT_PLAN_REQUIREMENTS: dict[models.ClientServiceType, dict[str, bool]] = {
     models.ClientServiceType.INTERNET: {
-        "requires_ip": True,
+        "requires_ip": False,
         "requires_base": True,
         "requires_credentials": False,
         "requires_equipment": False,
     },
     models.ClientServiceType.HOTSPOT: {
-        "requires_ip": True,
+        "requires_ip": False,
         "requires_base": True,
         "requires_credentials": False,
         "requires_equipment": False,
@@ -75,7 +75,7 @@ def _resolve_plan_requirements(
     )
 
     if requires_ip is None:
-        requires_ip = plan.requires_ip
+        requires_ip = False
     if requires_base is None:
         requires_base = plan.requires_base
     if requires_credentials is None:
@@ -195,6 +195,8 @@ class ClientContractService:
         start_date = payload.pop("start_date", None)
         apply_prorate = bool(payload.pop("apply_prorate", True))
         ip_address = payload.pop("ip_address", None)
+        payload.pop("antenna_ip", None)
+        payload.pop("modem_ip", None)
         if existing is not None:
             client = client or existing.client
 
@@ -230,39 +232,29 @@ class ClientContractService:
         existing_reservations = (
             existing.ip_reservations if existing and existing.ip_reservations else []
         )
-        if requirements["requires_ip"]:
-            if ip_reservation_id:
-                selected_reservation = IpPoolService.get_reservation(db, ip_reservation_id)
-                if selected_reservation is None:
-                    raise ClientContractError("No se encontró la reserva de IP solicitada.")
-                if selected_reservation.status not in (
-                    models.IpReservationStatus.FREE,
-                    models.IpReservationStatus.RESERVED,
-                ) and selected_reservation.service_id != (existing.id if existing else None):
-                    raise ClientContractError(
-                        "La IP seleccionada no está disponible para asignar al servicio."
-                    )
-            elif not ip_address and not existing_reservations:
-                base_id = payload.get("zone_id")
-                if base_id is None:
-                    raise ClientContractError(
-                        "Selecciona una reserva de IP disponible para este servicio."
-                    )
-                try:
-                    selected_reservation = IpPoolService.acquire_reservation_for_service(
-                        db, base_id=base_id
-                    )
-                except IpPoolServiceError as exc:
-                    raise ClientContractError(str(exc)) from exc
-        else:
-            if ip_reservation_id:
+        if ip_reservation_id:
+            selected_reservation = IpPoolService.get_reservation(db, ip_reservation_id)
+            if selected_reservation is None:
+                raise ClientContractError("No se encontró la reserva de IP solicitada.")
+            if selected_reservation.status not in (
+                models.IpReservationStatus.FREE,
+                models.IpReservationStatus.RESERVED,
+            ) and selected_reservation.service_id != (existing.id if existing else None):
                 raise ClientContractError(
-                    "El plan no requiere IP, pero se proporcionó una reserva."
+                    "La IP seleccionada no está disponible para asignar al servicio."
                 )
-            if ip_address:
+        elif requirements["requires_ip"] and not ip_address and not existing_reservations:
+            base_id = payload.get("zone_id")
+            if base_id is None:
                 raise ClientContractError(
-                    "El plan no requiere IP, pero se proporcionó una dirección."
+                    "Selecciona una reserva de IP disponible para este servicio."
                 )
+            try:
+                selected_reservation = IpPoolService.acquire_reservation_for_service(
+                    db, base_id=base_id
+                )
+            except IpPoolServiceError as exc:
+                raise ClientContractError(str(exc)) from exc
 
         if ip_address and not ip_reservation_id:
             base_id = payload.get("zone_id")

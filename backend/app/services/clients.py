@@ -34,8 +34,6 @@ class ClientService:
         "dia_corte": "service_billing_day",
         "estado_servicio": "service_status",
         "ip_principal": "service_ip_address",
-        "ip_antena": "service_antenna_ip",
-        "ip_modem": "service_modem_ip",
         "router_model": "service_modem_model",
         "comentarios": "service_notes",
         "coordenadas": "coordinates",
@@ -66,8 +64,6 @@ class ClientService:
         "service_billing_day",
         "service_zone_id",
         "service_ip_address",
-        "service_antenna_ip",
-        "service_modem_ip",
         "service_antenna_model",
         "service_modem_model",
         "service_custom_price",
@@ -264,8 +260,6 @@ class ClientService:
                     billing_day=billing_day,
                     next_billing_date=service_in.next_billing_date,
                     zone_id=zone_id,
-                    antenna_ip=service_in.antenna_ip,
-                    modem_ip=service_in.modem_ip,
                     antenna_model=service_in.antenna_model,
                     modem_model=service_in.modem_model,
                     custom_price=custom_price,
@@ -276,10 +270,6 @@ class ClientService:
                 db.flush()
                 reservation = None
                 if service_in.ip_reservation_id:
-                    if not plan.requires_ip:
-                        raise ValueError(
-                            "El plan no requiere IP, pero se proporcionó una reserva."
-                        )
                     reservation = IpPoolService.get_reservation(
                         db, service_in.ip_reservation_id
                     )
@@ -288,10 +278,6 @@ class ClientService:
                             "No se encontró la reserva de IP solicitada."
                         )
                 elif service_in.ip_address:
-                    if not plan.requires_ip:
-                        raise ValueError(
-                            "El plan no requiere IP, pero se proporcionó una dirección."
-                        )
                     if zone_id is None:
                         raise ValueError("Debes seleccionar una base para registrar la IP.")
                     reservation = IpPoolService.ensure_reservation_for_ip(
@@ -692,8 +678,6 @@ class ClientService:
             )
 
         ip_address = _normalize_string(row.get("service_ip_address"))
-        antenna_ip = _normalize_string(row.get("service_antenna_ip"))
-        modem_ip = _normalize_string(row.get("service_modem_ip"))
         antenna_model = _normalize_string(row.get("service_antenna_model"))
         modem_model = _normalize_string(row.get("service_modem_model"))
         custom_price_raw = _normalize_string(row.get("service_custom_price"))
@@ -702,10 +686,6 @@ class ClientService:
         )
         notes = _normalize_string(row.get("service_notes"))
 
-        if plan.requires_ip and ip_address is None:
-            raise _RowProcessingError(
-                f"El plan '{plan.name}' requiere IP asignada para el servicio."
-            )
         if plan.requires_base and zone_id is None:
             raise _RowProcessingError(
                 f"El plan '{plan.name}' requiere una base/zona para el servicio."
@@ -717,8 +697,6 @@ class ClientService:
             "billing_day": billing_day,
             "zone_id": zone_id,
             "ip_address": ip_address,
-            "antenna_ip": antenna_ip,
-            "modem_ip": modem_ip,
             "antenna_model": antenna_model,
             "modem_model": modem_model,
             "custom_price": custom_price,
@@ -753,8 +731,6 @@ class ClientService:
                     "service_billing_day": row.get(f"{prefix}billing_day"),
                     "service_zone_id": row.get(f"{prefix}zone_id"),
                     "service_ip_address": row.get(f"{prefix}ip_address"),
-                    "service_antenna_ip": row.get(f"{prefix}antenna_ip"),
-                    "service_modem_ip": row.get(f"{prefix}modem_ip"),
                     "service_antenna_model": row.get(f"{prefix}antenna_model"),
                     "service_modem_model": row.get(f"{prefix}modem_model"),
                     "service_custom_price": row.get(f"{prefix}custom_price"),
@@ -849,8 +825,6 @@ class ClientService:
 
         return {
             "ip_address": _fetch(models.BaseIpReservation.ip_address),
-            "antenna_ip": _fetch(models.ClientService.antenna_ip),
-            "modem_ip": _fetch(models.ClientService.modem_ip),
         }
 
     @staticmethod
@@ -860,8 +834,6 @@ class ClientService:
     ) -> dict[str, set[str]]:
         row_reservations: dict[str, set[str]] = {
             "ip_address": set(),
-            "antenna_ip": set(),
-            "modem_ip": set(),
         }
 
         for service in services:
