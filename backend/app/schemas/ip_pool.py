@@ -100,3 +100,16 @@ class IpHygieneRunResult(BaseModel):
 class IpUsageReport(BaseModel):
     usage_by_pool: list[IpUsageBreakdown]
     usage_by_base: list[IpUsageBreakdown]
+
+
+class IpPoolSummaryItem(BaseModel):
+    base_id: int
+    total: int
+    free: int
+    reserved: int
+    in_use: int
+    quarantine: int
+
+
+class IpPoolSummaryResponse(BaseModel):
+    items: list[IpPoolSummaryItem]
