@@ -104,6 +104,21 @@ class IpUsageReport(BaseModel):
     usage_by_base: list[IpUsageBreakdown]
 
 
+class IpAssignmentInconsistency(BaseModel):
+    service_id: Optional[str] = None
+    reservation_id: Optional[str] = None
+    service_ip: Optional[str] = None
+    reservation_ip: Optional[str] = None
+    reservation_status: Optional[IpReservationStatus] = None
+    issue: str
+    suggested_actions: list[str]
+
+
+class IpAssignmentConsistencyReport(BaseModel):
+    items: list[IpAssignmentInconsistency]
+    total: int
+
+
 class IpPoolSummaryItem(BaseModel):
     base_id: int
     total: int
