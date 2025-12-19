@@ -288,6 +288,45 @@ class IpPoolService:
         return reservation
 
     @staticmethod
+    def release_quarantined_reservation(
+        db: Session,
+        reservation: models.BaseIpReservation,
+        *,
+        note: Optional[str] = None,
+        actor_id: Optional[str] = None,
+        actor_role: Optional[str] = None,
+        source: Optional[str] = None,
+    ) -> models.BaseIpReservation:
+        if reservation.status != models.IpReservationStatus.QUARANTINE:
+            raise IpPoolServiceError("La IP no está en cuarentena.")
+
+        previous_status = reservation.status.value
+        reservation.status = models.IpReservationStatus.FREE
+        reservation.assigned_at = None
+        reservation.released_at = datetime.now(timezone.utc)
+        reservation.service_id = None
+        reservation.client_id = None
+        reservation.inventory_item_id = None
+        try:
+            db.add(reservation)
+            IpPoolService._record_history(
+                db,
+                reservation,
+                models.IpAssignmentAction.RELEASE,
+                previous_status=previous_status,
+                note=note,
+                actor_id=actor_id,
+                actor_role=actor_role,
+                source=source,
+            )
+            db.commit()
+        except SQLAlchemyError as exc:
+            db.rollback()
+            raise IpPoolServiceError("No se pudo liberar la IP en cuarentena.") from exc
+        db.refresh(reservation)
+        return reservation
+
+    @staticmethod
     def acquire_reservation_for_service(
         db: Session,
         *,

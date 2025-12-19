@@ -26,12 +26,17 @@ from .routers import (
 )
 from .services.account_management import start_overdue_monitor, stop_overdue_monitor
 from .services.backups import start_backup_scheduler, stop_backup_scheduler
+from .services.ip_quarantine import (
+    start_ip_quarantine_scheduler,
+    stop_ip_quarantine_scheduler,
+)
 from .services.payment_reminders import (
     start_payment_reminder_scheduler,
     stop_payment_reminder_scheduler,
 )
 from .services.scheduler_monitor import (
     JOB_BACKUPS,
+    JOB_IP_QUARANTINE,
     JOB_OVERDUE_MONITOR,
     JOB_PAYMENT_REMINDERS,
     SchedulerMonitor,
@@ -194,6 +199,11 @@ def start_background_jobs() -> None:
         job_name=JOB_BACKUPS,
         starter=start_backup_scheduler,
     )
+    _maybe_start_job(
+        env_flag="ENABLE_IP_QUARANTINE_CLEANUP",
+        job_name=JOB_IP_QUARANTINE,
+        starter=start_ip_quarantine_scheduler,
+    )
 
 
 @app.get("/", tags=["health"])
@@ -208,3 +218,4 @@ def stop_background_jobs() -> None:
     stop_overdue_monitor()
     stop_payment_reminder_scheduler()
     stop_backup_scheduler()
+    stop_ip_quarantine_scheduler()

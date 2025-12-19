@@ -11,6 +11,7 @@ from typing import Dict, MutableMapping
 JOB_OVERDUE_MONITOR = "overdue_monitor"
 JOB_PAYMENT_REMINDERS = "payment_reminders"
 JOB_BACKUPS = "database_backups"
+JOB_IP_QUARANTINE = "ip_quarantine_cleanup"
 
 
 @dataclass
