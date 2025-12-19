@@ -108,7 +108,6 @@ class ClientService(Base):
         nullable=True,
     )
     base_id = synonym("zone_id")
-    ip_address = Column(INET(), nullable=True)
     antenna_ip = Column(INET(), nullable=True)
     modem_ip = Column(INET(), nullable=True)
     antenna_model = Column(String, nullable=True)
@@ -263,13 +262,6 @@ Index("service_payments_client_idx", ServicePayment.client_id)
 Index("service_payments_service_idx", ServicePayment.client_service_id)
 Index("service_payments_period_idx", ServicePayment.period_key)
 Index("service_payments_paid_on_idx", ServicePayment.paid_on)
-Index(
-    "client_services_ip_unique_idx",
-    ClientService.ip_address,
-    unique=True,
-    postgresql_where=ClientService.ip_address.isnot(None),
-    sqlite_where=ClientService.ip_address.isnot(None),
-)
 Index(
     "client_services_antenna_ip_unique_idx",
     ClientService.antenna_ip,
