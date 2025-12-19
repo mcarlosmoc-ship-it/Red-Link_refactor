@@ -100,6 +100,16 @@ def reservation_usage(db: Session = Depends(get_db)) -> schemas.IpUsageReport:
     return IpPoolService.usage_report(db)
 
 
+@router.get(
+    "/reservations/consistency",
+    response_model=schemas.IpAssignmentConsistencyReport,
+)
+def reservation_consistency(
+    db: Session = Depends(get_db),
+) -> schemas.IpAssignmentConsistencyReport:
+    return IpPoolService.ip_assignment_consistency(db)
+
+
 @router.get("/summary", response_model=schemas.IpPoolSummaryResponse)
 def ip_pool_summary(db: Session = Depends(get_db)) -> schemas.IpPoolSummaryResponse:
     return IpPoolService.summary_by_base(db)

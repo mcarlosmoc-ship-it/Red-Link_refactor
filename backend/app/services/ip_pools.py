@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Iterable, Optional, Tuple
 
@@ -10,6 +11,8 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 
 from .. import models, schemas
+
+logger = logging.getLogger(__name__)
 
 
 class IpPoolServiceError(RuntimeError):
@@ -456,6 +459,73 @@ class IpPoolService:
         return schemas.IpUsageReport(
             usage_by_pool=usage_by_pool, usage_by_base=usage_by_base
         )
+
+    @staticmethod
+    def ip_assignment_consistency(
+        db: Session,
+    ) -> schemas.IpAssignmentConsistencyReport:
+        items: list[schemas.IpAssignmentInconsistency] = []
+
+        reservation_rows = (
+            db.query(models.BaseIpReservation, models.ClientService)
+            .join(
+                models.ClientService,
+                models.BaseIpReservation.service_id == models.ClientService.id,
+            )
+            .filter(models.BaseIpReservation.service_id.isnot(None))
+            .all()
+        )
+        for reservation, service in reservation_rows:
+            service_ip = str(service.ip_address) if service.ip_address is not None else None
+            reservation_ip = (
+                str(reservation.ip_address) if reservation.ip_address is not None else None
+            )
+            if service_ip == reservation_ip:
+                continue
+            items.append(
+                schemas.IpAssignmentInconsistency(
+                    service_id=str(service.id),
+                    reservation_id=str(reservation.id),
+                    service_ip=service_ip,
+                    reservation_ip=reservation_ip,
+                    reservation_status=reservation.status,
+                    issue="IP de servicio difiere de la reserva",
+                    suggested_actions=["reparar", "reasignar"],
+                )
+            )
+
+        services_without_reservation = (
+            db.query(models.ClientService)
+            .outerjoin(
+                models.BaseIpReservation,
+                models.BaseIpReservation.service_id == models.ClientService.id,
+            )
+            .filter(
+                models.ClientService.ip_address.isnot(None),
+                models.BaseIpReservation.id.is_(None),
+            )
+            .all()
+        )
+        for service in services_without_reservation:
+            items.append(
+                schemas.IpAssignmentInconsistency(
+                    service_id=str(service.id),
+                    reservation_id=None,
+                    service_ip=str(service.ip_address) if service.ip_address is not None else None,
+                    reservation_ip=None,
+                    reservation_status=None,
+                    issue="Servicio con IP sin reserva asociada",
+                    suggested_actions=["reasignar", "liberar"],
+                )
+            )
+
+        for item in items:
+            logger.warning(
+                "Inconsistencia IP detectada: %s",
+                item.model_dump(),
+            )
+
+        return schemas.IpAssignmentConsistencyReport(items=items, total=len(items))
 
     @staticmethod
     def summary_by_base(db: Session) -> schemas.IpPoolSummaryResponse:
