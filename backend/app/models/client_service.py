@@ -19,13 +19,16 @@ from sqlalchemy import (
     Text,
     func,
     JSON,
+    nullslast,
+    select,
 )
 from sqlalchemy.dialects.sqlite import JSON as SQLiteJSON
-from sqlalchemy.orm import foreign, relationship, synonym
+from sqlalchemy.orm import column_property, relationship, synonym
 
 from ..database import Base
 from ..db_types import GUID, INET
 from .payment import PAYMENT_METHOD_ENUM
+from .ip_pool import BaseIpReservation
 
 
 class ClientServiceType(str, enum.Enum):
@@ -154,6 +157,13 @@ class ClientService(Base):
         "BaseIpReservation",
         back_populates="service",
         cascade="all, delete-orphan",
+    )
+    primary_ip_address = column_property(
+        select(BaseIpReservation.ip_address)
+        .where(BaseIpReservation.service_id == id)
+        .order_by(nullslast(BaseIpReservation.assigned_at).desc())
+        .limit(1)
+        .scalar_subquery()
     )
 
     @property

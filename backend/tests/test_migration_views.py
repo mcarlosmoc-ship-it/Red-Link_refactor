@@ -23,6 +23,7 @@ def test_migrations_recreate_views_and_clients_schema(tmp_path, monkeypatch) -> 
     view_names = set(inspector.get_view_names())
     assert "base_period_revenue" in view_names
     assert "inventory_availability" in view_names
+    assert "service_ip_assignments" in view_names
 
     client_columns = {column["name"] for column in inspector.get_columns("clients")}
     assert {"ip_address", "antenna_ip", "modem_ip", "antenna_model", "modem_model"}.isdisjoint(
@@ -39,5 +40,6 @@ def test_migrations_recreate_views_and_clients_schema(tmp_path, monkeypatch) -> 
     with engine.connect() as connection:
         connection.execute(text("SELECT * FROM base_period_revenue LIMIT 0"))
         connection.execute(text("SELECT * FROM inventory_availability LIMIT 0"))
+        connection.execute(text("SELECT * FROM service_ip_assignments LIMIT 0"))
 
     engine.dispose()

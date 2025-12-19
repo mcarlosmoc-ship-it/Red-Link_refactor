@@ -332,4 +332,22 @@ SELECT voucher_type_id, DATE '2025-01-01',
   END
 FROM voucher_types;
 
+-- View of current service-to-IP assignments.
+CREATE VIEW service_ip_assignments AS
+SELECT
+  reservation_id,
+  service_id,
+  client_id,
+  base_id,
+  pool_id,
+  ip_address,
+  status,
+  assigned_at,
+  released_at,
+  inventory_item_id,
+  created_at,
+  updated_at
+FROM base_ip_reservations
+WHERE service_id IS NOT NULL;
+
 COMMIT;
