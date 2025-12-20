@@ -104,6 +104,63 @@ CREATE TABLE legacy_payments (
 CREATE INDEX legacy_payments_client_idx ON legacy_payments(client_id);
 CREATE INDEX legacy_payments_period_idx ON legacy_payments(period_key);
 
+-- Payments tied to specific client services (supersedes legacy_payments).
+CREATE TABLE service_payments (
+  payment_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_service_id UUID NOT NULL REFERENCES client_services(client_service_id) ON DELETE CASCADE,
+  client_id UUID NOT NULL REFERENCES clients(client_id) ON DELETE CASCADE,
+  period_key TEXT REFERENCES billing_periods(period_key) ON DELETE RESTRICT,
+  paid_on DATE NOT NULL,
+  amount NUMERIC(12,2) NOT NULL CHECK (amount >= 0),
+  months_paid NUMERIC(6,2) CHECK (months_paid IS NULL OR months_paid > 0),
+  method TEXT NOT NULL CHECK (method IN ('Mixto', 'Efectivo', 'Transferencia', 'Tarjeta', 'Revendedor', 'Otro')),
+  method_breakdown JSONB,
+  note TEXT,
+  recorded_by TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX service_payments_client_idx ON service_payments(client_id);
+CREATE INDEX service_payments_service_idx ON service_payments(client_service_id);
+CREATE INDEX service_payments_period_idx ON service_payments(period_key);
+CREATE INDEX service_payments_paid_on_idx ON service_payments(paid_on);
+
+-- Monthly charges generated per service subscription and period.
+CREATE TABLE service_charges (
+  charge_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  subscription_id UUID NOT NULL REFERENCES client_services(client_service_id) ON DELETE CASCADE,
+  client_id UUID NOT NULL REFERENCES clients(client_id) ON DELETE CASCADE,
+  period_key TEXT NOT NULL REFERENCES billing_periods(period_key) ON DELETE RESTRICT,
+  charge_date DATE NOT NULL,
+  due_date DATE,
+  amount NUMERIC(12,2) NOT NULL CHECK (amount >= 0),
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'invoiced', 'partially_paid', 'paid', 'void')),
+  notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (subscription_id, period_key)
+);
+
+CREATE INDEX service_charges_client_idx ON service_charges(client_id);
+CREATE INDEX service_charges_subscription_idx ON service_charges(subscription_id);
+CREATE INDEX service_charges_period_idx ON service_charges(period_key);
+CREATE INDEX service_charges_status_idx ON service_charges(status);
+CREATE INDEX service_charges_charge_date_idx ON service_charges(charge_date);
+
+-- Allocation of payments to specific service charges (supports partials/advance).
+CREATE TABLE service_charge_payments (
+  allocation_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  charge_id UUID NOT NULL REFERENCES service_charges(charge_id) ON DELETE CASCADE,
+  payment_id UUID NOT NULL REFERENCES service_payments(payment_id) ON DELETE CASCADE,
+  amount NUMERIC(12,2) NOT NULL CHECK (amount >= 0),
+  applied_on DATE,
+  notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (charge_id, payment_id)
+);
+
+CREATE INDEX service_charge_payments_charge_idx ON service_charge_payments(charge_id);
+CREATE INDEX service_charge_payments_payment_idx ON service_charge_payments(payment_id);
+
 -- Principal accounts and their client accounts for the portal.
 CREATE TABLE principal_accounts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
