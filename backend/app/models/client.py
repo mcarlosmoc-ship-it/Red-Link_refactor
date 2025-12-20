@@ -109,6 +109,12 @@ class Client(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    charges = relationship(
+        "ServiceCharge",
+        back_populates="client",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
     services = relationship(
         "ClientService",
         back_populates="client",
