@@ -143,6 +143,11 @@ class ClientService(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    charges = relationship(
+        "ServiceCharge",
+        back_populates="subscription",
+        cascade="all, delete-orphan",
+    )
     streaming_account = relationship(
         "ClientAccount",
         back_populates="client_service",
@@ -253,6 +258,11 @@ class ServicePayment(Base):
     )
     audit_trail = relationship(
         "PaymentAuditLog",
+        back_populates="payment",
+        cascade="all, delete-orphan",
+    )
+    charge_allocations = relationship(
+        "ServiceChargePayment",
         back_populates="payment",
         cascade="all, delete-orphan",
     )
