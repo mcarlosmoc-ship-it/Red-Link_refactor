@@ -12,7 +12,15 @@ from typing import Dict, List, Optional, Tuple
 import pandas as pd
 
 
-ALLOWED_PAYMENT_METHODS = {"Efectivo", "Transferencia", "Tarjeta", "Revendedor", "Otro"}
+ALLOWED_ACCOUNT_STATUSES = {"activo", "suspendido", "moroso"}
+ALLOWED_PAYMENT_METHODS = {
+    "Mixto",
+    "Efectivo",
+    "Transferencia",
+    "Tarjeta",
+    "Revendedor",
+    "Otro",
+}
 CLIENT_LIMIT_PER_PRINCIPAL = 5
 
 
@@ -170,6 +178,30 @@ def _ensure_allowed_payment_method(value: Optional[str]) -> str:
     return value if value in ALLOWED_PAYMENT_METHODS else "Otro"
 
 
+def _normalize_account_status(value: Optional[str]) -> str:
+    if not value or not isinstance(value, str):
+        return "activo"
+    normalized = value.strip().lower()
+    return normalized if normalized in ALLOWED_ACCOUNT_STATUSES else "activo"
+
+
+def _ensure_profile(session, profile: str) -> str:
+    from ..models.client_account import ClientAccountProfile
+
+    normalized = str(profile).strip()
+    if not normalized:
+        return "General"
+    existing = (
+        session.query(ClientAccountProfile)
+        .filter(ClientAccountProfile.profile == normalized)
+        .one_or_none()
+    )
+    if existing is None:
+        session.add(ClientAccountProfile(profile=normalized))
+        session.flush()
+    return normalized
+
+
 def _create_principals(
     session,
     principal_df: pd.DataFrame,
@@ -257,12 +289,13 @@ def _create_clients(
             clients[correo_cliente] = existing
             summary.skipped_existing += 1
             continue
+        perfil = _ensure_profile(session, getattr(row, "perfil", ""))
         cliente = ClientAccount(
             principal_account_id=principal.id,
             correo_cliente=correo_cliente,
-            perfil=getattr(row, "perfil", "").strip(),
+            perfil=perfil,
             nombre_cliente=getattr(row, "nombre_cliente", "").strip(),
-            estatus=getattr(row, "estatus", "").strip() or "Activo",
+            estatus=_normalize_account_status(getattr(row, "estatus", None)),
         )
         password_value = getattr(row, "contrasena_cliente", "")
         if not password_value:

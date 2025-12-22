@@ -378,7 +378,12 @@ class PaymentReminderService:
         formatted_date = (
             due_date.strftime("%d/%m/%Y") if isinstance(due_date, date) else "sin fecha definida"
         )
-        status_detail = account.estatus.strip().lower()
+        status_value = (
+            account.estatus.value
+            if isinstance(account.estatus, models.ClientAccountStatus)
+            else str(account.estatus)
+        )
+        status_detail = status_value.strip().lower()
         profile = account.perfil
 
         if reminder_type is models.ReminderType.UPCOMING:
@@ -414,7 +419,7 @@ class PaymentReminderService:
         body_lines.extend(
             [
                 "",
-                f"Estado actual del servicio: {account.estatus}.",
+                f"Estado actual del servicio: {status_value}.",
                 "Si ya realizaste el pago, ignora este mensaje.",
                 "",
                 "Gracias por tu preferencia.",

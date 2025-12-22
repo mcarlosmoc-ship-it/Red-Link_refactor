@@ -10,7 +10,9 @@ from uuid import UUID
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from .common import PaginatedResponse
+from ..models.client_account import ClientAccountStatus
 from ..models.client_service import ClientServiceType
+from ..models.payment import PaymentMethod
 
 
 class PrincipalAccountBase(BaseModel):
@@ -66,7 +68,7 @@ class ClientAccountBase(BaseModel):
     contrasena_cliente: str = Field(..., min_length=1)
     perfil: str = Field(..., min_length=1)
     nombre_cliente: str = Field(..., min_length=1)
-    estatus: str = Field(..., min_length=1)
+    estatus: ClientAccountStatus = Field(...)
     fecha_registro: Optional[datetime] = None
     fecha_proximo_pago: Optional[date] = None
 
@@ -93,7 +95,7 @@ class ClientAccountUpdate(BaseModel):
     contrasena_cliente: Optional[str] = Field(default=None, min_length=1)
     perfil: Optional[str] = Field(default=None, min_length=1)
     nombre_cliente: Optional[str] = Field(default=None, min_length=1)
-    estatus: Optional[str] = Field(default=None, min_length=1)
+    estatus: Optional[ClientAccountStatus] = Field(default=None)
     fecha_registro: Optional[datetime] = None
     fecha_proximo_pago: Optional[date] = None
 
@@ -118,7 +120,7 @@ class ClientAccountPaymentBase(BaseModel):
     monto: Decimal = Field(..., ge=0)
     fecha_pago: date
     periodo_correspondiente: Optional[str] = None
-    metodo_pago: str = Field(..., min_length=1)
+    metodo_pago: PaymentMethod = Field(...)
     notas: Optional[str] = None
 
 
