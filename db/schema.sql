@@ -161,6 +161,40 @@ CREATE TABLE service_charge_payments (
 CREATE INDEX service_charge_payments_charge_idx ON service_charge_payments(charge_id);
 CREATE INDEX service_charge_payments_payment_idx ON service_charge_payments(payment_id);
 
+-- Compatibility view for legacy payment consumers (one row per allocation).
+CREATE VIEW payments_compat_view AS
+SELECT
+  sp.payment_id,
+  sp.client_id,
+  sc.period_key,
+  sp.paid_on,
+  scp.amount,
+  sp.months_paid,
+  sp.method,
+  sp.note,
+  sp.created_at
+FROM service_payments sp
+JOIN service_charge_payments scp ON scp.payment_id = sp.payment_id
+JOIN service_charges sc ON sc.charge_id = scp.charge_id
+
+UNION ALL
+
+SELECT
+  sp.payment_id,
+  sp.client_id,
+  sp.period_key,
+  sp.paid_on,
+  sp.amount,
+  sp.months_paid,
+  sp.method,
+  sp.note,
+  sp.created_at
+FROM service_payments sp
+WHERE NOT EXISTS (
+  SELECT 1 FROM service_charge_payments scp
+  WHERE scp.payment_id = sp.payment_id
+);
+
 -- Principal accounts and their client accounts for the portal.
 CREATE TABLE principal_accounts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

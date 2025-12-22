@@ -8,6 +8,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Dict, Iterable, Tuple
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload
 
 from .. import models, schemas
@@ -261,16 +262,60 @@ class MetricsService:
             location_metrics["debt_amount"] += debt_amount
 
         if period_key:
-            payments, _payments_total = PaymentService.list_payments(db, period_key=period_key, limit=10_000)
+            allocated_totals = (
+                db.query(
+                    models.Client.location,
+                    func.coalesce(func.sum(models.ServiceChargePayment.amount), 0),
+                )
+                .join(
+                    models.ServicePayment,
+                    models.ServicePayment.id == models.ServiceChargePayment.payment_id,
+                )
+                .join(
+                    models.Client,
+                    models.Client.id == models.ServicePayment.client_id,
+                )
+                .join(
+                    models.ServiceCharge,
+                    models.ServiceCharge.id == models.ServiceChargePayment.charge_id,
+                )
+                .filter(models.ServiceCharge.period_key == period_key)
+                .group_by(models.Client.location)
+                .all()
+            )
+            for location, total in allocated_totals:
+                location_key = location or "Desconocido"
+                breakdown[location_key]["payments"] += Decimal(total or 0)
+
+            unallocated_totals = (
+                db.query(
+                    models.Client.location,
+                    func.coalesce(func.sum(models.ServicePayment.amount), 0),
+                )
+                .join(
+                    models.Client,
+                    models.Client.id == models.ServicePayment.client_id,
+                )
+                .outerjoin(
+                    models.ServiceChargePayment,
+                    models.ServiceChargePayment.payment_id == models.ServicePayment.id,
+                )
+                .filter(models.ServicePayment.period_key == period_key)
+                .filter(models.ServiceChargePayment.payment_id.is_(None))
+                .group_by(models.Client.location)
+                .all()
+            )
+            for location, total in unallocated_totals:
+                location_key = location or "Desconocido"
+                breakdown[location_key]["payments"] += Decimal(total or 0)
         else:
             payments, _payments_total = PaymentService.list_payments(db, limit=10_000)
-
-        for payment in payments:
-            client = payment.client
-            if not client:
-                continue
-            location = client.location or "Desconocido"
-            breakdown[location]["payments"] += Decimal(payment.amount or 0)
+            for payment in payments:
+                client = payment.client
+                if not client:
+                    continue
+                location = client.location or "Desconocido"
+                breakdown[location]["payments"] += Decimal(payment.amount or 0)
 
         return [
             {

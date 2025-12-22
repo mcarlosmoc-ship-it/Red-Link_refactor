@@ -116,6 +116,23 @@ romper la operación actual.
 
 ## 3) Relación con el modelo actual (transición)
 
+### 3.0 Flujo oficial (service_charges + service_payments + service_charge_payments)
+
+**Orden de registro (fuente de verdad):**
+
+1. **Generar/asegurar el cargo** (`service_charges`) para el servicio y periodo.
+2. **Registrar el pago** en `service_payments` (monto total, método, fecha).
+3. **Asignar el pago** a uno o varios cargos en `service_charge_payments`.
+
+**Reglas operativas:**
+
+- Los **reportes por periodo** deben leer **montos asignados** en
+  `service_charge_payments` unidos a `service_charges.period_key`.
+- `service_payments.period_key` queda como **compatibilidad** (fallback para
+  pagos antiguos o no asignados).
+- La **deuda real** se calcula con cargos vs asignaciones, no con
+  `debt_months`/`months_paid`.
+
 ### 3.1 Fuente de verdad durante transición
 
 - **Pagos existentes**: `service_payments` sigue siendo la fuente principal.
@@ -135,6 +152,25 @@ romper la operación actual.
 ---
 
 ## 4) Plan de backfill
+
+### 4.0 Estrategia de migración desde `legacy_payments`
+
+**Objetivo:** migrar pagos históricos a `service_payments` y generar sus
+asignaciones (`service_charge_payments`) sin romper el frontend viejo.
+
+1. **Migrar registros históricos**:
+   - `legacy_payments` → `service_payments` (mismos campos; `client_service_id`
+     se resuelve desde `client_services` activos o se marca como pendiente).
+2. **Crear cargos retroactivos**:
+   - Para cada `period_key` histórico, crear `service_charges` por servicio
+     (monto de tarifa vigente).
+3. **Asignar pagos**:
+   - Para cada pago migrado, crear `service_charge_payments` contra los cargos
+     del mismo `period_key`.
+   - Si el pago cubre varios periodos, dividir por monto o aplicar FIFO.
+4. **Validar consistencia**:
+   - `SUM(service_charge_payments.amount)` debe igualar
+     `service_payments.amount` por `payment_id`.
 
 ### 4.1 Fecha de corte
 
@@ -211,7 +247,53 @@ HAVING COUNT(*) > 1;
 
 ---
 
-## 6) Riesgos y mitigación
+## 6) Vista de compatibilidad (`payments_compat_view`)
+
+Para mantener el frontend viejo mientras se migra, se recomienda exponer una
+vista que entregue el **formato legacy** con datos provenientes del nuevo
+flujo:
+
+```sql
+CREATE VIEW payments_compat_view AS
+SELECT
+  sp.payment_id,
+  sp.client_id,
+  sc.period_key,
+  sp.paid_on,
+  scp.amount,
+  sp.months_paid,
+  sp.method,
+  sp.note,
+  sp.created_at
+FROM service_payments sp
+JOIN service_charge_payments scp ON scp.payment_id = sp.payment_id
+JOIN service_charges sc ON sc.charge_id = scp.charge_id
+
+UNION ALL
+
+SELECT
+  sp.payment_id,
+  sp.client_id,
+  sp.period_key,
+  sp.paid_on,
+  sp.amount,
+  sp.months_paid,
+  sp.method,
+  sp.note,
+  sp.created_at
+FROM service_payments sp
+WHERE NOT EXISTS (
+  SELECT 1 FROM service_charge_payments scp
+  WHERE scp.payment_id = sp.payment_id
+);
+```
+
+> Nota: los pagos asignados aparecen **por cargo/periodo**; los pagos sin
+> asignación conservan su `period_key` original.
+
+---
+
+## 7) Riesgos y mitigación
 
 **Riesgos:**
 - Inconsistencias durante dual write.
@@ -230,7 +312,7 @@ HAVING COUNT(*) > 1;
 
 ---
 
-## 7) Orden de ejecución
+## 8) Orden de ejecución
 
 1. **Migraciones Alembic (aditivas)**
    - Crear `service_charges` y `service_charge_payments`.

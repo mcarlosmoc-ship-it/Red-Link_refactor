@@ -1040,12 +1040,26 @@ class PaymentService:
 
     @staticmethod
     def total_amount_for_period(db: Session, period_key: str) -> Decimal:
-        total = (
-            db.query(func.coalesce(func.sum(models.ServicePayment.amount), 0))
-            .filter(models.ServicePayment.period_key == period_key)
+        allocated_total = (
+            db.query(func.coalesce(func.sum(models.ServiceChargePayment.amount), 0))
+            .join(
+                models.ServiceCharge,
+                models.ServiceChargePayment.charge_id == models.ServiceCharge.id,
+            )
+            .filter(models.ServiceCharge.period_key == period_key)
             .scalar()
         )
-        return Decimal(total or 0)
+        unallocated_total = (
+            db.query(func.coalesce(func.sum(models.ServicePayment.amount), 0))
+            .outerjoin(
+                models.ServiceChargePayment,
+                models.ServiceChargePayment.payment_id == models.ServicePayment.id,
+            )
+            .filter(models.ServicePayment.period_key == period_key)
+            .filter(models.ServiceChargePayment.payment_id.is_(None))
+            .scalar()
+        )
+        return Decimal(allocated_total or 0) + Decimal(unallocated_total or 0)
 
     @staticmethod
     def total_amount_for_day(db: Session, target_date: date) -> Decimal:
