@@ -252,7 +252,7 @@ export const useBackofficeStore = create((set, get) => ({
         const data = await queryClient.fetchQuery({
           queryKey,
           queryFn: async () => {
-            const response = await apiClient.get('/principal-accounts', {
+            const response = await apiClient.get('/account-management/principal-accounts', {
               query: { limit: 200 },
             })
             const payload = response.data
@@ -293,7 +293,7 @@ export const useBackofficeStore = create((set, get) => ({
         const data = await queryClient.fetchQuery({
           queryKey,
           queryFn: async () => {
-            const response = await apiClient.get('/client-accounts', {
+            const response = await apiClient.get('/account-management/client-accounts', {
               query: { limit: 500 },
             })
             const payload = response.data
@@ -765,7 +765,10 @@ export const useBackofficeStore = create((set, get) => ({
       set,
       resources: ['clientAccounts', 'principalAccounts'],
       action: async () => {
-        await apiClient.post('/client-accounts', serializeClientAccountPayload(payload))
+        await apiClient.post(
+          '/account-management/client-accounts',
+          serializeClientAccountPayload(payload),
+        )
       },
     })
 
@@ -825,7 +828,7 @@ export const useBackofficeStore = create((set, get) => ({
       set,
       resources: 'clientAccounts',
       action: async () => {
-        await apiClient.put(`/client-accounts/${clientAccountId}`, {
+        await apiClient.put(`/account-management/client-accounts/${clientAccountId}`, {
           contrasena_cliente: password,
         })
       },

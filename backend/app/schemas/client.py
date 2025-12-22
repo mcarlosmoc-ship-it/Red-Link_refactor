@@ -74,6 +74,11 @@ class ClientRead(ClientBase):
     id: str
     created_at: datetime
     updated_at: datetime
+    ip_address: Optional[str] = None
+    antenna_ip: Optional[str] = None
+    modem_ip: Optional[str] = None
+    antenna_model: Optional[str] = None
+    modem_model: Optional[str] = None
     services: list[ClientServiceRead] = Field(default_factory=list)
     recent_payments: list[ServicePaymentRead] = Field(default_factory=list)
     zone: Optional[ZoneSummary] = None

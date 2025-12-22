@@ -10,7 +10,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Iterable, Optional, Tuple
 
 from pydantic import ValidationError
-from sqlalchemy import func
+from sqlalchemy import bindparam, func, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
@@ -192,6 +192,7 @@ class ClientService:
             .limit(max(limit, 1))
             .all()
         )
+        ClientService._hydrate_legacy_network_fields(db, items)
         return items, total
 
     @staticmethod
@@ -218,7 +219,47 @@ class ClientService:
         )
         if client is not None:
             client.recent_payments = ClientService._recent_payments(db, client.id)
+            ClientService._hydrate_legacy_network_fields(db, [client])
         return client
+
+    @staticmethod
+    def _hydrate_legacy_network_fields(
+        db: Session, clients: Iterable[models.Client]
+    ) -> None:
+        client_list = list(clients)
+        if not client_list:
+            return
+
+        client_ids = [client.id for client in client_list]
+        rows = (
+            db.execute(
+                text(
+                    """
+                    SELECT
+                        client_id,
+                        service_id,
+                        ip_address,
+                        antenna_ip,
+                        modem_ip,
+                        antenna_model,
+                        modem_model
+                    FROM client_network_compat
+                    WHERE client_id IN :client_ids
+                    """
+                ).bindparams(bindparam("client_ids", expanding=True)),
+                {"client_ids": client_ids},
+            )
+            .mappings()
+            .all()
+        )
+        mapping = {row["client_id"]: row for row in rows}
+        for client in client_list:
+            row = mapping.get(client.id)
+            client.ip_address = row["ip_address"] if row else None
+            client.antenna_ip = row["antenna_ip"] if row else None
+            client.modem_ip = row["modem_ip"] if row else None
+            client.antenna_model = row["antenna_model"] if row else None
+            client.modem_model = row["modem_model"] if row else None
 
     @staticmethod
     def create_client(db: Session, data: schemas.ClientCreate) -> models.Client:
