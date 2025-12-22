@@ -121,6 +121,29 @@ Si usas PostgreSQL, las migraciones activan los tipos especializados (`UUID`,
 `INET`) y habilitan las extensiones `pgcrypto`/`pg_trgm` para que puedas crear
 índices `GIN` más adelante (por ejemplo con `gin_trgm_ops`).
 
+### Fuente de verdad del esquema
+
+La fuente de verdad es **Alembic**. El archivo `db/schema.sql` es un snapshot
+de referencia y debe actualizarse cada vez que cambien las migraciones en
+`backend/alembic/versions/`.
+
+### Verificación de coherencia con producción
+
+Para validar que la estructura en producción coincide con el schema de
+referencia:
+
+1. Asegúrate de que la base de datos tenga aplicadas las migraciones más
+   recientes (`alembic upgrade head`).
+2. Ejecuta el script de verificación usando la misma `DATABASE_URL` de
+   producción o staging:
+
+   ```bash
+   ./backend/scripts/check_schema_consistency.sh
+   ```
+
+El script compara el `pg_dump --schema-only` de la base contra
+`db/schema.sql` y falla si encuentra diferencias.
+
 ## Inicio de desarrollo
 
 Utiliza el script de conveniencia que garantiza que las migraciones están al
