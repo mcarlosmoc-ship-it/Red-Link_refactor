@@ -157,6 +157,11 @@ app.include_router(
     prefix="/account-management",
     tags=["account-management"],
 )
+app.include_router(
+    account_management_router,
+    tags=["account-management"],
+    include_in_schema=False,
+)
 app.include_router(auth_router)
 app.include_router(clients_router, prefix="/clients", tags=["clients"])
 app.include_router(

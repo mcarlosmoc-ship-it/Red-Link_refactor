@@ -163,6 +163,10 @@ class ClientServiceRead(BaseModel):
         validation_alias="primary_ip_address",
     )
     ip_reservation_id: Optional[str] = None
+    antenna_ip: Optional[str] = None
+    modem_ip: Optional[str] = None
+    antenna_model: Optional[str] = None
+    modem_model: Optional[str] = None
     custom_price: Optional[Decimal] = None
     effective_price: Optional[Decimal] = None
     debt_amount: Optional[Decimal] = None
