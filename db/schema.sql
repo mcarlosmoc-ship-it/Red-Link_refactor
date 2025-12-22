@@ -2,8 +2,8 @@
 -- Target database: PostgreSQL 15+
 -- This schema captures the core entities used across the Red-Link backoffice UI,
 -- including clients, payments, inventory, resellers, vouchers, and operational expenses.
--- NOTE: This file is a reference schema; keep it synchronized with Alembic migrations
--- under backend/alembic/versions to match production changes.
+-- NOTE: Alembic migrations are the source of truth. This file is a reference
+-- snapshot that must be regenerated or updated whenever migrations change.
 
 BEGIN;
 
