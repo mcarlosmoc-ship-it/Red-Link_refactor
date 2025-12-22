@@ -54,6 +54,35 @@ class AccountService:
     STREAMING_SERVICE_TYPES = {ClientServiceType.STREAMING}
 
     @staticmethod
+    def _normalize_account_status(
+        status: models.ClientAccountStatus | str,
+    ) -> models.ClientAccountStatus:
+        if isinstance(status, models.ClientAccountStatus):
+            return status
+        normalized = str(status).strip().lower()
+        try:
+            return models.ClientAccountStatus(normalized)
+        except ValueError as exc:
+            raise AccountServiceError("El estatus del cliente no es válido.") from exc
+
+    @staticmethod
+    def _ensure_profile(
+        db: Session, profile: str
+    ) -> str:
+        normalized = str(profile).strip()
+        if not normalized:
+            raise AccountServiceError("El perfil del cliente no puede estar vacío.")
+        existing = (
+            db.query(models.ClientAccountProfile)
+            .filter(models.ClientAccountProfile.profile == normalized)
+            .one_or_none()
+        )
+        if existing is None:
+            db.add(models.ClientAccountProfile(profile=normalized))
+            db.flush()
+        return normalized
+
+    @staticmethod
     def list_principal_accounts(
         db: Session,
         *,
@@ -253,6 +282,8 @@ class AccountService:
         payload["principal_account_id"] = principal.id
 
         payload["fecha_proximo_pago"] = _add_one_month(fecha_registro.date())
+        payload["perfil"] = AccountService._ensure_profile(db, payload["perfil"])
+        payload["estatus"] = AccountService._normalize_account_status(payload["estatus"])
 
         streaming_service: Optional[models.ClientService] = None
         client_id_for_service = payload.get("client_id")
@@ -307,6 +338,14 @@ class AccountService:
         actor: Optional[AdminIdentity] = None,
     ) -> models.ClientAccount:
         update_data = data.model_dump(exclude_unset=True)
+        if "perfil" in update_data:
+            update_data["perfil"] = AccountService._ensure_profile(
+                db, update_data["perfil"]
+            )
+        if "estatus" in update_data:
+            update_data["estatus"] = AccountService._normalize_account_status(
+                update_data["estatus"]
+            )
         principal_id = update_data.get("principal_account_id")
         principal_for_service: models.PrincipalAccount
         if principal_id is not None:
@@ -476,9 +515,9 @@ class AccountService:
         updated = 0
         for account in query.all():
             if account.fecha_proximo_pago and account.fecha_proximo_pago <= suspension_threshold:
-                new_status = "suspendido"
+                new_status = models.ClientAccountStatus.SUSPENDIDO
             else:
-                new_status = "moroso"
+                new_status = models.ClientAccountStatus.MOROSO
             if account.estatus != new_status:
                 account.estatus = new_status
                 db.add(account)
@@ -532,4 +571,3 @@ def stop_overdue_monitor() -> None:
     _overdue_monitor_stop.set()
     if _overdue_monitor_thread and _overdue_monitor_thread.is_alive():
         _overdue_monitor_thread.join(timeout=5)
-

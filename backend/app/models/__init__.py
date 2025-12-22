@@ -11,7 +11,13 @@ from .base_operating_cost import BaseOperatingCost
 from .zone import BaseStation, Zone
 from .billing_period import BillingPeriod
 from .client import Client, ClientType, ServiceStatus
-from .client_account import ClientAccount, ClientAccountPayment, PrincipalAccount
+from .client_account import (
+    ClientAccount,
+    ClientAccountPayment,
+    ClientAccountProfile,
+    ClientAccountStatus,
+    PrincipalAccount,
+)
 from .client_service import (
     ClientService,
     ClientServiceStatus,
@@ -68,6 +74,8 @@ __all__ = [
     "Client",
     "ClientAccount",
     "ClientAccountPayment",
+    "ClientAccountProfile",
+    "ClientAccountStatus",
     "PrincipalAccount",
     "ClientService",
     "ClientServiceStatus",

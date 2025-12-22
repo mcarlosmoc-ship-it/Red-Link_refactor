@@ -7,6 +7,10 @@
 
 BEGIN;
 
+-- Shared enums for catalog consistency.
+CREATE TYPE client_account_status_enum AS ENUM ('activo', 'suspendido', 'moroso');
+CREATE TYPE payment_method_enum AS ENUM ('Mixto', 'Efectivo', 'Transferencia', 'Tarjeta', 'Revendedor', 'Otro');
+
 -- Base stations ("bases" in the UI) from which clients and inventory are associated.
 CREATE TABLE base_stations (
   base_id SERIAL PRIMARY KEY,
@@ -96,7 +100,7 @@ CREATE TABLE legacy_payments (
   paid_on DATE NOT NULL,
   amount NUMERIC(12,2) NOT NULL,
   months_paid NUMERIC(6,2) NOT NULL DEFAULT 1,
-  method TEXT NOT NULL CHECK (method IN ('Efectivo', 'Transferencia', 'Tarjeta', 'Revendedor', 'Otro')),
+  method payment_method_enum NOT NULL,
   note TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -113,7 +117,7 @@ CREATE TABLE service_payments (
   paid_on DATE NOT NULL,
   amount NUMERIC(12,2) NOT NULL CHECK (amount >= 0),
   months_paid NUMERIC(6,2) CHECK (months_paid IS NULL OR months_paid > 0),
-  method TEXT NOT NULL CHECK (method IN ('Mixto', 'Efectivo', 'Transferencia', 'Tarjeta', 'Revendedor', 'Otro')),
+  method payment_method_enum NOT NULL,
   method_breakdown JSONB,
   note TEXT,
   recorded_by TEXT,
@@ -203,16 +207,22 @@ CREATE TABLE principal_accounts (
   fecha_alta TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE client_account_profiles (
+  profile TEXT PRIMARY KEY,
+  description TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE client_accounts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   principal_account_id UUID NOT NULL REFERENCES principal_accounts(id) ON DELETE CASCADE,
   correo_cliente TEXT NOT NULL UNIQUE,
   contrasena_cliente TEXT NOT NULL,
-  perfil TEXT NOT NULL,
+  perfil TEXT NOT NULL REFERENCES client_account_profiles(profile) ON DELETE RESTRICT,
   nombre_cliente TEXT NOT NULL,
   fecha_registro TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   fecha_proximo_pago DATE,
-  estatus TEXT NOT NULL
+  estatus client_account_status_enum NOT NULL
 );
 
 CREATE INDEX client_accounts_fecha_proximo_pago_idx ON client_accounts(fecha_proximo_pago);
@@ -225,7 +235,7 @@ CREATE TABLE payments (
   monto NUMERIC(12,2) NOT NULL CHECK (monto >= 0),
   fecha_pago DATE NOT NULL,
   periodo_correspondiente TEXT,
-  metodo_pago TEXT NOT NULL CHECK (metodo_pago IN ('Efectivo', 'Transferencia', 'Tarjeta', 'Revendedor', 'Otro')),
+  metodo_pago payment_method_enum NOT NULL,
   notas TEXT
 );
 

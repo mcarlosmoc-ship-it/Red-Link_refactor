@@ -23,6 +23,6 @@ PAYMENT_METHOD_ENUM = Enum(
     PaymentMethod,
     name="payment_method_enum",
     values_callable=lambda enum_cls: [member.value for member in enum_cls],
-    native_enum=False,
+    native_enum=True,
     validate_strings=True,
 )

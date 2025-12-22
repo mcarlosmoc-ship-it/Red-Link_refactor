@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import enum
 import uuid
 
 from sqlalchemy import (
@@ -9,19 +10,37 @@ from sqlalchemy import (
     Column,
     Date,
     DateTime,
+    Enum as SAEnum,
     ForeignKey,
     Index,
+    Integer,
     Numeric,
     String,
     Text,
     func,
-    Integer,
 )
 from sqlalchemy.orm import relationship, synonym
 
 from ..database import Base
 from ..db_types import GUID
 from ..security import decrypt_client_password, encrypt_client_password
+from .payment import PAYMENT_METHOD_ENUM
+
+
+class ClientAccountStatus(str, enum.Enum):
+    """Allowed status values for client accounts."""
+
+    ACTIVO = "activo"
+    SUSPENDIDO = "suspendido"
+    MOROSO = "moroso"
+
+
+CLIENT_ACCOUNT_STATUS_ENUM = SAEnum(
+    ClientAccountStatus,
+    name="client_account_status_enum",
+    values_callable=lambda enum_cls: [member.value for member in enum_cls],
+    validate_strings=True,
+)
 
 
 class PrincipalAccount(Base):
@@ -67,7 +86,11 @@ class ClientAccount(Base):
     )
     correo_cliente = Column(String(255), nullable=False, unique=True)
     contrasena_cliente_encrypted = Column("contrasena_cliente", String(255), nullable=False)
-    perfil = Column(String(100), nullable=False)
+    perfil = Column(
+        String(100),
+        ForeignKey("client_account_profiles.profile", ondelete="RESTRICT"),
+        nullable=False,
+    )
     nombre_cliente = Column(String(255), nullable=False)
     fecha_registro = Column(
         DateTime(timezone=True),
@@ -75,7 +98,7 @@ class ClientAccount(Base):
         server_default=func.now(),
     )
     fecha_proximo_pago = Column(Date, nullable=True)
-    estatus = Column(String(100), nullable=False)
+    estatus = Column(CLIENT_ACCOUNT_STATUS_ENUM, nullable=False)
 
     principal_account = relationship("PrincipalAccount", back_populates="client_accounts")
     security_events = relationship(
@@ -90,10 +113,26 @@ class ClientAccount(Base):
     )
     client_service = relationship("ClientService", back_populates="streaming_account")
     client = relationship("Client")
+    profile_ref = relationship("ClientAccountProfile", back_populates="client_accounts")
 
 
 Index("client_accounts_fecha_proximo_pago_idx", ClientAccount.fecha_proximo_pago)
 Index("client_accounts_estatus_idx", ClientAccount.estatus)
+
+
+class ClientAccountProfile(Base):
+    """Catalog of account profiles for streaming clients."""
+
+    __tablename__ = "client_account_profiles"
+
+    profile = Column(String(100), primary_key=True)
+    description = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    client_accounts = relationship(
+        "ClientAccount",
+        back_populates="profile_ref",
+    )
 
 
 def _get_password(instance: "ClientAccount") -> str:
@@ -119,10 +158,6 @@ class ClientAccountPayment(Base):
     __tablename__ = "payments"
     __table_args__ = (
         CheckConstraint("monto >= 0", name="ck_account_payments_monto_non_negative"),
-        CheckConstraint(
-            "metodo_pago IN ('Efectivo', 'Transferencia', 'Tarjeta', 'Revendedor', 'Otro')",
-            name="ck_account_payments_metodo_pago",
-        ),
     )
 
     id = Column(GUID(), primary_key=True, default=uuid.uuid4)
@@ -134,7 +169,7 @@ class ClientAccountPayment(Base):
     monto = Column(Numeric(12, 2), nullable=False)
     fecha_pago = Column(Date, nullable=False)
     periodo_correspondiente = Column(String(20), nullable=True)
-    metodo_pago = Column(String(50), nullable=False)
+    metodo_pago = Column(PAYMENT_METHOD_ENUM, nullable=False)
     notas = Column(Text, nullable=True)
 
     client_account = relationship("ClientAccount", back_populates="payments")
