@@ -6,6 +6,7 @@ import logging
 import os
 import shutil
 import sqlite3
+import subprocess
 import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -20,8 +21,10 @@ LOGGER = logging.getLogger(__name__)
 
 BACKUP_DIR_ENV = "DATABASE_BACKUP_DIR"
 BACKUP_FREQUENCY_ENV = "DATABASE_BACKUP_FREQUENCY"
+PG_DUMP_BIN_ENV = "DATABASE_PG_DUMP_BIN"
 
 DEFAULT_BACKUP_INTERVAL = timedelta(days=1)
+DEFAULT_PG_DUMP_BIN = "pg_dump"
 
 _backup_thread: Optional[threading.Thread] = None
 _backup_stop = threading.Event()
@@ -72,6 +75,25 @@ def _sqlite_backup(source: Path, destination: Path) -> Path:
     return backup_path
 
 
+def _postgres_backup(destination: Path) -> Path:
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    backup_path = destination / f"backup_{timestamp}.dump"
+    pg_dump_bin = os.getenv(PG_DUMP_BIN_ENV, DEFAULT_PG_DUMP_BIN)
+    command = [
+        pg_dump_bin,
+        "--format=custom",
+        "--no-owner",
+        "--no-privileges",
+        "--file",
+        str(backup_path),
+        SQLALCHEMY_DATABASE_URL,
+    ]
+    LOGGER.info("Running PostgreSQL backup using %s", pg_dump_bin)
+    subprocess.run(command, check=True)
+    LOGGER.info("Database backup created at %s", backup_path)
+    return backup_path
+
+
 def perform_backup() -> Optional[Path]:
     """Create a backup of the configured database, if supported."""
 
@@ -84,9 +106,11 @@ def perform_backup() -> Optional[Path]:
     url = make_url(SQLALCHEMY_DATABASE_URL)
     if url.drivername.startswith("sqlite") and url.database not in (None, "", ":memory:"):
         return _sqlite_backup(Path(url.database), backup_dir)
+    if url.drivername.startswith("postgresql"):
+        return _postgres_backup(backup_dir)
 
     LOGGER.warning(
-        "Automatic backups are only implemented for SQLite databases in this deployment"
+        "Automatic backups are only implemented for SQLite or PostgreSQL databases"
     )
     return None
 

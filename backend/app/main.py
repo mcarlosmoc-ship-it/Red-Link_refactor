@@ -34,11 +34,16 @@ from .services.payment_reminders import (
     start_payment_reminder_scheduler,
     stop_payment_reminder_scheduler,
 )
+from .services.schema_consistency import (
+    start_schema_check_scheduler,
+    stop_schema_check_scheduler,
+)
 from .services.scheduler_monitor import (
     JOB_BACKUPS,
     JOB_IP_QUARANTINE,
     JOB_OVERDUE_MONITOR,
     JOB_PAYMENT_REMINDERS,
+    JOB_SCHEMA_CHECKS,
     SchedulerMonitor,
 )
 
@@ -205,6 +210,11 @@ def start_background_jobs() -> None:
         starter=start_backup_scheduler,
     )
     _maybe_start_job(
+        env_flag="ENABLE_SCHEMA_CHECKS",
+        job_name=JOB_SCHEMA_CHECKS,
+        starter=start_schema_check_scheduler,
+    )
+    _maybe_start_job(
         env_flag="ENABLE_IP_QUARANTINE_CLEANUP",
         job_name=JOB_IP_QUARANTINE,
         starter=start_ip_quarantine_scheduler,
@@ -223,4 +233,5 @@ def stop_background_jobs() -> None:
     stop_overdue_monitor()
     stop_payment_reminder_scheduler()
     stop_backup_scheduler()
+    stop_schema_check_scheduler()
     stop_ip_quarantine_scheduler()

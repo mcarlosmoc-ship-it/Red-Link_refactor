@@ -14,10 +14,11 @@ if [[ ! -f "$REFERENCE_SCHEMA" ]]; then
   exit 1
 fi
 
+PG_DUMP_BIN=${DATABASE_PG_DUMP_BIN:-pg_dump}
 TMP_SCHEMA=$(mktemp)
 trap 'rm -f "$TMP_SCHEMA"' EXIT
 
-pg_dump "$DATABASE_URL" \
+"$PG_DUMP_BIN" "$DATABASE_URL" \
   --schema-only \
   --no-owner \
   --no-privileges \
