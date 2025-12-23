@@ -40,6 +40,7 @@ CREATE TABLE clients (
 
 CREATE INDEX clients_full_name_idx ON clients USING GIN (to_tsvector('spanish', full_name));
 CREATE INDEX clients_location_idx ON clients(location);
+CREATE INDEX clients_location_trgm_idx ON clients USING GIN (location gin_trgm_ops);
 CREATE INDEX clients_base_idx ON clients(base_id);
 
 -- Individual services contracted by each client (internet, streaming, hotspot, etc.).
@@ -331,6 +332,10 @@ CREATE TABLE inventory_items (
 
 CREATE INDEX inventory_status_idx ON inventory_items(status);
 CREATE INDEX inventory_client_idx ON inventory_items(client_id);
+CREATE INDEX inventory_brand_trgm_idx ON inventory_items USING GIN (brand gin_trgm_ops);
+CREATE INDEX inventory_model_trgm_idx ON inventory_items USING GIN (model gin_trgm_ops);
+CREATE INDEX inventory_serial_trgm_idx ON inventory_items USING GIN (serial_number gin_trgm_ops);
+CREATE INDEX inventory_asset_tag_trgm_idx ON inventory_items USING GIN (asset_tag gin_trgm_ops);
 
 -- IP pools allocated to each base and their reservations.
 CREATE TABLE base_ip_pools (

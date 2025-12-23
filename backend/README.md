@@ -9,6 +9,9 @@ migraciones de Alembic y un esquema inicial derivado de `db/schema.sql`.
   entorno `DATABASE_URL`. Si no está definida, se usa SQLite en
   `backend/clients.db`, que se crea automáticamente (la ruta se resuelve a su
   versión absoluta dentro de `backend/`).
+- Para entornos productivos puedes exigir PostgreSQL definiendo
+  `REQUIRE_POSTGRES=1`. En ese caso el backend aborta si `DATABASE_URL` está
+  ausente o apunta a SQLite.
 - Si defines un `DATABASE_URL` con PostgreSQL (por ejemplo
   `postgresql+psycopg://usuario:clave@localhost/redlink`), SQLAlchemy activa
   automáticamente el chequeo de conexiones (`pool_pre_ping`) y las migraciones
@@ -16,6 +19,16 @@ migraciones de Alembic y un esquema inicial derivado de `db/schema.sql`.
   extensiones `pgcrypto` y `pg_trgm`.
 - El motor de SQLAlchemy y Alembic reutilizan este valor, por lo que modificar
   `DATABASE_URL` en el entorno afecta tanto a la API como a las migraciones.
+
+Opcionalmente puedes ajustar el pool de conexiones (solo aplica a PostgreSQL):
+
+| Variable | Descripción | Default |
+|----------|-------------|---------|
+| `DATABASE_POOL_SIZE` | Conexiones persistentes en el pool. | `5` |
+| `DATABASE_MAX_OVERFLOW` | Conexiones adicionales permitidas. | `10` |
+| `DATABASE_POOL_TIMEOUT` | Segundos antes de fallar al esperar una conexión. | `30` |
+| `DATABASE_POOL_RECYCLE` | Segundos antes de reciclar conexiones. | `1800` |
+| `DATABASE_CONNECT_TIMEOUT` | Timeout de conexión inicial en segundos. | `10` |
 
 ## Variables obligatorias de seguridad y autenticación
 
@@ -144,6 +157,13 @@ referencia:
 El script compara el `pg_dump --schema-only` de la base contra
 `db/schema.sql` y falla si encuentra diferencias.
 
+También puedes activar un chequeo automático en el backend definiendo:
+
+- `ENABLE_SCHEMA_CHECKS=1` para lanzar la tarea en segundo plano.
+- `SCHEMA_CHECK_FREQUENCY` con `daily`, `weekly` o `Nh` (por ejemplo `12h`).
+- `SCHEMA_CHECK_REFERENCE` si deseas usar otra ruta de referencia.
+- `DATABASE_PG_DUMP_BIN` si `pg_dump` no está en el `PATH`.
+
 ## Inicio de desarrollo
 
 Utiliza el script de conveniencia que garantiza que las migraciones están al
@@ -198,6 +218,19 @@ El programador se ejecuta en un hilo en segundo plano cuando la API arranca si
 se define la variable:
 
 - `PAYMENT_REMINDER_SCHEDULER_ENABLED=1`
+
+## Backups automáticos
+
+Puedes activar los respaldos automáticos con `ENABLE_BACKUPS=1`. La tarea usa:
+
+| Variable | Descripción |
+|----------|-------------|
+| `DATABASE_BACKUP_DIR` | Carpeta donde se almacenan los backups (obligatoria). |
+| `DATABASE_BACKUP_FREQUENCY` | `daily`, `weekly` o `Nh` (por ejemplo `6h`). |
+| `DATABASE_PG_DUMP_BIN` | Ruta personalizada para `pg_dump` (PostgreSQL). |
+
+En PostgreSQL se genera un archivo `.dump` con `pg_dump --format=custom`. En
+SQLite se copia el archivo `.db` existente.
 
 Si necesitas deshabilitar el arranque del hilo (por ejemplo en pruebas o builds
 de CI) establece además `ENABLE_PAYMENT_REMINDERS=0`; este flag detiene FastAPI
