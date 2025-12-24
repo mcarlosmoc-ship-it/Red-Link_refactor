@@ -38,7 +38,6 @@ def _create_client(session, zone: models.Zone, name: str = "Cliente IP") -> mode
         location="Centro",
         zone=zone,
         client_type=models.ClientType.RESIDENTIAL,
-        monthly_fee=Decimal("300"),
     )
     session.add(client)
     session.flush()

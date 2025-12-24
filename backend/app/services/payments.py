@@ -743,8 +743,7 @@ class PaymentService:
 
         client.debt_months = new_debt
         client.paid_months_ahead = new_ahead
-        if new_debt <= 0:
-            client.service_status = models.ServiceStatus.ACTIVE
+        PaymentService._sync_service_status(service, new_debt)
 
     @staticmethod
     def _apply_service_debt(
@@ -779,10 +778,7 @@ class PaymentService:
 
         client.paid_months_ahead = new_ahead.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         client.debt_months = new_debt.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        if client.debt_months > 0:
-            client.service_status = models.ServiceStatus.SUSPENDED
-        else:
-            client.service_status = models.ServiceStatus.ACTIVE
+        PaymentService._sync_service_status(service, client.debt_months)
 
     @staticmethod
     def _revert_service_debt(
@@ -797,6 +793,21 @@ class PaymentService:
             service.debt_months = (Decimal(service.debt_months or 0) + months_paid).quantize(
                 Decimal("0.01"), rounding=ROUND_HALF_UP
             )
+
+    @staticmethod
+    def _sync_service_status(
+        service: models.ClientService, debt_months: Decimal
+    ) -> None:
+        if service.status not in {
+            models.ClientServiceStatus.ACTIVE,
+            models.ClientServiceStatus.SUSPENDED,
+        }:
+            return
+        service.status = (
+            models.ClientServiceStatus.ACTIVE
+            if Decimal(debt_months or 0) <= 0
+            else models.ClientServiceStatus.SUSPENDED
+        )
 
     @classmethod
     def overdue_periods(

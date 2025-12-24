@@ -53,10 +53,8 @@ class ClientService:
     }
     CLIENT_OPTIONAL_COLUMNS = {
         "external_code",
-        "monthly_fee",
         "paid_months_ahead",
         "debt_months",
-        "client_service_status",
     }
     SERVICE_OPTIONAL_COLUMNS = {
         "service_plan_price",
@@ -71,7 +69,6 @@ class ClientService:
     }
     SERVICE_REQUIRED_COLUMNS = {"service_plan"}
     IMPORT_DECIMAL_COLUMNS = {
-        "monthly_fee",
         "paid_months_ahead",
         "debt_months",
         "service_plan_price",
@@ -183,7 +180,18 @@ class ClientService:
             query = query.filter(models.Client.zone_id == zone_id)
 
         if status is not None:
-            query = query.filter(models.Client.service_status == status)
+            if status == models.ServiceStatus.ACTIVE:
+                query = query.filter(
+                    models.Client.services.any(
+                        models.ClientService.status == models.ClientServiceStatus.ACTIVE
+                    )
+                )
+            else:
+                query = query.filter(
+                    ~models.Client.services.any(
+                        models.ClientService.status == models.ClientServiceStatus.ACTIVE
+                    )
+                )
 
         total = query.count()
         items = (
@@ -274,8 +282,6 @@ class ClientService:
         try:
             db.flush()
 
-            effective_prices: list[Decimal] = []
-
             for service_in in services_payload:
                 plan_id = service_in.service_id
                 plan = db.get(models.ServicePlan, plan_id)
@@ -335,19 +341,6 @@ class ClientService:
                         )
                     except IpPoolServiceError as exc:
                         raise ValueError(str(exc)) from exc
-
-                price_reference = custom_price
-                if price_reference is None and plan.monthly_price is not None:
-                    price_reference = plan.monthly_price
-                if price_reference is not None:
-                    effective_prices.append(
-                        price_reference
-                        if isinstance(price_reference, Decimal)
-                        else Decimal(str(price_reference))
-                    )
-
-            if effective_prices:
-                client.monthly_fee = effective_prices[0]
 
             db.commit()
         except Exception:
@@ -646,14 +639,6 @@ class ClientService:
                 continue
             if column in ClientService.IMPORT_DECIMAL_COLUMNS:
                 payload[column] = _parse_decimal(raw_value)
-            elif column == "client_service_status":
-                try:
-                    payload["service_status"] = models.ServiceStatus(raw_value)
-                except ValueError as exc:
-                    valid_statuses = ", ".join(status.value for status in models.ServiceStatus)
-                    raise _RowProcessingError(
-                        f"El estado del cliente debe ser uno de: {valid_statuses}."
-                    ) from exc
             else:
                 payload[column] = raw_value
 

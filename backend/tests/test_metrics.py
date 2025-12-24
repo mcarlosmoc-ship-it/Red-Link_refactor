@@ -101,7 +101,7 @@ def test_dashboard_metrics_endpoint_returns_filtered_clients(client, seed_basic_
 
     clients = payload["clients"]
     assert len(clients) == 1
-    assert clients[0]["service_status"] == "Suspendido"
+    assert clients[0]["service_status"] == "Activo"
 
     search_response = client.get(
         "/metrics/dashboard",

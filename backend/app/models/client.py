@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import enum
 import uuid
+from decimal import Decimal
 
 from sqlalchemy import (
     CheckConstraint,
@@ -42,7 +43,6 @@ class Client(Base):
 
     __tablename__ = "clients"
     __table_args__ = (
-        CheckConstraint("monthly_fee >= 0", name="ck_clients_monthly_fee_non_negative"),
         CheckConstraint(
             "paid_months_ahead >= 0", name="ck_clients_paid_months_non_negative"
         ),
@@ -66,7 +66,6 @@ class Client(Base):
         ForeignKey("zones.zone_id", onupdate="CASCADE"),
         nullable=True,
     )
-    monthly_fee = Column(Numeric(10, 2), nullable=True)
     paid_months_ahead = Column(
         Numeric(6, 2),
         nullable=False,
@@ -84,15 +83,6 @@ class Client(Base):
         GUID(),
         ForeignKey("client_plans.client_plan_id", ondelete="SET NULL"),
         nullable=True,
-    )
-    service_status = Column(
-        Enum(
-            ServiceStatus,
-            name="client_service_status_enum",
-            values_callable=lambda enum_cls: [member.value for member in enum_cls],
-        ),
-        nullable=False,
-        default=ServiceStatus.ACTIVE,
     )
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(
@@ -166,6 +156,48 @@ class Client(Base):
     def base(self, value):
         self.zone = value
 
+    @property
+    def service_status(self) -> ServiceStatus:
+        """Compute the client status from the current service assignments."""
+
+        from .client_service import ClientServiceStatus
+
+        services = list(getattr(self, "services", []) or [])
+        has_active = any(service.status == ClientServiceStatus.ACTIVE for service in services)
+        return ServiceStatus.ACTIVE if has_active else ServiceStatus.SUSPENDED
+
+    @property
+    def monthly_fee(self) -> Decimal | None:
+        """Expose the active service monthly fee derived from service plans."""
+
+        from .client_service import ClientServiceStatus, ClientServiceType
+
+        services = list(getattr(self, "services", []) or [])
+        active_services = [
+            service
+            for service in services
+            if service.status == ClientServiceStatus.ACTIVE
+        ]
+        candidates = active_services or services
+        if not candidates:
+            return None
+
+        preferred_types = {
+            ClientServiceType.INTERNET,
+            ClientServiceType.HOTSPOT,
+        }
+
+        def service_priority(service):
+            category = service.service_plan.category if service.service_plan else service.category
+            return 0 if category in preferred_types else 1
+
+        prioritized_services = sorted(candidates, key=service_priority)
+        for service in prioritized_services:
+            price = service.effective_price
+            if price is not None:
+                return price
+        return None
+
 
 Index(
     "clients_full_name_idx",
@@ -176,4 +208,3 @@ Index(
 Index("clients_location_idx", Client.location)
 Index("clients_zone_idx", Client.zone_id)
 Index("clients_active_plan_idx", Client.active_client_plan_id)
-Index("clients_zone_status_idx", Client.zone_id, Client.service_status)

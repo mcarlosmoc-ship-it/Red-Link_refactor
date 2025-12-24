@@ -1,7 +1,5 @@
 from decimal import Decimal
 
-from decimal import Decimal
-
 from backend.app import models
 
 
@@ -18,7 +16,6 @@ def _create_client(session, zone, name):
         location="Centro",
         zone=zone,
         client_type=models.ClientType.RESIDENTIAL,
-        monthly_fee=Decimal("300"),
     )
     session.add(client)
     session.flush()

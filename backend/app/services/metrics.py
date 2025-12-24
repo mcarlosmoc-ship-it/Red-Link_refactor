@@ -56,6 +56,7 @@ class MetricsService:
             for service in services
             if service.status == models.ClientServiceStatus.ACTIVE
         ]
+        candidate_services = active_services or services
 
         preferred_types = {
             models.ClientServiceType.INTERNET,
@@ -76,12 +77,10 @@ class MetricsService:
                 return priority, created_at
             return priority, date.min
 
-        prioritized_services = sorted(active_services, key=service_priority)
+        prioritized_services = sorted(candidate_services, key=service_priority)
 
-        effective_price = Decimal(str(client.monthly_fee or 0))
-        if effective_price < Decimal("0"):
-            effective_price = Decimal("0")
-        courtesy = effective_price == Decimal("0")
+        effective_price = Decimal("0")
+        courtesy = True
 
         for service in prioritized_services:
             price = MetricsService._service_effective_price(service)
@@ -97,7 +96,7 @@ class MetricsService:
             Decimal(str(client.debt_months or 0))
         )
         service_debt_months = sum(
-            Decimal(str(service.debt_months or 0)) for service in active_services
+            Decimal(str(service.debt_months or 0)) for service in candidate_services
         )
         if service_debt_months > Decimal("0"):
             debt_months = MetricsService._normalize_months(service_debt_months)
@@ -459,9 +458,13 @@ class MetricsService:
             debt = MetricsService._normalize_months(debt)
             ahead = MetricsService._normalize_months(ahead)
 
+        has_active_service = any(
+            service.status == models.ClientServiceStatus.ACTIVE
+            for service in getattr(client, "services", []) or []
+        )
         service_status = (
             models.ServiceStatus.ACTIVE.value
-            if debt == Decimal("0")
+            if has_active_service
             else models.ServiceStatus.SUSPENDED.value
         )
 
