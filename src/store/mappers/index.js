@@ -479,6 +479,10 @@ export const serializeClientServicePayload = (payload) => {
     body.billing_day = payload.billingDay
   }
 
+  if (payload.ipAddress) {
+    body.ip_address = payload.ipAddress
+  }
+
   if (payload.nextBillingDate) {
     body.next_billing_date = payload.nextBillingDate
   }
