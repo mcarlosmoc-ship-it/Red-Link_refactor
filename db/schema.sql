@@ -28,12 +28,8 @@ CREATE TABLE clients (
   full_name TEXT NOT NULL,
   location TEXT NOT NULL,
   base_id INTEGER NOT NULL REFERENCES base_stations(base_id) ON UPDATE CASCADE,
-  antenna_model TEXT,
-  modem_model TEXT,
-  monthly_fee NUMERIC(10,2) NOT NULL DEFAULT 0,
   paid_months_ahead NUMERIC(6,2) NOT NULL DEFAULT 0,
   debt_months NUMERIC(6,2) NOT NULL DEFAULT 0,
-  service_status TEXT NOT NULL CHECK (service_status IN ('Activo', 'Suspendido')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

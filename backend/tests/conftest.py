@@ -128,10 +128,8 @@ def seed_basic_data(db_session: Session) -> dict:
         location="Centro",
         zone=zone,
         client_type=models.ClientType.RESIDENTIAL,
-        monthly_fee=Decimal("300"),
         debt_months=Decimal("2"),
         paid_months_ahead=Decimal("0"),
-        service_status=models.ServiceStatus.SUSPENDED,
     )
     db_session.add(client)
 

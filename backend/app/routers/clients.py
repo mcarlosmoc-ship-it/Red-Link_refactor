@@ -167,12 +167,6 @@ def _create_client(
             detail="El alta de cliente ya no acepta captura de servicios. Registra el servicio después del cliente.",
         )
 
-    if client_in.monthly_fee is not None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="La mensualidad se calcula a partir del servicio asignado.",
-        )
-
     try:
         return ClientService.create_client(db, client_in)
     except ValueError as exc:

@@ -38,10 +38,8 @@ class ClientBase(BaseModel):
         ge=1,
         validation_alias=AliasChoices("zone_id", "base_id"),
     )
-    monthly_fee: Optional[Decimal] = Field(default=None, ge=0)
     paid_months_ahead: Decimal = Field(default=Decimal("0"), ge=0)
     debt_months: Decimal = Field(default=Decimal("0"), ge=0)
-    service_status: ServiceStatus = ServiceStatus.ACTIVE
 
 
 class ClientCreate(ClientBase):
@@ -62,10 +60,8 @@ class ClientUpdate(BaseModel):
         ge=1,
         validation_alias=AliasChoices("zone_id", "base_id"),
     )
-    monthly_fee: Optional[Decimal] = Field(default=None, ge=0)
     paid_months_ahead: Optional[Decimal] = Field(default=None, ge=0)
     debt_months: Optional[Decimal] = Field(default=None, ge=0)
-    service_status: Optional[ServiceStatus] = None
 
 
 class ClientRead(ClientBase):
@@ -79,6 +75,8 @@ class ClientRead(ClientBase):
     modem_ip: Optional[str] = None
     antenna_model: Optional[str] = None
     modem_model: Optional[str] = None
+    monthly_fee: Optional[Decimal] = Field(default=None, ge=0)
+    service_status: Optional[ServiceStatus] = None
     services: list[ClientServiceRead] = Field(default_factory=list)
     recent_payments: list[ServicePaymentRead] = Field(default_factory=list)
     zone: Optional[ZoneSummary] = None

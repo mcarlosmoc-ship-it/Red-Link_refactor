@@ -164,7 +164,6 @@ def test_delete_payment_restores_client_and_snapshots(client, db_session, seed_b
 
     original_debt = Decimal(client_model.debt_months)
     original_ahead = Decimal(client_model.paid_months_ahead)
-    original_status = client_model.service_status
 
     payload = {
         "client_id": client_model.id,
@@ -203,7 +202,6 @@ def test_delete_payment_restores_client_and_snapshots(client, db_session, seed_b
 
     assert Decimal(refreshed_client.debt_months) == original_debt
     assert Decimal(refreshed_client.paid_months_ahead) == original_ahead
-    assert refreshed_client.service_status == original_status
 
     snapshot_after_delete = (
         db_session.query(models.FinancialSnapshot)
@@ -357,10 +355,8 @@ def test_payment_reuses_period_with_mismatched_key(client, db_session):
         location="Norte",
         zone=zone,
         client_type=models.ClientType.RESIDENTIAL,
-        monthly_fee=Decimal("300"),
         debt_months=Decimal("1"),
         paid_months_ahead=Decimal("0"),
-        service_status=models.ServiceStatus.SUSPENDED,
     )
     db_session.add(client_model)
 
@@ -434,7 +430,6 @@ def test_streaming_payment_updates_next_billing(client, db_session):
         full_name="Cliente Streaming",
         location="Zona Streaming",
         client_type=models.ClientType.RESIDENTIAL,
-        monthly_fee=Decimal("150"),
     )
     streaming_plan = models.ServicePlan(
         name="Plan Streaming",
@@ -522,10 +517,8 @@ def test_preloaded_sqlite_database_allows_creating_payments(tmp_path, monkeypatc
             location="Centro",
             zone=zone,
             client_type=models.ClientType.RESIDENTIAL,
-            monthly_fee=Decimal("300"),
             debt_months=Decimal("1"),
             paid_months_ahead=Decimal("0"),
-            service_status=models.ServiceStatus.SUSPENDED,
         )
         session.add(client_model)
 
