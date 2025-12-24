@@ -10,6 +10,9 @@ BEGIN;
 -- Shared enums for catalog consistency.
 CREATE TYPE client_account_status_enum AS ENUM ('activo', 'suspendido', 'moroso');
 CREATE TYPE payment_method_enum AS ENUM ('Mixto', 'Efectivo', 'Transferencia', 'Tarjeta', 'Revendedor', 'Otro');
+CREATE TYPE subscription_status_enum AS ENUM ('active', 'suspended', 'cancelled', 'pending');
+CREATE TYPE charge_status_enum AS ENUM ('pending', 'invoiced', 'partially_paid', 'paid', 'void');
+CREATE TYPE billing_cycle_enum AS ENUM ('monthly', 'quarterly', 'semiannual', 'annual');
 
 -- Base stations ("bases" in the UI) from which clients and inventory are associated.
 CREATE TABLE base_stations (
@@ -19,6 +22,42 @@ CREATE TABLE base_stations (
   location TEXT NOT NULL,
   notes TEXT
 );
+
+-- Service catalogs and plan pricing history.
+CREATE TABLE service_catalog (
+  catalog_id SERIAL PRIMARY KEY,
+  code TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  description TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE service_plans (
+  plan_id SERIAL PRIMARY KEY,
+  catalog_id INTEGER NOT NULL REFERENCES service_catalog(catalog_id) ON DELETE CASCADE,
+  code TEXT NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT,
+  download_speed_mbps NUMERIC(10,2),
+  upload_speed_mbps NUMERIC(10,2),
+  billing_cycle billing_cycle_enum NOT NULL DEFAULT 'monthly',
+  metadata JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (catalog_id, code)
+);
+
+CREATE TABLE service_plan_prices (
+  plan_price_id SERIAL PRIMARY KEY,
+  plan_id INTEGER NOT NULL REFERENCES service_plans(plan_id) ON DELETE CASCADE,
+  currency TEXT NOT NULL DEFAULT 'MXN',
+  price NUMERIC(12,2) NOT NULL CHECK (price >= 0),
+  effective_from DATE NOT NULL,
+  effective_to DATE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (plan_id, currency, effective_from)
+);
+
+CREATE INDEX service_plan_prices_plan_idx ON service_plan_prices(plan_id);
 
 -- Core client records covering both residential subscribers and token-based community points.
 CREATE TABLE clients (
@@ -43,6 +82,7 @@ CREATE INDEX clients_base_idx ON clients(base_id);
 CREATE TABLE client_services (
   client_service_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   client_id UUID NOT NULL REFERENCES clients(client_id) ON DELETE CASCADE,
+  plan_id INTEGER REFERENCES service_plans(plan_id) ON DELETE SET NULL,
   service_type TEXT NOT NULL CHECK (
     service_type IN (
       'internet_private',
@@ -56,7 +96,8 @@ CREATE TABLE client_services (
     )
   ),
   display_name TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'suspended', 'cancelled', 'pending')),
+  status subscription_status_enum NOT NULL DEFAULT 'active',
+  billing_cycle billing_cycle_enum NOT NULL DEFAULT 'monthly',
   billing_day INTEGER CHECK (billing_day IS NULL OR (billing_day >= 1 AND billing_day <= 31)),
   next_billing_date DATE,
   price NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (price >= 0),
@@ -72,14 +113,37 @@ CREATE TABLE client_services (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   cancelled_at TIMESTAMPTZ,
-  UNIQUE (client_id, service_type, display_name)
+  UNIQUE (client_id, service_type, display_name),
+  UNIQUE (client_id, client_service_id)
 );
 
 CREATE INDEX client_services_client_idx ON client_services(client_id);
 CREATE INDEX client_services_base_idx ON client_services(base_id);
+CREATE INDEX client_services_plan_idx ON client_services(plan_id);
 CREATE UNIQUE INDEX client_services_ip_unique_idx ON client_services(ip_address) WHERE ip_address IS NOT NULL;
 CREATE UNIQUE INDEX client_services_antenna_ip_unique_idx ON client_services(antenna_ip) WHERE antenna_ip IS NOT NULL;
 CREATE UNIQUE INDEX client_services_modem_ip_unique_idx ON client_services(modem_ip) WHERE modem_ip IS NOT NULL;
+
+-- Subscription metadata built on top of client services.
+CREATE TABLE subscriptions (
+  subscription_id UUID PRIMARY KEY REFERENCES client_services(client_service_id) ON DELETE CASCADE,
+  client_id UUID NOT NULL REFERENCES clients(client_id) ON DELETE CASCADE,
+  plan_id INTEGER REFERENCES service_plans(plan_id) ON DELETE SET NULL,
+  billing_cycle billing_cycle_enum NOT NULL DEFAULT 'monthly',
+  billing_anchor_day INTEGER CHECK (billing_anchor_day IS NULL OR (billing_anchor_day >= 1 AND billing_anchor_day <= 31)),
+  start_date DATE NOT NULL DEFAULT CURRENT_DATE,
+  end_date DATE,
+  auto_renew BOOLEAN NOT NULL DEFAULT TRUE,
+  status subscription_status_enum NOT NULL DEFAULT 'active',
+  trial_ends_at DATE,
+  cancellation_reason TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (subscription_id, client_id)
+);
+
+CREATE INDEX subscriptions_client_idx ON subscriptions(client_id);
+CREATE INDEX subscriptions_plan_idx ON subscriptions(plan_id);
 
 -- Billing periods tracked by the frontend (yyyy-mm format).
 CREATE TABLE billing_periods (
@@ -109,6 +173,7 @@ CREATE INDEX legacy_payments_period_idx ON legacy_payments(period_key);
 CREATE TABLE service_payments (
   payment_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   client_service_id UUID NOT NULL REFERENCES client_services(client_service_id) ON DELETE CASCADE,
+  subscription_id UUID REFERENCES subscriptions(subscription_id) ON DELETE CASCADE,
   client_id UUID NOT NULL REFERENCES clients(client_id) ON DELETE CASCADE,
   period_key TEXT REFERENCES billing_periods(period_key) ON DELETE RESTRICT,
   paid_on DATE NOT NULL,
@@ -123,19 +188,20 @@ CREATE TABLE service_payments (
 
 CREATE INDEX service_payments_client_idx ON service_payments(client_id);
 CREATE INDEX service_payments_service_idx ON service_payments(client_service_id);
+CREATE INDEX service_payments_subscription_idx ON service_payments(subscription_id);
 CREATE INDEX service_payments_period_idx ON service_payments(period_key);
 CREATE INDEX service_payments_paid_on_idx ON service_payments(paid_on);
 
 -- Monthly charges generated per service subscription and period.
 CREATE TABLE service_charges (
   charge_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  subscription_id UUID NOT NULL REFERENCES client_services(client_service_id) ON DELETE CASCADE,
+  subscription_id UUID NOT NULL REFERENCES subscriptions(subscription_id) ON DELETE CASCADE,
   client_id UUID NOT NULL REFERENCES clients(client_id) ON DELETE CASCADE,
   period_key TEXT NOT NULL REFERENCES billing_periods(period_key) ON DELETE RESTRICT,
   charge_date DATE NOT NULL,
   due_date DATE,
   amount NUMERIC(12,2) NOT NULL CHECK (amount >= 0),
-  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'invoiced', 'partially_paid', 'paid', 'void')),
+  status charge_status_enum NOT NULL DEFAULT 'pending',
   notes TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (subscription_id, period_key)
@@ -213,6 +279,7 @@ CREATE TABLE client_account_profiles (
 CREATE TABLE client_accounts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   principal_account_id UUID NOT NULL REFERENCES principal_accounts(id) ON DELETE CASCADE,
+  client_id UUID REFERENCES clients(client_id) ON DELETE SET NULL,
   correo_cliente TEXT NOT NULL UNIQUE,
   contrasena_cliente TEXT NOT NULL,
   perfil TEXT NOT NULL REFERENCES client_account_profiles(profile) ON DELETE RESTRICT,
@@ -222,8 +289,26 @@ CREATE TABLE client_accounts (
   estatus client_account_status_enum NOT NULL
 );
 
+CREATE INDEX client_accounts_client_idx ON client_accounts(client_id);
 CREATE INDEX client_accounts_fecha_proximo_pago_idx ON client_accounts(fecha_proximo_pago);
 CREATE INDEX client_accounts_estatus_idx ON client_accounts(estatus);
+
+-- Link portal accounts to the services they manage.
+CREATE TABLE client_account_services (
+  account_service_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_account_id UUID NOT NULL REFERENCES client_accounts(id) ON DELETE CASCADE,
+  client_service_id UUID NOT NULL REFERENCES client_services(client_service_id) ON DELETE CASCADE,
+  client_id UUID NOT NULL REFERENCES clients(client_id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT client_account_services_service_fk FOREIGN KEY (client_id, client_service_id)
+    REFERENCES client_services(client_id, client_service_id) ON DELETE CASCADE,
+  UNIQUE (client_account_id, client_service_id),
+  UNIQUE (client_id, client_service_id)
+);
+
+CREATE INDEX client_account_services_account_idx ON client_account_services(client_account_id);
+CREATE INDEX client_account_services_service_idx ON client_account_services(client_service_id);
+CREATE INDEX client_account_services_client_idx ON client_account_services(client_id);
 
 -- Payments tracked for client accounts.
 CREATE TABLE payments (
@@ -235,6 +320,20 @@ CREATE TABLE payments (
   metodo_pago payment_method_enum NOT NULL,
   notas TEXT
 );
+
+-- Bridge portal payments to the unified service payment flow.
+CREATE TABLE client_account_payment_links (
+  link_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  portal_payment_id UUID NOT NULL REFERENCES payments(id) ON DELETE CASCADE,
+  service_payment_id UUID REFERENCES service_payments(payment_id) ON DELETE SET NULL,
+  service_charge_id UUID REFERENCES service_charges(charge_id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (portal_payment_id),
+  UNIQUE (service_payment_id, service_charge_id)
+);
+
+CREATE INDEX client_account_payment_links_payment_idx ON client_account_payment_links(portal_payment_id);
+CREATE INDEX client_account_payment_links_service_payment_idx ON client_account_payment_links(service_payment_id);
 
 -- Audit log for reminders sent to client accounts.
 CREATE TABLE payment_reminder_logs (
@@ -333,6 +432,21 @@ CREATE INDEX inventory_model_trgm_idx ON inventory_items USING GIN (model gin_tr
 CREATE INDEX inventory_serial_trgm_idx ON inventory_items USING GIN (serial_number gin_trgm_ops);
 CREATE INDEX inventory_asset_tag_trgm_idx ON inventory_items USING GIN (asset_tag gin_trgm_ops);
 
+-- Historical mapping of inventory assignments per client service.
+CREATE TABLE client_service_equipment (
+  assignment_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_service_id UUID NOT NULL REFERENCES client_services(client_service_id) ON DELETE CASCADE,
+  inventory_id UUID NOT NULL REFERENCES inventory_items(inventory_id) ON DELETE CASCADE,
+  assigned_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  released_at TIMESTAMPTZ,
+  notes TEXT,
+  UNIQUE (client_service_id, inventory_id, assigned_at)
+);
+
+CREATE INDEX client_service_equipment_service_idx ON client_service_equipment(client_service_id);
+CREATE INDEX client_service_equipment_inventory_idx ON client_service_equipment(inventory_id);
+CREATE UNIQUE INDEX client_service_equipment_active_unique_idx ON client_service_equipment(client_service_id, inventory_id) WHERE released_at IS NULL;
+
 -- IP pools allocated to each base and their reservations.
 CREATE TABLE base_ip_pools (
   pool_id SERIAL PRIMARY KEY,
@@ -343,7 +457,8 @@ CREATE TABLE base_ip_pools (
   notes TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE (base_id, cidr)
+  UNIQUE (base_id, cidr),
+  UNIQUE (base_id, pool_id)
 );
 
 CREATE INDEX base_ip_pools_base_idx ON base_ip_pools(base_id);
@@ -364,6 +479,10 @@ CREATE TABLE base_ip_reservations (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (base_id, ip_address)
 );
+
+ALTER TABLE base_ip_reservations
+  ADD CONSTRAINT base_ip_reservations_pool_matches_base_fk
+  FOREIGN KEY (base_id, pool_id) REFERENCES base_ip_pools(base_id, pool_id);
 
 CREATE INDEX base_ip_reservations_status_idx ON base_ip_reservations(status);
 CREATE INDEX base_ip_reservations_pool_idx ON base_ip_reservations(pool_id);
