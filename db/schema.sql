@@ -150,6 +150,7 @@ CREATE TABLE billing_periods (
   period_key TEXT PRIMARY KEY CHECK (period_key ~ '^[0-9]{4}-[0-9]{2}$'),
   starts_on DATE NOT NULL,
   ends_on DATE NOT NULL,
+  CHECK (ends_on >= starts_on),
   UNIQUE (starts_on, ends_on)
 );
 
@@ -199,7 +200,7 @@ CREATE TABLE service_charges (
   client_id UUID NOT NULL REFERENCES clients(client_id) ON DELETE CASCADE,
   period_key TEXT NOT NULL REFERENCES billing_periods(period_key) ON DELETE RESTRICT,
   charge_date DATE NOT NULL,
-  due_date DATE,
+  due_date DATE CHECK (due_date IS NULL OR due_date >= charge_date),
   amount NUMERIC(12,2) NOT NULL CHECK (amount >= 0),
   status charge_status_enum NOT NULL DEFAULT 'pending',
   notes TEXT,
@@ -417,7 +418,7 @@ CREATE TABLE inventory_items (
   serial_number TEXT,
   base_id INTEGER NOT NULL REFERENCES base_stations(base_id) ON UPDATE CASCADE,
   ip_address INET,
-  status TEXT NOT NULL CHECK (status IN ('assigned', 'available', 'maintenance')),
+  status TEXT NOT NULL DEFAULT 'available' CHECK (status IN ('assigned', 'available', 'maintenance')),
   location TEXT NOT NULL,
   client_id UUID REFERENCES clients(client_id) ON DELETE SET NULL,
   notes TEXT,
