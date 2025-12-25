@@ -79,6 +79,10 @@ def _alter_payment_method_column(bind, table_name: str, column_name: str) -> Non
     if not _table_exists(bind, table_name) or not _column_exists(bind, table_name, column_name):
         return
     payment_method_enum = sa.Enum(*PAYMENT_METHOD_VALUES, name="payment_method_enum")
+    if bind.dialect.name == "sqlite":
+        # SQLite cannot safely rewrite tables referenced by views during batch
+        # operations; skip type coercion in this dialect.
+        return
     if bind.dialect.name == "postgresql":
         op.alter_column(
             table_name,
@@ -142,14 +146,24 @@ def upgrade() -> None:
         op.execute("UPDATE client_accounts SET perfil = trim(perfil) WHERE perfil IS NOT NULL")
 
         if not _foreign_key_exists(bind, "client_accounts", "client_accounts_profile_fkey"):
-            op.create_foreign_key(
-                "client_accounts_profile_fkey",
-                "client_accounts",
-                "client_account_profiles",
-                ["perfil"],
-                ["profile"],
-                ondelete="RESTRICT",
-            )
+            if bind.dialect.name == "sqlite":
+                with op.batch_alter_table("client_accounts") as batch_op:
+                    batch_op.create_foreign_key(
+                        "client_accounts_profile_fkey",
+                        "client_account_profiles",
+                        ["perfil"],
+                        ["profile"],
+                        ondelete="RESTRICT",
+                    )
+            else:
+                op.create_foreign_key(
+                    "client_accounts_profile_fkey",
+                    "client_accounts",
+                    "client_account_profiles",
+                    ["perfil"],
+                    ["profile"],
+                    ondelete="RESTRICT",
+                )
 
     if _table_exists(bind, "client_accounts") and _column_exists(bind, "client_accounts", "estatus"):
         _normalize_account_statuses()
@@ -162,21 +176,25 @@ def upgrade() -> None:
                 postgresql_using="estatus::text::client_account_status_enum",
             )
         else:
-            op.alter_column(
-                "client_accounts",
-                "estatus",
-                existing_type=sa.String(length=100),
-                type_=account_status_enum,
-            )
+            with op.batch_alter_table("client_accounts") as batch_op:
+                batch_op.alter_column(
+                    "estatus",
+                    existing_type=sa.String(length=100),
+                    type_=account_status_enum,
+                )
 
     if _table_exists(bind, "payments") and _column_exists(bind, "payments", "metodo_pago"):
-        if _check_constraint_exists(bind, "payments", "ck_account_payments_metodo_pago"):
+        if bind.dialect.name != "sqlite" and _check_constraint_exists(
+            bind, "payments", "ck_account_payments_metodo_pago"
+        ):
             op.drop_constraint("ck_account_payments_metodo_pago", "payments", type_="check")
         _normalize_payment_methods("payments", "metodo_pago")
         _alter_payment_method_column(bind, "payments", "metodo_pago")
 
     if _table_exists(bind, "pos_sales") and _column_exists(bind, "pos_sales", "payment_method"):
-        if _check_constraint_exists(bind, "pos_sales", "ck_pos_sales_payment_method"):
+        if bind.dialect.name != "sqlite" and _check_constraint_exists(
+            bind, "pos_sales", "ck_pos_sales_payment_method"
+        ):
             op.drop_constraint("ck_pos_sales_payment_method", "pos_sales", type_="check")
         _normalize_payment_methods("pos_sales", "payment_method")
         _alter_payment_method_column(bind, "pos_sales", "payment_method")
