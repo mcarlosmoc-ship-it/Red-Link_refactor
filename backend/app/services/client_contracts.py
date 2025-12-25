@@ -6,7 +6,7 @@ from datetime import date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Dict, Iterable, Optional, Tuple
 
-from sqlalchemy import func
+from sqlalchemy import case, func
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 
@@ -735,32 +735,82 @@ class ClientContractService:
     def update_service_debt(
         db: Session, service: models.ClientService, data: schemas.ServiceDebtUpdate
     ) -> models.ClientService:
-        update_data = data.model_dump(exclude_unset=True)
+        raise ClientContractError(
+            "Los campos legacy de adeudo son de solo lectura; usa cargos y pagos del ledger."
+        )
 
-        if "debt_amount" in update_data:
-            debt_amount = Decimal(str(update_data.get("debt_amount") or 0))
-            if debt_amount < 0:
-                raise ClientContractError("El adeudo no puede ser negativo.")
-            service.debt_amount = debt_amount
+    @staticmethod
+    def ledger_balance(
+        db: Session, service: models.ClientService
+    ) -> schemas.ServiceBalance:
+        allocations = (
+            db.query(
+                models.ServiceChargePayment.charge_id.label("charge_id"),
+                func.coalesce(func.sum(models.ServiceChargePayment.amount), 0).label(
+                    "allocated_amount"
+                ),
+            )
+            .group_by(models.ServiceChargePayment.charge_id)
+            .subquery()
+        )
 
-        if "debt_months" in update_data:
-            debt_months = Decimal(str(update_data.get("debt_months") or 0))
-            if debt_months < 0:
-                raise ClientContractError("Los meses vencidos no pueden ser negativos.")
-            service.debt_months = debt_months
+        aggregates = (
+            db.query(
+                models.ServiceCharge.subscription_id.label("client_service_id"),
+                func.coalesce(
+                    func.sum(
+                        models.ServiceCharge.amount
+                        - func.coalesce(allocations.c.allocated_amount, 0)
+                    ),
+                    0,
+                ).label("balance_due"),
+                func.sum(
+                    case(
+                        (
+                            models.ServiceCharge.amount
+                            - func.coalesce(allocations.c.allocated_amount, 0)
+                            > 0,
+                            1,
+                        ),
+                        else_=0,
+                    )
+                ).label("months_due"),
+                func.min(
+                    case(
+                        (
+                            models.ServiceCharge.amount
+                            - func.coalesce(allocations.c.allocated_amount, 0)
+                            > 0,
+                            models.ServiceCharge.due_date,
+                        ),
+                        else_=None,
+                    )
+                ).label("next_due_date"),
+            )
+            .outerjoin(allocations, allocations.c.charge_id == models.ServiceCharge.id)
+            .filter(
+                models.ServiceCharge.subscription_id == service.id,
+                models.ServiceCharge.status != models.ServiceChargeStatus.VOID,
+            )
+            .group_by(models.ServiceCharge.subscription_id)
+            .first()
+        )
 
-        if "debt_notes" in update_data:
-            service.debt_notes = update_data.get("debt_notes")
+        balance_due = aggregates.balance_due if aggregates else Decimal("0")
+        months_due = int(aggregates.months_due or 0) if aggregates else 0
+        next_due_date = aggregates.next_due_date if aggregates else None
+        due_soon = bool(
+            next_due_date is not None
+            and next_due_date <= date.today() + timedelta(days=7)
+        )
 
-        try:
-            db.add(service)
-            db.commit()
-        except SQLAlchemyError as exc:
-            db.rollback()
-            raise ClientContractError("No se pudo actualizar el adeudo del servicio.") from exc
-
-        db.refresh(service)
-        return service
+        return schemas.ServiceBalance(
+            client_service_id=str(service.id),
+            balance_due=balance_due,
+            months_due=months_due,
+            due_soon=due_soon,
+            next_due_date=next_due_date,
+        )
 
     @staticmethod
     def delete_service(db: Session, service: models.ClientService) -> None:

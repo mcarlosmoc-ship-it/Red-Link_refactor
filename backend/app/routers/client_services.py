@@ -131,6 +131,20 @@ def get_service(service_id: str, db: Session = Depends(get_db)) -> schemas.Clien
 
 
 @router.get(
+    "/{service_id}/ledger-balance",
+    response_model=schemas.ServiceBalance,
+    summary="Saldo calculado desde cargos y pagos",
+)
+def get_service_ledger_balance(
+    service_id: str, db: Session = Depends(get_db)
+) -> schemas.ServiceBalance:
+    service = ClientContractService.get_service(db, service_id)
+    if service is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Service not found")
+    return ClientContractService.ledger_balance(db, service)
+
+
+@router.get(
     "/{service_id}/proration",
     response_model=schemas.ProrationPreview,
     summary="Calcula prorrateos o ajustes de plan",
