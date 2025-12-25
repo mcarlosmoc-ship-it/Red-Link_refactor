@@ -7,7 +7,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = "20251115_0020_service_ledger_balance_view"
-down_revision = "20251105_0019_trigram_search_indexes"
+down_revision = "20251105_0019"
 branch_labels = None
 depends_on = None
 

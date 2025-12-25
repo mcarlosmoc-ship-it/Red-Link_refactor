@@ -73,6 +73,27 @@ CREATE TABLE clients (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Guard legacy debt columns: keep existing values readable but block new writes.
+CREATE OR REPLACE FUNCTION clients_debt_columns_guard()
+RETURNS trigger AS $$
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    IF COALESCE(NEW.paid_months_ahead, 0) <> 0 OR COALESCE(NEW.debt_months, 0) <> 0 THEN
+      RAISE EXCEPTION 'paid_months_ahead/debt_months are legacy and read-only; derive from ledger';
+    END IF;
+  ELSIF TG_OP = 'UPDATE' THEN
+    IF NEW.paid_months_ahead IS DISTINCT FROM OLD.paid_months_ahead OR NEW.debt_months IS DISTINCT FROM OLD.debt_months THEN
+      RAISE EXCEPTION 'paid_months_ahead/debt_months are legacy and read-only; derive from ledger';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_clients_debt_columns_guard
+BEFORE INSERT OR UPDATE ON clients
+FOR EACH ROW EXECUTE FUNCTION clients_debt_columns_guard();
+
 CREATE INDEX clients_full_name_idx ON clients USING GIN (to_tsvector('spanish', full_name));
 CREATE INDEX clients_location_idx ON clients(location);
 CREATE INDEX clients_location_trgm_idx ON clients USING GIN (location gin_trgm_ops);
@@ -116,6 +137,29 @@ CREATE TABLE client_services (
   UNIQUE (client_id, service_type, display_name),
   UNIQUE (client_id, client_service_id)
 );
+
+-- Prevent legacy IP columns from being used going forward; authority is base_ip_reservations.
+CREATE OR REPLACE FUNCTION client_services_ip_guard()
+RETURNS trigger AS $$
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.ip_address IS NOT NULL OR NEW.antenna_ip IS NOT NULL OR NEW.modem_ip IS NOT NULL THEN
+      RAISE EXCEPTION 'IP columns on client_services are legacy/read-only; use base_ip_reservations';
+    END IF;
+  ELSIF TG_OP = 'UPDATE' THEN
+    IF NEW.ip_address IS DISTINCT FROM OLD.ip_address OR
+       NEW.antenna_ip IS DISTINCT FROM OLD.antenna_ip OR
+       NEW.modem_ip IS DISTINCT FROM OLD.modem_ip THEN
+      RAISE EXCEPTION 'IP columns on client_services are legacy/read-only; use base_ip_reservations';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_client_services_ip_guard
+BEFORE INSERT OR UPDATE ON client_services
+FOR EACH ROW EXECUTE FUNCTION client_services_ip_guard();
 
 CREATE INDEX client_services_client_idx ON client_services(client_id);
 CREATE INDEX client_services_base_idx ON client_services(base_id);
@@ -166,6 +210,18 @@ CREATE TABLE legacy_payments (
   note TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Lock legacy_payments to read-only mode during the transition.
+CREATE OR REPLACE FUNCTION legacy_payments_read_only()
+RETURNS trigger AS $$
+BEGIN
+  RAISE EXCEPTION 'legacy_payments is read-only; use service_payments + allocations';
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_legacy_payments_read_only
+BEFORE INSERT OR UPDATE OR DELETE ON legacy_payments
+FOR EACH ROW EXECUTE FUNCTION legacy_payments_read_only();
 
 CREATE INDEX legacy_payments_client_idx ON legacy_payments(client_id);
 CREATE INDEX legacy_payments_period_idx ON legacy_payments(period_key);
@@ -426,6 +482,27 @@ CREATE TABLE inventory_items (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Prevent new writes to legacy IP column; reservations table is authoritative.
+CREATE OR REPLACE FUNCTION inventory_items_ip_guard()
+RETURNS trigger AS $$
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.ip_address IS NOT NULL THEN
+      RAISE EXCEPTION 'inventory_items.ip_address is legacy/read-only; use base_ip_reservations';
+    END IF;
+  ELSIF TG_OP = 'UPDATE' THEN
+    IF NEW.ip_address IS DISTINCT FROM OLD.ip_address THEN
+      RAISE EXCEPTION 'inventory_items.ip_address is legacy/read-only; use base_ip_reservations';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_inventory_items_ip_guard
+BEFORE INSERT OR UPDATE ON inventory_items
+FOR EACH ROW EXECUTE FUNCTION inventory_items_ip_guard();
+
 CREATE INDEX inventory_status_idx ON inventory_items(status);
 CREATE INDEX inventory_client_idx ON inventory_items(client_id);
 CREATE INDEX inventory_brand_trgm_idx ON inventory_items USING GIN (brand gin_trgm_ops);
@@ -480,6 +557,37 @@ CREATE TABLE base_ip_reservations (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (base_id, ip_address)
 );
+
+-- Enforce pool/IP consistency and single active reservation per service/inventory item.
+CREATE OR REPLACE FUNCTION base_ip_reservations_validate_pool()
+RETURNS trigger AS $$
+DECLARE
+  pool_cidr TEXT;
+BEGIN
+  IF NEW.pool_id IS NOT NULL THEN
+    SELECT cidr INTO pool_cidr FROM base_ip_pools WHERE pool_id = NEW.pool_id;
+    IF pool_cidr IS NULL THEN
+      RAISE EXCEPTION 'Invalid pool_id % for reservation', NEW.pool_id;
+    END IF;
+    IF NOT (NEW.ip_address << inet(pool_cidr)) THEN
+      RAISE EXCEPTION 'IP % is outside pool %', NEW.ip_address, pool_cidr;
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_base_ip_reservations_validate_pool
+BEFORE INSERT OR UPDATE ON base_ip_reservations
+FOR EACH ROW EXECUTE FUNCTION base_ip_reservations_validate_pool();
+
+CREATE UNIQUE INDEX base_ip_reservations_service_active_uidx
+  ON base_ip_reservations(service_id)
+  WHERE service_id IS NOT NULL AND status IN ('reserved', 'in_use');
+
+CREATE UNIQUE INDEX base_ip_reservations_inventory_active_uidx
+  ON base_ip_reservations(inventory_item_id)
+  WHERE inventory_item_id IS NOT NULL AND status IN ('reserved', 'in_use');
 
 ALTER TABLE base_ip_reservations
   ADD CONSTRAINT base_ip_reservations_pool_matches_base_fk
@@ -571,5 +679,22 @@ SELECT
   updated_at
 FROM base_ip_reservations
 WHERE service_id IS NOT NULL;
+
+-- Compatibility view exposing the latest active IP per service while legacy columns remain.
+CREATE VIEW client_service_ip_compat AS
+SELECT DISTINCT ON (service_id)
+  service_id AS client_service_id,
+  base_id,
+  pool_id,
+  ip_address,
+  status,
+  assigned_at,
+  released_at,
+  inventory_item_id,
+  created_at,
+  updated_at
+FROM base_ip_reservations
+WHERE service_id IS NOT NULL AND status IN ('reserved', 'in_use')
+ORDER BY service_id, COALESCE(assigned_at, created_at) DESC;
 
 COMMIT;
