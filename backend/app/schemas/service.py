@@ -248,6 +248,18 @@ class ServiceDebtUpdate(BaseModel):
     debt_notes: Optional[str] = None
 
 
+class ServiceBalance(BaseModel):
+    """Ledger-derived balance snapshot for a service subscription."""
+
+    client_service_id: str
+    balance_due: Decimal = Field(default=Decimal("0"), ge=0)
+    months_due: int = Field(default=0, ge=0)
+    due_soon: bool
+    next_due_date: Optional[date] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class ClientServiceBulkCreate(BaseModel):
     """Payload to assign the same service plan to multiple clients."""
 
