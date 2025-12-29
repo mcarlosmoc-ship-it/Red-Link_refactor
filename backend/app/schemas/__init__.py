@@ -308,3 +308,12 @@ PaymentPreviewResult.model_rebuild(
         "PaymentBalanceSnapshot": PaymentBalanceSnapshot,
     }
 )
+PaymentScheduleRead.model_rebuild(
+    _types_namespace={
+        "ClientRead": ClientRead,
+        "ClientServiceRead": ClientServiceRead,
+    }
+)
+PaymentScheduleListResponse.model_rebuild(
+    _types_namespace={"PaymentScheduleRead": PaymentScheduleRead}
+)
