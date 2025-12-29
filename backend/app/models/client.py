@@ -61,11 +61,12 @@ class Client(Base):
     )
     full_name = Column(String, nullable=False)
     location = Column(String, nullable=False)
-    zone_id = Column(
+    base_id = Column(
         Integer,
-        ForeignKey("zones.zone_id", onupdate="CASCADE"),
+        ForeignKey("base_stations.base_id", onupdate="CASCADE"),
         nullable=True,
     )
+    zone_id = synonym("base_id")
     paid_months_ahead = Column(
         Numeric(6, 2),
         nullable=False,
@@ -78,7 +79,6 @@ class Client(Base):
         default=0,
         comment="LEGACY: adeudo expresado en meses; mantenido solo para historial",
     )
-    base_id = synonym("zone_id")
     active_client_plan_id = Column(
         GUID(),
         ForeignKey("client_plans.client_plan_id", ondelete="SET NULL"),
@@ -92,7 +92,7 @@ class Client(Base):
         nullable=False,
     )
 
-    zone = relationship("Zone", back_populates="clients")
+    base_station = relationship("BaseStation", back_populates="clients")
     payments = relationship(
         "ServicePayment",
         back_populates="client",
@@ -107,6 +107,12 @@ class Client(Base):
     )
     services = relationship(
         "ClientService",
+        back_populates="client",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    subscriptions = relationship(
+        "Subscription",
         back_populates="client",
         cascade="all, delete-orphan",
         passive_deletes=True,
@@ -145,16 +151,17 @@ class Client(Base):
         cascade="all, delete-orphan",
     )
     support_tickets = relationship("SupportTicket", back_populates="client")
+    zone = base_station
 
     @property
     def base(self):
         """Compatibility alias returning the client's zone."""
 
-        return self.zone
+        return self.base_station
 
     @base.setter
     def base(self, value):
-        self.zone = value
+        self.base_station = value
 
     @property
     def service_status(self) -> ServiceStatus:

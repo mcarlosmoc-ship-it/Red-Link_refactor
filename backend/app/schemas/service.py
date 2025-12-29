@@ -44,7 +44,7 @@ class ClientServiceBase(BaseModel):
         default=None,
         ge=1,
         validation_alias=AliasChoices("zone_id", "base_id"),
-        serialization_alias="zone_id",
+        serialization_alias="base_id",
     )
     ip_address: Optional[str] = Field(
         default=None,
@@ -114,7 +114,7 @@ class ClientServiceUpdate(BaseModel):
         default=None,
         ge=1,
         validation_alias=AliasChoices("zone_id", "base_id"),
-        serialization_alias="zone_id",
+        serialization_alias="base_id",
     )
     ip_address: Optional[str] = Field(
         default=None,
@@ -156,7 +156,7 @@ class ClientServiceRead(BaseModel):
         default=None,
         ge=1,
         validation_alias=AliasChoices("zone_id", "base_id"),
-        serialization_alias="zone_id",
+        serialization_alias="base_id",
     )
     ip_address: Optional[str] = Field(
         default=None,
@@ -275,7 +275,7 @@ class ClientServiceBulkCreate(BaseModel):
         default=None,
         ge=1,
         validation_alias=AliasChoices("zone_id", "base_id"),
-        serialization_alias="zone_id",
+        serialization_alias="base_id",
     )
     ip_reservation_id: Optional[str] = Field(
         default=None, description="Reserva de IP asignada al servicio"

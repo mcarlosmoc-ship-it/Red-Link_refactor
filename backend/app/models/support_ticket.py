@@ -63,7 +63,7 @@ class SupportTicket(Base):
 
     id = Column("ticket_id", GUID(), primary_key=True, default=uuid.uuid4)
     client_id = Column(GUID(), ForeignKey("clients.client_id", ondelete="SET NULL"), nullable=True)
-    base_id = Column(Integer, ForeignKey("zones.zone_id", ondelete="SET NULL"), nullable=True)
+    base_id = Column(Integer, ForeignKey("base_stations.base_id", ondelete="SET NULL"), nullable=True)
     inventory_id = Column(
         GUID(),
         ForeignKey("inventory_items.inventory_id", ondelete="SET NULL"),
@@ -80,6 +80,6 @@ class SupportTicket(Base):
     resolution = Column(Text, nullable=True)
 
     client = relationship("Client", back_populates="support_tickets")
-    base = relationship("Zone", back_populates="support_tickets")
+    base = relationship("BaseStation", back_populates="support_tickets")
     inventory_item = relationship("InventoryItem", back_populates="support_tickets")
 

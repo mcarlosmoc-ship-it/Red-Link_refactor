@@ -60,7 +60,7 @@ class BaseIpPool(Base):
     id = Column("pool_id", Integer, primary_key=True, autoincrement=True)
     base_id = Column(
         Integer,
-        ForeignKey("zones.zone_id", ondelete="CASCADE"),
+        ForeignKey("base_stations.base_id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -84,7 +84,7 @@ class BaseIpPool(Base):
         nullable=False,
     )
 
-    base = relationship("Zone", back_populates="ip_pools")
+    base = relationship("BaseStation", back_populates="ip_pools")
     reservations = relationship(
         "BaseIpReservation",
         back_populates="pool",
@@ -107,7 +107,7 @@ class BaseIpReservation(Base):
     id = Column("reservation_id", GUID(), primary_key=True, default=uuid.uuid4)
     base_id = Column(
         Integer,
-        ForeignKey("zones.zone_id", ondelete="CASCADE"),
+        ForeignKey("base_stations.base_id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )

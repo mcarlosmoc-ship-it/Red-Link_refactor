@@ -34,11 +34,18 @@ from .ip_pool import BaseIpReservation
 class ClientServiceType(str, enum.Enum):
     """Supported service categories that can be assigned to a client."""
 
+    INTERNET_PRIVATE = "internet_private"
+    INTERNET_TOKENS = "internet_tokens"
+    STREAMING_SPOTIFY = "streaming_spotify"
+    STREAMING_NETFLIX = "streaming_netflix"
+    STREAMING_VIX = "streaming_vix"
+    PUBLIC_DESK = "public_desk"
+    POINT_OF_SALE = "point_of_sale"
+    OTHER = "other"
+    # Legacy aliases kept for backward compatibility
     INTERNET = "internet"
     STREAMING = "streaming"
     HOTSPOT = "hotspot"
-    POINT_OF_SALE = "point_of_sale"
-    OTHER = "other"
 
 
 class ClientServiceStatus(str, enum.Enum):
@@ -102,12 +109,12 @@ class ClientService(Base):
     billing_day = Column(Integer, nullable=True)
     next_billing_date = Column(Date, nullable=True)
     custom_price = Column(Numeric(12, 2), nullable=True)
-    zone_id = Column(
+    base_id = Column(
         Integer,
-        ForeignKey("zones.zone_id", ondelete="SET NULL"),
+        ForeignKey("base_stations.base_id", ondelete="SET NULL"),
         nullable=True,
     )
-    base_id = synonym("zone_id")
+    zone_id = synonym("base_id")
     antenna_ip = Column(INET(), nullable=True)
     modem_ip = Column(INET(), nullable=True)
     antenna_model = Column(String, nullable=True)
@@ -145,8 +152,11 @@ class ClientService(Base):
     )
     charges = relationship(
         "ServiceCharge",
-        back_populates="subscription",
-        cascade="all, delete-orphan",
+        primaryjoin="ClientService.id==foreign(ServiceCharge.subscription_id)",
+        viewonly=True,
+    )
+    subscription = relationship(
+        "Subscription", back_populates="service", uselist=False, cascade="all, delete-orphan"
     )
     streaming_account = relationship(
         "ClientAccount",
