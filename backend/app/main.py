@@ -47,14 +47,17 @@ from .services.scheduler_monitor import (
     SchedulerMonitor,
 )
 
-LOCAL_DEVELOPMENT_ORIGIN = "http://localhost:5174"
+LOCAL_DEVELOPMENT_ORIGINS = {
+    "http://localhost:5174",
+    "http://localhost:5173",
+}
 LOCALHOST_ORIGIN_REGEX = r"https?://(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?$"
 
 DEFAULT_ALLOWED_ORIGINS = {
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "http://0.0.0.0:5173",
-    LOCAL_DEVELOPMENT_ORIGIN,
+    *LOCAL_DEVELOPMENT_ORIGINS,
     "http://127.0.0.1:5174",
     "http://0.0.0.0:5174",
     "https://localhost:5174",
@@ -109,11 +112,14 @@ def _resolve_allowed_origins() -> list[str]:
     else:
         origins = _read_allowed_origins(DEFAULT_ALLOWED_ORIGINS)
 
-    if LOCAL_DEVELOPMENT_ORIGIN not in origins:
-        # Always include the Vite dev server origin used in local development
-        # scripts so that requests from ``http://localhost:5174`` succeed even
-        # when the environment configuration omits it.
-        origins = _read_allowed_origins([*origins, LOCAL_DEVELOPMENT_ORIGIN])
+    missing_dev_origins = [
+        origin for origin in LOCAL_DEVELOPMENT_ORIGINS if origin not in origins
+    ]
+    if missing_dev_origins:
+        # Always include the Vite dev server origins used in local development
+        # scripts so that requests from the local frontend succeed even when
+        # the environment configuration omits them.
+        origins = _read_allowed_origins([*origins, *missing_dev_origins])
 
     return origins
 
