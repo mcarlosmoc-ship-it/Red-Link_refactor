@@ -47,6 +47,8 @@ from .services.scheduler_monitor import (
     SchedulerMonitor,
 )
 
+LOGGER = logging.getLogger(__name__)
+
 LOCAL_DEVELOPMENT_ORIGINS = {
     "http://localhost:5174",
     "http://localhost:5173",
@@ -73,9 +75,10 @@ DEFAULT_ALLOWED_ORIGINS = {
 
 
 def _normalize_origin(origin: str) -> str | None:
-    stripped = origin.strip()
+    stripped = origin.strip().strip("'\"")
     if not stripped:
         return None
+
     return stripped.rstrip("/")
 
 
@@ -151,12 +154,15 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="Red-Link Backoffice API", lifespan=lifespan)
-
-LOGGER = logging.getLogger(__name__)
-
+ALLOWED_ORIGINS = _resolve_allowed_origins()
+LOGGER.info(
+    "Configuring CORS: origins=%s, origin_regex=%s",
+    ALLOWED_ORIGINS,
+    LOCALHOST_ORIGIN_REGEX,
+)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_resolve_allowed_origins(),
+    allow_origins=ALLOWED_ORIGINS,
     allow_origin_regex=LOCALHOST_ORIGIN_REGEX,
     allow_credentials=True,
     allow_methods=["*"],
