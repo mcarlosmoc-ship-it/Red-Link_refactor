@@ -26,7 +26,6 @@ import {
   DUE_SOON_THRESHOLD_MONTHS,
 } from './utils.js'
 
-const periodsFormatter = new Intl.NumberFormat('es-MX', { maximumFractionDigits: 2 })
 const printDateFormatter = new Intl.DateTimeFormat('es-MX', {
   dateStyle: 'full',
   timeStyle: 'short',
@@ -39,13 +38,6 @@ const escapeHtml = (value) =>
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;')
-
-const formatPeriods = (value) => {
-  const numericValue = Number(value) || 0
-  return periodsFormatter.format(numericValue)
-}
-
-const isApproximatelyOne = (value) => Math.abs(Number(value) - 1) < 0.01
 
 const toInputValue = (value, decimals = 2) => {
   if (typeof value !== 'number' || !Number.isFinite(value)) return ''
@@ -351,7 +343,7 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
   const handlePrintPendingClients = useCallback(() => {
     const summaries = pendingClients
       .map((client) => {
-        const { debtMonths, totalDue } = getClientDebtSummary(client, CLIENT_PRICE)
+        const { totalDue } = getClientDebtSummary(client, CLIENT_PRICE)
 
         if (totalDue <= 0.009) {
           return null
@@ -360,7 +352,6 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
         return {
           name: client.name ?? 'Sin nombre',
           location: client.location ?? 'Sin localidad',
-          debtMonths,
           totalDue,
         }
       })
@@ -378,20 +369,16 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
     const totalDueAmount = summaries.reduce((sum, summary) => sum + summary.totalDue, 0)
     const reportDate = printDateFormatter.format(new Date())
     const tableRows = summaries
-      .map((summary, index) => {
-        const debtLabel = `${formatPeriods(summary.debtMonths)} ${
-          isApproximatelyOne(summary.debtMonths) ? 'periodo' : 'periodos'
-        }`
-        return `
+      .map(
+        (summary, index) => `
           <tr>
             <td>${index + 1}</td>
             <td>${escapeHtml(summary.name)}</td>
             <td>${escapeHtml(summary.location)}</td>
-            <td>${escapeHtml(debtLabel)}</td>
             <td>${escapeHtml(peso(summary.totalDue))}</td>
           </tr>
-        `
-      })
+        `,
+      )
       .join('')
 
     const printWindow = window.open('', '_blank', 'width=900,height=700')
@@ -466,8 +453,7 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
           <th scope="col">#</th>
           <th scope="col">Nombre</th>
           <th scope="col">Localidad</th>
-          <th scope="col">Periodos adeudados</th>
-          <th scope="col">Total adeudado</th>
+          <th scope="col">Adeudo estimado</th>
         </tr>
       </thead>
       <tbody>
@@ -475,7 +461,7 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
       </tbody>
       <tfoot>
         <tr>
-          <td colspan="4">Total adeudado</td>
+          <td colspan="3">Total adeudado</td>
           <td>${escapeHtml(peso(totalDueAmount))}</td>
         </tr>
       </tfoot>
@@ -575,9 +561,8 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
 
   const outstandingAmount = activeDebtSummary.totalDue
   const plannedAmount = Number(paymentForm.amount) || 0
-  const plannedMonths = activeMonthlyFee > 0 ? plannedAmount / activeMonthlyFee : 0
   const remainingBalance = Math.max(0, outstandingAmount - plannedAmount)
-  const additionalAhead = Math.max(0, plannedMonths - activeDebtSummary.debtMonths)
+  const projectedCredit = Math.max(0, plannedAmount - outstandingAmount)
   const detailAnchorPeriod = selectedPeriod ?? currentPeriod ?? null
 
   const handleExecutePayment = async ({
@@ -611,12 +596,21 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
         periodKey: selectedPeriod,
       })
 
+      const extraCredit = Math.max(0, amountToRegister - outstandingAmount)
+      const descriptionParts = [
+        `Se registró el pago de ${peso(amountToRegister)} para ${activeClient?.name ?? 'el cliente'}.`,
+      ]
+
+      if (pendingBalance > 0.009) {
+        descriptionParts.push(`Queda saldo pendiente de ${peso(pendingBalance)}.`)
+      } else if (extraCredit > 0.009) {
+        descriptionParts.push(`Se aplicará saldo a favor de ${peso(extraCredit)}.`)
+      }
+
       showToast({
         type: 'success',
         title: 'Pago registrado',
-        description: `Se registró el pago de ${peso(amountToRegister)} (${formatPeriods(monthsToRegister)} ${
-          isApproximatelyOne(monthsToRegister) ? 'periodo' : 'periodos'
-        }) para ${activeClient?.name ?? 'el cliente'}.`,
+        description: descriptionParts.join(' '),
       })
       setPaymentForm(createEmptyPaymentForm())
       if (searchTerm.trim().length > 0) {
@@ -736,8 +730,7 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
         <div className="space-y-2">
           <h3 className="text-sm font-semibold text-slate-800">Registrar pago rápido</h3>
           <p className="text-xs text-slate-500">
-            {activeClient.name} adeuda {formatPeriods(activeClient.debtMonths)} periodo(s). Pago mensual:{' '}
-            {peso(activeMonthlyFee)}. Adeudo total: {peso(outstandingAmount)}.
+            Adeudo estimado: {peso(outstandingAmount)}. Pago mensual de referencia: {peso(activeMonthlyFee)}.
           </p>
           <p className="text-[11px] uppercase tracking-wide text-slate-400">
             Servicio: {activeClientPrimaryService.name} ·{' '}
@@ -760,18 +753,12 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
           </label>
         </div>
         <div className="space-y-1 rounded-lg bg-slate-50/80 p-3 text-xs text-slate-500">
-          <p>
-            Pago a registrar: {peso(plannedAmount)} ({formatPeriods(plannedMonths)}{' '}
-            {isApproximatelyOne(plannedMonths) ? 'periodo' : 'periodos'}).
-          </p>
+          <p>Pago a registrar: {peso(plannedAmount)}.</p>
           {outstandingAmount > 0 && plannedAmount < outstandingAmount && (
             <p>Restante tras el pago: {peso(remainingBalance)}.</p>
           )}
           {plannedAmount > outstandingAmount && (
-            <p className="text-amber-600">
-              Esto agregará {formatPeriods(additionalAhead)}{' '}
-              {isApproximatelyOne(additionalAhead) ? 'periodo' : 'periodos'} adelantados.
-            </p>
+            <p className="text-amber-600">Saldo a favor estimado: {peso(projectedCredit)}.</p>
           )}
         </div>
         <label className="grid gap-1 text-xs font-medium text-slate-600">
@@ -1323,26 +1310,18 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
                           )}
                         </td>
                         <td className="px-3 py-2 text-slate-700">
-                          {hasDebt ? (
-                            <div className="flex flex-col text-sm">
-                              <span className="font-semibold text-red-700">{nextDueLabel}</span>
-                              <span className="text-xs text-red-600">
-                                Adeudo de {formatPeriods(debtSummary.debtMonths)}{' '}
-                                {isApproximatelyOne(debtSummary.debtMonths) ? 'periodo' : 'periodos'}
-                              </span>
-                            </div>
-                          ) : (
-                            <div className="flex flex-col text-sm">
-                              <span className="font-semibold text-slate-700">{nextDueLabel}</span>
-                              <span className="text-xs text-slate-500">
-                                {hasCredit
-                                  ? `Cubierto ${formatPeriods(paidMonthsAhead)} ${
-                                      isApproximatelyOne(paidMonthsAhead) ? 'periodo' : 'periodos'
-                                    }`
+                          <div className="flex flex-col text-sm">
+                            <span className={`font-semibold ${hasDebt ? 'text-red-700' : 'text-slate-700'}`}>
+                              {nextDueLabel}
+                            </span>
+                            <span className={`text-xs ${hasDebt ? 'text-red-600' : 'text-slate-500'}`}>
+                              {hasDebt
+                                ? `Adeudo estimado: ${peso(debtSummary.totalDue)}`
+                                : hasCredit
+                                  ? `Saldo a favor: ${peso(creditAmount)}`
                                   : 'Sin adeudo registrado'}
-                              </span>
-                            </div>
-                          )}
+                            </span>
+                          </div>
                         </td>
                         <td className="px-3 py-2">
                           {(() => {
@@ -1368,7 +1347,7 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
                           })()}
                           {hasCredit && (
                             <div className="mt-1 text-xs font-medium text-emerald-700">
-                              Saldo a favor ({formatPeriods(paidMonthsAhead)})
+                              Saldo a favor: {peso(creditAmount)}
                             </div>
                           )}
                         </td>
@@ -1376,18 +1355,12 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
                           {hasDebt ? (
                             <div className="flex flex-col gap-0.5 text-sm font-semibold text-red-700">
                               <span>{peso(debtSummary.totalDue)}</span>
-                              <span className="text-xs font-normal text-red-600">
-                                Adeudo de {formatPeriods(debtSummary.debtMonths)}{' '}
-                                {isApproximatelyOne(debtSummary.debtMonths) ? 'periodo' : 'periodos'}
-                              </span>
+                              <span className="text-xs font-normal text-red-600">Tarifa mensual: {peso(displayMonthlyFee)}</span>
                             </div>
                           ) : hasCredit ? (
                             <div className="flex flex-col gap-0.5 text-sm font-semibold text-emerald-700">
                               <span>{peso(creditAmount)}</span>
-                              <span className="text-xs font-normal text-emerald-600">
-                                Saldo a favor ({formatPeriods(paidMonthsAhead)}{' '}
-                                {isApproximatelyOne(paidMonthsAhead) ? 'periodo' : 'periodos'})
-                              </span>
+                              <span className="text-xs font-normal text-emerald-600">Saldo a favor estimado</span>
                             </div>
                           ) : (
                             <span className="text-xs text-slate-500">Sin adeudo</span>
@@ -1447,8 +1420,7 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
                                       {debtMonths > 0.0001 ? (
                                         <>
                                           <p className="text-sm text-slate-600">
-                                            Debe {formatPeriods(debtMonths)}{' '}
-                                            {isApproximatelyOne(debtMonths) ? 'periodo' : 'periodos'} ({peso(totalDue)}).
+                                            Adeudo estimado: {peso(totalDue)}.
                                           </p>
                                           {outstandingPeriodLabels.length > 0 && (
                                             <div className="flex flex-wrap gap-2">
@@ -1464,7 +1436,7 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
                                           )}
                                           {fractionalDebt > 0 && (
                                             <p className="text-xs text-amber-700">
-                                              Incluye un periodo parcial de {formatPeriods(fractionalDebt)}.
+                                              Incluye un cargo proporcional de {peso(fractionalDebt * debtSummary.monthlyFee)}.
                                             </p>
                                           )}
                                         </>
@@ -1491,8 +1463,7 @@ export default function ClientBillingPanel({ clients, status: clientsStatus, onR
                                         </span>
                                         {paidMonthsAhead > 0.0001 && (
                                           <span className="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
-                                            Adelantó {formatPeriods(paidMonthsAhead)}{' '}
-                                            {isApproximatelyOne(paidMonthsAhead) ? 'periodo' : 'periodos'}
+                                            Saldo a favor: {peso(paidMonthsAhead * debtSummary.monthlyFee)}
                                           </span>
                                         )}
                                       </div>
