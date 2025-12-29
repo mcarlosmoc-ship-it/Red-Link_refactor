@@ -137,6 +137,7 @@ from .service import (
     ClientServiceUpdate,
     ContractedServiceSummary,
     ProrationPreview,
+    ServiceBalance,
     ServiceDebtRead,
     ServiceDebtUpdate,
 )
@@ -175,6 +176,7 @@ __all__ = [
     "ClientContractsResponse",
     "ContractedServiceSummary",
     "ProrationPreview",
+    "ServiceBalance",
     "ServiceDebtRead",
     "ServiceDebtUpdate",
     "PaginatedResponse",
