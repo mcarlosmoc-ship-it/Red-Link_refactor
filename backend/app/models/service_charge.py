@@ -59,7 +59,7 @@ class ServiceCharge(Base):
     id = Column("charge_id", GUID(), primary_key=True, default=uuid.uuid4)
     subscription_id = Column(
         GUID(),
-        ForeignKey("client_services.client_service_id", ondelete="CASCADE"),
+        ForeignKey("subscriptions.subscription_id", ondelete="CASCADE"),
         nullable=False,
     )
     client_id = Column(
@@ -79,7 +79,7 @@ class ServiceCharge(Base):
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
-    subscription = relationship("ClientService", back_populates="charges")
+    subscription = relationship("Subscription", back_populates="charges")
     client = relationship("Client", back_populates="charges")
     billing_period = relationship(
         "BillingPeriod",

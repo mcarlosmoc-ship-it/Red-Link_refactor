@@ -37,6 +37,7 @@ class ClientBase(BaseModel):
         default=None,
         ge=1,
         validation_alias=AliasChoices("zone_id", "base_id"),
+        serialization_alias="base_id",
     )
     paid_months_ahead: Decimal = Field(default=Decimal("0"), ge=0)
     debt_months: Decimal = Field(default=Decimal("0"), ge=0)
@@ -59,6 +60,7 @@ class ClientUpdate(BaseModel):
         default=None,
         ge=1,
         validation_alias=AliasChoices("zone_id", "base_id"),
+        serialization_alias="base_id",
     )
     paid_months_ahead: Optional[Decimal] = Field(default=None, ge=0)
     debt_months: Optional[Decimal] = Field(default=None, ge=0)

@@ -64,7 +64,7 @@ class InventoryItem(Base):
     model = Column(String, nullable=True)
     serial_number = Column(String, nullable=True)
     category = Column(String, nullable=True)
-    base_id = Column(Integer, ForeignKey("zones.zone_id", onupdate="CASCADE"), nullable=False)
+    base_id = Column(Integer, ForeignKey("base_stations.base_id", onupdate="CASCADE"), nullable=False)
     ip_address = Column(INET(), nullable=True)
     status = Column(INVENTORY_STATUS_ENUM, nullable=False)
     location = Column(String, nullable=False)
@@ -75,7 +75,7 @@ class InventoryItem(Base):
     purchase_cost = Column(Numeric(12, 2), nullable=True)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
-    base = relationship("Zone", back_populates="inventory_items")
+    base = relationship("BaseStation", back_populates="inventory_items")
     client = relationship("Client", back_populates="inventory_items")
     movements = relationship(
         "InventoryMovement",

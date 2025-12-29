@@ -66,7 +66,7 @@ class ServicePlan(Base):
             values_callable=lambda enum_cls: [member.value for member in enum_cls],
         ),
         nullable=False,
-        default=ClientServiceType.INTERNET,
+        default=ClientServiceType.INTERNET_PRIVATE,
     )
     download_speed_mbps = Column(Numeric(8, 2), nullable=True)
     upload_speed_mbps = Column(Numeric(8, 2), nullable=True)
