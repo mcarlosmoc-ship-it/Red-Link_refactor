@@ -1,0 +1,85 @@
+name: Backend PostgreSQL CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  backend-postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: app
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/app
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/app
+      REQUIRE_POSTGRES: 1
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Wait for PostgreSQL
+        run: |
+          for i in {1..10}; do
+            pg_isready -h localhost -p 5432 -U postgres && break
+            sleep 3
+          done
+          pg_isready -h localhost -p 5432 -U postgres
+
+      - name: Run Alembic migrations
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+          REQUIRE_POSTGRES: ${{ env.REQUIRE_POSTGRES }}
+        run: alembic upgrade head
+
+      - name: Run PostgreSQL migration tests
+        working-directory: backend
+        env:
+          TEST_DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
+        run: pytest tests/test_postgres_migration_base_stations.py -q
+
+      - name: Generate OpenAPI schema
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          from app.main import app
+          app.openapi()
+          print("openapi ok")
+          PY
+
+      - name: API smoke test
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: |
+          uvicorn app.main:app --host 0.0.0.0 --port 8000 --log-level warning &
+          UVICORN_PID=$!
+          sleep 5
+          curl -i http://localhost:8000/openapi.json
+          curl -i "http://localhost:8000/client-services?limit=1"
+          kill $UVICORN_PID
