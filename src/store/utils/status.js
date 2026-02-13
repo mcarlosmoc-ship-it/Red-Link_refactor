@@ -29,10 +29,7 @@ const resolveErrorMessage = (error, fallback = 'Ocurrió un error inesperado.') 
   const statusCode = resolveStatusCode(error)
 
   if (statusCode === 401) {
-    return (
-      'La API rechazó la solicitud (401). Configura un token válido en VITE_API_ACCESS_TOKEN ' +
-      'o ejecuta window.__RED_LINK_API_CLIENT__.setAccessToken("tu-token") desde la consola.'
-    )
+    return 'La API rechazó la solicitud (401). Verifica la configuración del servidor o tus permisos.'
   }
 
   if (statusCode === 403) {
